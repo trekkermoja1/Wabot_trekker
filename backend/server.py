@@ -225,8 +225,8 @@ async def lifespan(app: FastAPI):
                     process = subprocess.Popen(
                         ['node', 'instance.js', instance_id, instance['phone_number'], str(port)],
                         cwd=bot_dir,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL
                     )
                     bot_processes[instance_id] = process
                     instance_ports[instance_id] = port
@@ -396,8 +396,8 @@ async def approve_instance(instance_id: str, request: ApproveInstanceRequest):
         process = subprocess.Popen(
             ['node', 'instance.js', instance_id, instance['phone_number'], str(port)],
             cwd=bot_dir,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
         )
         
         bot_processes[instance_id] = process
@@ -521,8 +521,8 @@ async def get_pairing_code(instance_id: str):
                     process = subprocess.Popen(
                         ['node', 'instance.js', instance_id, instance['phone_number'], str(port)],
                         cwd=bot_dir,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL
                     )
                     bot_processes[instance_id] = process
                     instance_ports[instance_id] = port
@@ -573,8 +573,8 @@ async def regenerate_code(instance_id: str):
                 process = subprocess.Popen(
                     ['node', 'instance.js', instance_id, instance['phone_number'], str(port)],
                     cwd=bot_dir,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
                 )
                 bot_processes[instance_id] = process
                 instance_ports[instance_id] = port
@@ -716,8 +716,8 @@ async def renew_instance(instance_id: str, request: ApproveInstanceRequest):
         process = subprocess.Popen(
             ['node', 'instance.js', instance_id, instance['phone_number'], str(port)],
             cwd=bot_dir,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
         )
         
         bot_processes[instance_id] = process
