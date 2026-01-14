@@ -212,7 +212,12 @@ async function startBot() {
         const { version, isLatest } = await fetchLatestBaileysVersion();
         console.log(chalk.gray(`📦 Using Baileys version: ${version.join('.')}, isLatest: ${isLatest}`));
         
-        const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
+        // Ensure Baileys is loaded
+    if (!makeWASocket) {
+        await loadBaileys();
+    }
+    
+    const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
         
         const sock = makeWASocket({
             version,
