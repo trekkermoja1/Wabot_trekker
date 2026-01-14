@@ -1,10 +1,10 @@
-modules = ["nodejs-20", "python-3.11"]
+modules = ["nodejs-18", "python-3.11", "web"]
 [agent]
 expertMode = true
 
 [nix]
 channel = "stable-25_05"
-packages = ["ffmpeg", "libxcrypt"]
+packages = ["ffmpeg", "libxcrypt", "postgresql"]
 
 [workflows]
 runButton = "Project"
@@ -37,3 +37,7 @@ externalPort = 3001
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[[ports]]
+localPort = 8001
+externalPort = 3000

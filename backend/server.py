@@ -78,13 +78,16 @@ async def init_database():
         import urllib.parse
         result = urllib.parse.urlparse(DATABASE_URL)
         
+        # Determine if SSL is needed (External DBs usually do)
+        ssl_context = 'require' if result.hostname != 'localhost' else None
+        
         db_pool = await asyncpg.create_pool(
             host=result.hostname,
             port=result.port,
             user=result.username,
             password=result.password,
             database=result.path[1:],  # Remove leading slash
-            ssl='require',
+            ssl=ssl_context,
             min_size=2,
             max_size=10
         )
