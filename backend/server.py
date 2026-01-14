@@ -192,10 +192,13 @@ def get_next_port():
 async def get_instance_status(instance_id: str, port: int) -> dict:
     """Get status from running bot instance"""
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(f"http://localhost:{port}/status")
-            return response.json()
-    except:
+            data = response.json()
+            print(f"🤖 Bot {instance_id} status on port {port}: {data.get('status')} | Code: {data.get('pairingCode')}")
+            return data
+    except Exception as e:
+        print(f"❌ Error communicating with bot {instance_id} on port {port}: {e}")
         return {"status": "offline", "pairingCode": None}
 
 
@@ -745,18 +748,15 @@ async def serve_index():
 @app.get("/{full_path:path}")
 async def serve_frontend(full_path: str):
     if full_path.startswith("api/") or full_path == "api":
-        raise HTTPException(status_code=404)
+        return {"detail": "Not Found", "path": full_path}
     
-    file_path = os.path.join("static", full_path)
-    if os.path.isfile(file_path):
-        return FileResponse(file_path)
-    
-    if full_path.startswith("static/"):
-        relative_path = full_path[len("static/"):]
-        static_sub_path = os.path.join("static/static", relative_path)
-        if os.path.isfile(static_sub_path):
-            return FileResponse(static_sub_path)
-    
+    # Don't serve HTML for things that look like assets but are missing
+    if "." in full_path and not full_path.endswith(".html"):
+        file_path = os.path.join("static", full_path)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+        return {"detail": "Asset Not Found", "path": full_path}
+
     return FileResponse("static/index.html")
 
 

@@ -8,18 +8,23 @@ const fs = require('fs');
 const path = require('path');
 const chalk = require('chalk');
 const pn = require('awesome-phonenumber');
-const {
-    default: makeWASocket,
-    useMultiFileAuthState,
-    DisconnectReason,
-    fetchLatestBaileysVersion,
-    jidDecode,
-    proto,
-    jidNormalizedUser,
-    makeCacheableSignalKeyStore,
-    delay,
-    Browsers
-} = require("@whiskeysockets/baileys");
+// Import Baileys dynamically as it is an ES Module
+let makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, jidDecode, proto, jidNormalizedUser, makeCacheableSignalKeyStore, delay, Browsers;
+
+async function loadBaileys() {
+    const baileys = await import("@whiskeysockets/baileys");
+    makeWASocket = baileys.default;
+    useMultiFileAuthState = baileys.useMultiFileAuthState;
+    DisconnectReason = baileys.DisconnectReason;
+    fetchLatestBaileysVersion = baileys.fetchLatestBaileysVersion;
+    jidDecode = baileys.jidDecode;
+    proto = baileys.proto;
+    jidNormalizedUser = baileys.jidNormalizedUser;
+    makeCacheableSignalKeyStore = baileys.makeCacheableSignalKeyStore;
+    delay = baileys.delay;
+    Browsers = baileys.Browsers;
+}
+
 const NodeCache = require("node-cache");
 const pino = require("pino");
 const { rmSync, existsSync } = require('fs');
@@ -191,6 +196,7 @@ server.listen(apiPort, () => {
 });
 
 async function startBot() {
+    if (!makeWASocket) await loadBaileys();
     // Validate phone number
     const phoneValidation = cleanAndValidatePhone(phoneNumber);
     if (!phoneValidation.valid) {
