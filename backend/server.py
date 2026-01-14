@@ -78,8 +78,8 @@ async def init_database():
         import urllib.parse
         result = urllib.parse.urlparse(DATABASE_URL)
         
-        # Determine if SSL is needed (External DBs usually do)
-        ssl_context = 'require' if result.hostname != 'localhost' else None
+        # Replit's built-in PostgreSQL does not use SSL
+        ssl_context = None
         
         db_pool = await asyncpg.create_pool(
             host=result.hostname,
