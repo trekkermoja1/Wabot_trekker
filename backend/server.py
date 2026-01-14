@@ -208,18 +208,37 @@ async def lifespan(app: FastAPI):
     # Start expiration checker
     asyncio.create_task(check_expired_bots())
     
-    # Stop all previously running instances on this server
+    # Restart all approved instances on this server
     async with db_pool.acquire() as conn:
-        # Check if pid column exists before updating
-        try:
-            await conn.execute("""
-                UPDATE bot_instances
-                SET pid = NULL, updated_at = NOW()
-                WHERE server_name = $1
-            """, SERVERNAME)
-        except:
-            # pid column might not exist in old schema, ignore
-            pass
+        approved_instances = await conn.fetch("""
+            SELECT * FROM bot_instances 
+            WHERE server_name = $1 AND status = 'approved'
+        """, SERVERNAME)
+        
+        for instance in approved_instances:
+            instance_id = instance['id']
+            port = instance['port']
+            if port:
+                try:
+                    # Start the bot instance
+                    bot_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'bot')
+                    process = subprocess.Popen(
+                        ['node', 'instance.js', instance_id, instance['phone_number'], str(port)],
+                        cwd=bot_dir,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE
+                    )
+                    bot_processes[instance_id] = process
+                    instance_ports[instance_id] = port
+                    
+                    # Update PID
+                    await conn.execute("""
+                        UPDATE bot_instances SET pid = $1, updated_at = NOW()
+                        WHERE id = $2
+                    """, process.pid, instance_id)
+                    print(f"✅ Restarted bot instance {instance_id} on port {port}")
+                except Exception as e:
+                    print(f"❌ Failed to restart bot instance {instance_id}: {e}")
     
     yield
     
@@ -491,22 +510,41 @@ async def get_pairing_code(instance_id: str):
             raise HTTPException(status_code=404, detail="Instance not found")
         
         port = instance['port']
-        if not port or instance_id not in bot_processes:
+        # If port exists, try to fetch even if not in bot_processes
+        if port:
+            status_data = await get_instance_status(instance_id, port)
+            
+            # If bot is not running (offline), try to start it if it's approved
+            if status_data.get("status") == "offline" and instance['status'] == 'approved' and instance_id not in bot_processes:
+                try:
+                    bot_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'bot')
+                    process = subprocess.Popen(
+                        ['node', 'instance.js', instance_id, instance['phone_number'], str(port)],
+                        cwd=bot_dir,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE
+                    )
+                    bot_processes[instance_id] = process
+                    instance_ports[instance_id] = port
+                    # Wait a bit for it to start
+                    await asyncio.sleep(2)
+                    status_data = await get_instance_status(instance_id, port)
+                except:
+                    pass
+
             return {
                 "instance_id": instance_id,
-                "pairing_code": None,
-                "pairing_code_valid": False,
-                "status": instance['status']
+                "pairing_code": status_data.get("pairingCode"),
+                "pairing_code_valid": status_data.get("pairingCodeValid", True if status_data.get("pairingCode") else False),
+                "pairing_code_remaining_seconds": status_data.get("pairingCodeRemainingSeconds", 0),
+                "status": status_data.get("status")
             }
-        
-        status_data = await get_instance_status(instance_id, port)
         
         return {
             "instance_id": instance_id,
-            "pairing_code": status_data.get("pairingCode"),
-            "pairing_code_valid": status_data.get("pairingCodeValid", False),
-            "pairing_code_remaining_seconds": status_data.get("pairingCodeRemainingSeconds", 0),
-            "status": status_data.get("status")
+            "pairing_code": None,
+            "pairing_code_valid": False,
+            "status": instance['status']
         }
 
 
@@ -524,7 +562,26 @@ async def regenerate_code(instance_id: str):
         
         port = instance['port']
         if not port:
-            raise HTTPException(status_code=400, detail="Instance has no port assigned")
+            # If no port assigned, assign one
+            port = get_next_port()
+            await conn.execute("UPDATE bot_instances SET port = $1 WHERE id = $2", port, instance_id)
+
+        # If it's not in bot_processes, try to start it first
+        if instance_id not in bot_processes:
+            try:
+                bot_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'bot')
+                process = subprocess.Popen(
+                    ['node', 'instance.js', instance_id, instance['phone_number'], str(port)],
+                    cwd=bot_dir,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE
+                )
+                bot_processes[instance_id] = process
+                instance_ports[instance_id] = port
+                # Wait for startup
+                await asyncio.sleep(2)
+            except Exception as e:
+                print(f"Failed to start bot for regeneration: {e}")
         
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
