@@ -336,12 +336,58 @@ async def list_instances(status: Optional[str] = None):
             })
     return {"instances": result}
 
+async def start_instance_internal(instance_id: str, phone_number: str, port: int):
+    """Helper to start a bot instance process"""
+    bot_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'bot')
+    try:
+        # Check if process is already running
+        if instance_id in bot_processes:
+            try:
+                if bot_processes[instance_id].poll() is None:
+                    return True
+            except:
+                pass
+        
+        process = subprocess.Popen(
+            ['node', 'instance.js', instance_id, phone_number, str(port)],
+            cwd=bot_dir,
+            stdout=None,
+            stderr=None,
+            start_new_session=True
+        )
+        bot_processes[instance_id] = process
+        instance_ports[instance_id] = port
+        
+        async with db_pool.acquire() as conn:
+            await conn.execute("""
+                UPDATE bot_instances SET pid = $1, updated_at = NOW()
+                WHERE id = $2
+            """, process.pid, instance_id)
+        
+        print(f"✅ Started bot instance {instance_id} on port {port}")
+        await asyncio.sleep(2) # Give it a moment to start the API
+        return True
+    except Exception as e:
+        print(f"❌ Failed to start bot instance {instance_id}: {e}")
+        return False
+
 @app.get("/api/instances/{instance_id}/pairing-code")
 async def get_pairing_code(instance_id: str):
     async with db_pool.acquire() as conn:
         instance = await conn.fetchrow("SELECT * FROM bot_instances WHERE id = $1", instance_id)
         if not instance or not instance['port']: raise HTTPException(status_code=404)
+        
         status_data = await get_instance_status(instance_id, instance['port'])
+        
+        # Auto-restart if offline
+        if status_data.get("status") == "offline":
+            print(f"🔄 Instance {instance_id} is offline, attempting auto-restart...")
+            success = await start_instance_internal(instance_id, instance['phone_number'], instance['port'])
+            if success:
+                # Wait a bit more for the code to be generated
+                await asyncio.sleep(3)
+                status_data = await get_instance_status(instance_id, instance['port'])
+        
         return {"pairing_code": status_data.get("pairingCode"), "status": status_data.get("status")}
 
 @app.post("/api/instances/{instance_id}/regenerate-code")
@@ -349,10 +395,22 @@ async def regenerate_code(instance_id: str):
     async with db_pool.acquire() as conn:
         instance = await conn.fetchrow("SELECT * FROM bot_instances WHERE id = $1", instance_id)
         if not instance: raise HTTPException(status_code=404)
+        
+        # Ensure it's running before regenerating
+        status_data = await get_instance_status(instance_id, instance['port'])
+        if status_data.get("status") == "offline":
+            await start_instance_internal(instance_id, instance['phone_number'], instance['port'])
+            await asyncio.sleep(3)
+
         url = f"http://127.0.0.1:{instance['port']}/regenerate-code"
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(url)
-            return response.json()
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(url)
+                if response.status_code != 200:
+                    return {"status": "error", "message": f"Instance returned {response.status_code}"}
+                return response.json()
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
 
 @app.post("/api/instances/{instance_id}/stop")
 async def stop_instance(instance_id: str):

@@ -21,6 +21,7 @@ function App() {
   const [activeTab, setActiveTab] = useState('new');
   const [showPairingModal, setShowPairingModal] = useState(false);
   const [pairingCode, setPairingCode] = useState('');
+  const [fetchingPairingCode, setFetchingPairingCode] = useState(false);
 
   useEffect(() => {
     if (isLoggedIn) {
@@ -207,44 +208,65 @@ function App() {
   };
 
   const getPairingCode = async (botId) => {
-    setLoading(true);
+    setFetchingPairingCode(true);
+    setPairingCode('');
+    setShowPairingModal(true);
     try {
       const response = await fetch(`${API_URL}/api/instances/${botId}/pairing-code`);
       const data = await response.json();
-      console.log('Pairing code response:', data);
       if (data.pairing_code) {
         setPairingCode(data.pairing_code);
-        setShowPairingModal(true);
       } else {
-        alert('No pairing code available yet. Please wait a moment and try again.');
+        // Retry once after 5 seconds if not ready (backend is already attempting restart)
+        setTimeout(async () => {
+          try {
+            const retryRes = await fetch(`${API_URL}/api/instances/${botId}/pairing-code`);
+            const retryData = await retryRes.json();
+            if (retryData.pairing_code) {
+              setPairingCode(retryData.pairing_code);
+            } else {
+              setPairingCode('ERROR');
+            }
+          } catch (e) {
+            setPairingCode('ERROR');
+          }
+        }, 5000);
       }
     } catch (error) {
       console.error('Error fetching pairing code:', error);
-      alert('Error: ' + error.message);
+      setPairingCode('ERROR');
     } finally {
-      setLoading(false);
+      setFetchingPairingCode(false);
     }
   };
 
   const regeneratePairingCode = async (botId) => {
-    setLoading(true);
+    setFetchingPairingCode(true);
+    setPairingCode('');
+    setShowPairingModal(true);
     try {
       const response = await fetch(`${API_URL}/api/instances/${botId}/regenerate-code`, {
         method: 'POST'
       });
       const data = await response.json();
-      console.log('Regenerate response:', data);
-      if (data.pairingCode) {
-        setPairingCode(data.pairingCode);
-        setShowPairingModal(true);
+      if (data.pairingCode || data.pairing_code) {
+        setPairingCode(data.pairingCode || data.pairing_code);
       } else {
-        alert('Failed to regenerate pairing code. Please try again.');
+        setTimeout(async () => {
+          try {
+            const retryRes = await fetch(`${API_URL}/api/instances/${botId}/pairing-code`);
+            const retryData = await retryRes.json();
+            setPairingCode(retryData.pairing_code || 'ERROR');
+          } catch (e) {
+            setPairingCode('ERROR');
+          }
+        }, 5000);
       }
     } catch (error) {
       console.error('Error regenerating pairing code:', error);
-      alert('Error: ' + error.message);
+      setPairingCode('ERROR');
     } finally {
-      setLoading(false);
+      setFetchingPairingCode(false);
     }
   };
 
