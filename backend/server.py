@@ -193,16 +193,12 @@ def get_next_port():
 
 async def get_instance_status(instance_id: str, port: int) -> dict:
     """Get status from running bot instance"""
-    # Use 127.0.0.1 explicitly to avoid IPv6 issues if any
     url = f"http://127.0.0.1:{port}/status"
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.get(url)
-            data = response.json()
-            # print(f"🤖 Bot {instance_id} status on port {port}: {data.get('status')} | Code: {data.get('pairingCode')}")
-            return data
-    except Exception as e:
-        # print(f"❌ Error communicating with bot {instance_id} on port {port} at {url}: {e}")
+            return response.json()
+    except Exception:
         return {"status": "offline", "pairingCode": None}
 
 
@@ -227,11 +223,9 @@ async def lifespan(app: FastAPI):
             port = instance['port']
             if port:
                 try:
-                    # Start the bot instance
                     bot_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'bot')
                     log_path = os.path.join(bot_dir, f"bot_{instance_id}.log")
                     log_file = open(log_path, "a", buffering=1)
-                    print(f"🚀 Starting bot {instance_id} on port {port}, logging to {log_path}")
                     process = subprocess.Popen(
                         ['node', 'instance.js', instance_id, instance['phone_number'], str(port)],
                         cwd=bot_dir,
@@ -241,8 +235,6 @@ async def lifespan(app: FastAPI):
                     )
                     bot_processes[instance_id] = process
                     instance_ports[instance_id] = port
-                    
-                    # Update PID
                     await conn.execute("""
                         UPDATE bot_instances SET pid = $1, updated_at = NOW()
                         WHERE id = $2
@@ -250,22 +242,15 @@ async def lifespan(app: FastAPI):
                     print(f"✅ Restarted bot instance {instance_id} on port {port}")
                 except Exception as e:
                     print(f"❌ Failed to restart bot instance {instance_id}: {e}")
-    
     yield
-    
-    # Shutdown
     await cleanup_instances()
-    print("👋 TREKKER MAX WABOT Backend Shutting Down...")
 
 
 app = FastAPI(
     title="TREKKER MAX WABOT",
-    description="Multi-Instance WhatsApp Bot Platform with Approval Workflow",
-    version="2.0.0",
     lifespan=lifespan
 )
 
-# CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -274,16 +259,98 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/api/server-info")
+async def get_server_info():
+    async with db_pool.acquire() as conn:
+        total = await conn.fetchval("SELECT COUNT(*) FROM bot_instances WHERE server_name = $1", SERVERNAME)
+        new = await conn.fetchval("SELECT COUNT(*) FROM bot_instances WHERE server_name = $1 AND status = 'new'", SERVERNAME)
+        approved = await conn.fetchval("SELECT COUNT(*) FROM bot_instances WHERE server_name = $1 AND status = 'approved'", SERVERNAME)
+        expired = await conn.fetchval("SELECT COUNT(*) FROM bot_instances WHERE server_name = $1 AND status = 'expired'", SERVERNAME)
+    return {"server_name": SERVERNAME, "total_bots": total, "new_bots": new, "approved_bots": approved, "expired_bots": expired}
+
+@app.post("/api/login")
+async def login(request: LoginRequest):
+    if request.username == ADMIN_USERNAME and request.password == ADMIN_PASSWORD:
+        return {"success": True, "message": "Login successful"}
+    raise HTTPException(status_code=401)
+
+@app.post("/api/instances", response_model=InstanceResponse)
+async def create_instance(request: CreateInstanceRequest):
+    instance_id = str(uuid.uuid4())[:8]
+    async with db_pool.acquire() as conn:
+        await conn.execute("INSERT INTO bot_instances (id, name, phone_number, status, server_name, owner_id) VALUES ($1, $2, $3, 'new', $4, $5)", instance_id, request.name, request.phone_number, SERVERNAME, request.owner_id)
+    return InstanceResponse(id=instance_id, name=request.name, phone_number=request.phone_number, status="new", server_name=SERVERNAME, created_at=datetime.utcnow().isoformat())
+
+@app.post("/api/instances/{instance_id}/approve")
+async def approve_instance(instance_id: str, request: ApproveInstanceRequest):
+    async with db_pool.acquire() as conn:
+        instance = await conn.fetchrow("SELECT * FROM bot_instances WHERE id = $1", instance_id)
+        if not instance: raise HTTPException(status_code=404)
+        port = get_next_port()
+        expires_at = datetime.utcnow() + timedelta(days=30 * request.duration_months)
+        await conn.execute("UPDATE bot_instances SET status = 'approved', duration_months = $1, approved_at = NOW(), expires_at = $2, port = $3 WHERE id = $4", request.duration_months, expires_at, port, instance_id)
+        bot_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'bot')
+        log_file = open(os.path.join(bot_dir, f"bot_{instance_id}.log"), "a", buffering=1)
+        process = subprocess.Popen(['node', 'instance.js', instance_id, instance['phone_number'], str(port)], cwd=bot_dir, stdout=log_file, stderr=log_file, start_new_session=True)
+        bot_processes[instance_id] = process
+    return {"message": "Approved"}
+
+@app.get("/api/instances")
+async def list_instances(status: Optional[str] = None):
+    async with db_pool.acquire() as conn:
+        if status:
+            instances = await conn.fetch("SELECT * FROM bot_instances WHERE server_name = $1 AND status = $2 ORDER BY created_at DESC", SERVERNAME, status)
+        else:
+            instances = await conn.fetch("SELECT * FROM bot_instances WHERE server_name = $1 ORDER BY created_at DESC", SERVERNAME)
+        result = []
+        for instance in instances:
+            status_data = await get_instance_status(instance['id'], instance['port']) if instance['port'] else {"status": instance['status']}
+            result.append({**dict(instance), "pairing_code": status_data.get("pairingCode"), "connected_user": status_data.get("user"), "created_at": instance['created_at'].isoformat(), "approved_at": instance['approved_at'].isoformat() if instance['approved_at'] else None, "expires_at": instance['expires_at'].isoformat() if instance['expires_at'] else None})
+    return {"instances": result}
+
+@app.get("/api/instances/{instance_id}/pairing-code")
+async def get_pairing_code(instance_id: str):
+    async with db_pool.acquire() as conn:
+        instance = await conn.fetchrow("SELECT * FROM bot_instances WHERE id = $1", instance_id)
+        if not instance or not instance['port']: raise HTTPException(status_code=404)
+        status_data = await get_instance_status(instance_id, instance['port'])
+        return {"pairing_code": status_data.get("pairingCode"), "status": status_data.get("status")}
+
+@app.post("/api/instances/{instance_id}/regenerate-code")
+async def regenerate_code(instance_id: str):
+    async with db_pool.acquire() as conn:
+        instance = await conn.fetchrow("SELECT * FROM bot_instances WHERE id = $1", instance_id)
+        if not instance: raise HTTPException(status_code=404)
+        url = f"http://127.0.0.1:{instance['port']}/regenerate-code"
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(url)
+            return response.json()
+
+@app.post("/api/instances/{instance_id}/stop")
+async def stop_instance(instance_id: str):
+    if instance_id in bot_processes:
+        bot_processes[instance_id].terminate()
+        del bot_processes[instance_id]
+    return {"message": "Stopped"}
+
+@app.delete("/api/instances/{instance_id}")
+async def delete_instance(instance_id: str):
+    async with db_pool.acquire() as conn:
+        await conn.execute("DELETE FROM bot_instances WHERE id = $1", instance_id)
+    if instance_id in bot_processes:
+        bot_processes[instance_id].terminate()
+        del bot_processes[instance_id]
+    return {"message": "Deleted"}
+
 # Serve static files
 if os.path.exists("../frontend/build"):
     app.mount("/static", StaticFiles(directory="../frontend/build/static"), name="static")
 
-@app.get("/")
-async def root():
+@app.get("/{path_name:path}")
+async def root(path_name: str = None):
     if os.path.exists("../frontend/build/index.html"):
         return FileResponse("../frontend/build/index.html")
-    return {"message": "TREKKER MAX WABOT API is running"}
-
+    return {"message": "API Running"}
 
 if __name__ == "__main__":
     import uvicorn
