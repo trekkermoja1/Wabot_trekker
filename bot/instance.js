@@ -48,6 +48,16 @@ let pairingCodeGeneratedAt = null;
 let connectionStatus = 'initializing';
 let botSocket = null;
 let isAuthenticated = false;
+let startTime = Date.now();
+const CONNECTION_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+
+// Timeout check
+setInterval(() => {
+    if (!isAuthenticated && (Date.now() - startTime > CONNECTION_TIMEOUT)) {
+        console.log(chalk.red(`\n❌ Connection not established within 5 minutes. Closing instance: ${instanceId}`));
+        process.exit(1);
+    }
+}, 30000);
 
 // Helper function to remove files/directories
 function removeFile(filePath) {
