@@ -217,19 +217,19 @@ async def lifespan(app: FastAPI):
             WHERE server_name = $1 AND status = 'approved'
         """, SERVERNAME)
         
+        bot_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'bot')
+        
         for instance in approved_instances:
             instance_id = instance['id']
             port = instance['port']
             if port:
                 try:
-                    bot_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'bot')
-                    log_path = os.path.join(bot_dir, f"bot_{instance_id}.log")
-                    log_file = open(log_path, "a", buffering=1)
+                    # In Replit environment, we want logs in the console
                     process = subprocess.Popen(
                         ['node', 'instance.js', instance_id, instance['phone_number'], str(port)],
                         cwd=bot_dir,
-                        stdout=log_file,
-                        stderr=log_file,
+                        stdout=None, # Inherit stdout
+                        stderr=None, # Inherit stderr
                         start_new_session=True
                     )
                     bot_processes[instance_id] = process
@@ -292,8 +292,15 @@ async def approve_instance(instance_id: str, request: ApproveInstanceRequest):
         expires_at = datetime.utcnow() + timedelta(days=30 * request.duration_months)
         await conn.execute("UPDATE bot_instances SET status = 'approved', duration_months = $1, approved_at = NOW(), expires_at = $2, port = $3 WHERE id = $4", request.duration_months, expires_at, port, instance_id)
         bot_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'bot')
-        log_file = open(os.path.join(bot_dir, f"bot_{instance_id}.log"), "a", buffering=1)
-        process = subprocess.Popen(['node', 'instance.js', instance_id, instance['phone_number'], str(port)], cwd=bot_dir, stdout=log_file, stderr=log_file, start_new_session=True)
+        
+        # In Replit environment, we want logs in the console
+        process = subprocess.Popen(
+            ['node', 'instance.js', instance_id, instance['phone_number'], str(port)],
+            cwd=bot_dir,
+            stdout=None, # Inherit stdout
+            stderr=None, # Inherit stderr
+            start_new_session=True
+        )
         bot_processes[instance_id] = process
         instance_ports[instance_id] = port
     return {"message": "Approved"}

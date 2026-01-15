@@ -215,11 +215,11 @@ async function startBot() {
         console.log(chalk.gray(`📦 Using Baileys version: ${version.join('.')}, isLatest: ${isLatest}`));
         
         // Ensure Baileys is loaded
-    if (!makeWASocket) {
-        await loadBaileys();
-    }
+        if (!makeWASocket) {
+            await loadBaileys();
+        }
     
-    const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
+        const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
         
         const sock = makeWASocket({
             version,
@@ -258,7 +258,7 @@ async function startBot() {
                     console.log(chalk.green(`${'='.repeat(50)}`));
                 } catch (err) {
                     console.error(chalk.red('❌ Failed to request pairing code:'), err);
-                    if (err.message.includes('rate-overlimit')) {
+                    if (err.message && err.message.includes('rate-overlimit')) {
                         console.log(chalk.yellow('⏳ Rate limit hit, retrying in 30s...'));
                         setTimeout(requestPairing, 30000);
                     } else {
@@ -269,6 +269,9 @@ async function startBot() {
                 }
             };
             setTimeout(requestPairing, 5000);
+        } else {
+            console.log(chalk.green('✅ Already registered, connecting...'));
+            connectionStatus = 'connecting';
         }
         
         // Handle credentials update
@@ -373,11 +376,6 @@ async function startBot() {
                 }
             }
         });
-
-        } else {
-            console.log(chalk.green('✅ Already registered, connecting...'));
-            connectionStatus = 'connecting';
-        }
 
         // Decode JID helper
         sock.decodeJid = (jid) => {
