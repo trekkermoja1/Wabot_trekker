@@ -436,18 +436,19 @@ async def delete_instance(instance_id: str):
     return {"message": "Deleted"}
 
 # Serve static files
-if os.path.exists("../frontend/build"):
-    app.mount("/static", StaticFiles(directory="../frontend/build/static"), name="static")
+if os.path.exists("static"):
+    app.mount("/static", StaticFiles(directory="static/static"), name="static")
 
 @app.get("/{path_name:path}")
 async def root(path_name: str = None):
     # API endpoints handled above, others serve frontend
     if path_name and path_name.startswith("api"):
         raise HTTPException(status_code=404)
-    if os.path.exists("../frontend/build/index.html"):
-        return FileResponse("../frontend/build/index.html")
+    if os.path.exists("static/index.html"):
+        return FileResponse("static/index.html")
     return {"message": "API Running"}
 
 if __name__ == "__main__":
     import uvicorn
+    # Change port back to 5000 to match webview exposure
     uvicorn.run(app, host="0.0.0.0", port=5000)
