@@ -1,7 +1,7 @@
-/**
- * TREKKER MAX WABOT - Bot Instance Runner
- * Implements pairing similar to the reference implementation
- */
+// Polyfill crypto if needed
+if (!globalThis.crypto) {
+    globalThis.crypto = require('crypto').webcrypto;
+}
 require('dotenv').config();
 const { Boom } = require('@hapi/boom');
 const fs = require('fs');
@@ -119,7 +119,7 @@ const server = http.createServer(async (req, res) => {
     const parsedUrl = url.parse(req.url, true);
     const pathname = parsedUrl.pathname;
 
-    if (pathname === '/status') {
+    if (pathname === '/status' || pathname === '/status/') {
         res.writeHead(200);
         res.end(JSON.stringify({
             instanceId,
@@ -128,9 +128,11 @@ const server = http.createServer(async (req, res) => {
             pairingCodeGeneratedAt,
             phoneNumber,
             isAuthenticated,
-            user: botSocket?.user || null
+            user: botSocket?.user || null,
+            apiPort
         }));
-    } else if (pathname === '/pairing-code') {
+    } else if (pathname === '/pairing-code' || pathname === '/pairing-code/') {
+        console.log(chalk.blue(`📱 Pairing code request for ${instanceId}. Current code: ${pairingCode}, Status: ${connectionStatus}`));
         res.writeHead(200);
         res.end(JSON.stringify({
             pairingCode,
@@ -191,8 +193,8 @@ const server = http.createServer(async (req, res) => {
     }
 });
 
-server.listen(apiPort, () => {
-    console.log(chalk.green(`📡 Instance API running on port ${apiPort}`));
+server.listen(apiPort, '0.0.0.0', () => {
+    console.log(chalk.green(`📡 Instance API running on port ${apiPort} (0.0.0.0)`));
 });
 
 async function startBot() {

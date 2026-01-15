@@ -191,14 +191,16 @@ def get_next_port():
 
 async def get_instance_status(instance_id: str, port: int) -> dict:
     """Get status from running bot instance"""
+    # Use 127.0.0.1 explicitly to avoid IPv6 issues if any
+    url = f"http://127.0.0.1:{port}/status"
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(f"http://localhost:{port}/status")
+            response = await client.get(url)
             data = response.json()
             print(f"🤖 Bot {instance_id} status on port {port}: {data.get('status')} | Code: {data.get('pairingCode')}")
             return data
     except Exception as e:
-        print(f"❌ Error communicating with bot {instance_id} on port {port}: {e}")
+        print(f"❌ Error communicating with bot {instance_id} on port {port} at {url}: {e}")
         return {"status": "offline", "pairingCode": None}
 
 
@@ -225,11 +227,15 @@ async def lifespan(app: FastAPI):
                 try:
                     # Start the bot instance
                     bot_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'bot')
+                    log_path = os.path.join(bot_dir, f"bot_{instance_id}.log")
+                    log_file = open(log_path, "a", buffering=1)
+                    print(f"🚀 Starting bot {instance_id} on port {port}, logging to {log_path}")
                     process = subprocess.Popen(
                         ['node', 'instance.js', instance_id, instance['phone_number'], str(port)],
                         cwd=bot_dir,
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL
+                        stdout=log_file,
+                        stderr=log_file,
+                        start_new_session=True
                     )
                     bot_processes[instance_id] = process
                     instance_ports[instance_id] = port
@@ -396,11 +402,15 @@ async def approve_instance(instance_id: str, request: ApproveInstanceRequest):
         
         # Start the bot instance
         bot_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'bot')
+        log_path = os.path.join(bot_dir, f"bot_{instance_id}.log")
+        log_file = open(log_path, "a", buffering=1)
+        print(f"🚀 Starting approved bot {instance_id} on port {port}, logging to {log_path}")
         process = subprocess.Popen(
             ['node', 'instance.js', instance_id, instance['phone_number'], str(port)],
             cwd=bot_dir,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
+            stdout=log_file,
+            stderr=log_file,
+            start_new_session=True
         )
         
         bot_processes[instance_id] = process
@@ -445,7 +455,7 @@ async def list_instances(status: Optional[str] = None):
             
             # Get live status if running
             status_data = {"status": instance['status']}
-            if port and instance_id in bot_processes:
+            if port:
                 status_data = await get_instance_status(instance_id, port)
             
             result.append({
@@ -517,23 +527,26 @@ async def get_pairing_code(instance_id: str):
         if port:
             status_data = await get_instance_status(instance_id, port)
             
-            # If bot is not running (offline), try to start it if it's approved
-            if status_data.get("status") == "offline" and instance['status'] == 'approved' and instance_id not in bot_processes:
+            # If bot is not running (offline), try to start it
+            if status_data.get("status") == "offline" and instance_id not in bot_processes:
                 try:
+                    print(f"🔄 Bot {instance_id} is offline, attempting to start on port {port}...")
                     bot_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'bot')
+                    log_path = os.path.join(bot_dir, f"bot_{instance_id}.log")
+                    log_file = open(log_path, "a")
                     process = subprocess.Popen(
                         ['node', 'instance.js', instance_id, instance['phone_number'], str(port)],
                         cwd=bot_dir,
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL
+                        stdout=log_file,
+                        stderr=log_file
                     )
                     bot_processes[instance_id] = process
                     instance_ports[instance_id] = port
                     # Wait a bit for it to start
-                    await asyncio.sleep(2)
+                    await asyncio.sleep(3)
                     status_data = await get_instance_status(instance_id, port)
-                except:
-                    pass
+                except Exception as e:
+                    print(f"❌ Failed to auto-start bot {instance_id}: {e}")
 
             return {
                 "instance_id": instance_id,
@@ -572,26 +585,30 @@ async def regenerate_code(instance_id: str):
         # If it's not in bot_processes, try to start it first
         if instance_id not in bot_processes:
             try:
+                print(f"🔄 Starting bot {instance_id} for regeneration on port {port}...")
                 bot_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'bot')
+                log_path = os.path.join(bot_dir, f"bot_{instance_id}.log")
+                log_file = open(log_path, "a")
                 process = subprocess.Popen(
                     ['node', 'instance.js', instance_id, instance['phone_number'], str(port)],
                     cwd=bot_dir,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL
+                    stdout=log_file,
+                    stderr=log_file
                 )
                 bot_processes[instance_id] = process
                 instance_ports[instance_id] = port
                 # Wait for startup
-                await asyncio.sleep(2)
+                await asyncio.sleep(3)
             except Exception as e:
-                print(f"Failed to start bot for regeneration: {e}")
+                print(f"❌ Failed to start bot for regeneration: {e}")
         
         try:
+            url = f"http://127.0.0.1:{port}/regenerate-code"
             async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(f"http://localhost:{port}/regenerate-code")
+                response = await client.post(url)
                 return response.json()
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to communicate with bot: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Failed to communicate with bot at {url}: {str(e)}")
 
 
 @app.post("/api/instances/{instance_id}/stop")
@@ -716,11 +733,15 @@ async def renew_instance(instance_id: str, request: ApproveInstanceRequest):
         
         # Restart the bot
         bot_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'bot')
+        log_path = os.path.join(bot_dir, f"bot_{instance_id}.log")
+        log_file = open(log_path, "a", buffering=1)
+        print(f"🚀 Starting renewed bot {instance_id} on port {port}, logging to {log_path}")
         process = subprocess.Popen(
             ['node', 'instance.js', instance_id, instance['phone_number'], str(port)],
             cwd=bot_dir,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
+            stdout=log_file,
+            stderr=log_file,
+            start_new_session=True
         )
         
         bot_processes[instance_id] = process

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL || '';
+const API_URL = '';
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
