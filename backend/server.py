@@ -239,6 +239,9 @@ async def lifespan(app: FastAPI):
                         WHERE id = $2
                     """, process.pid, instance_id)
                     print(f"✅ Restarted bot instance {instance_id} on port {port}")
+                    
+                    # Wait for pairing code to be available if needed
+                    await asyncio.sleep(2) 
                 except Exception as e:
                     print(f"❌ Failed to restart bot instance {instance_id}: {e}")
     yield
@@ -302,10 +305,28 @@ async def list_instances(status: Optional[str] = None):
             instances = await conn.fetch("SELECT * FROM bot_instances WHERE server_name = $1 AND status = $2 ORDER BY created_at DESC", SERVERNAME, status)
         else:
             instances = await conn.fetch("SELECT * FROM bot_instances WHERE server_name = $1 ORDER BY created_at DESC", SERVERNAME)
+        
         result = []
         for instance in instances:
-            status_data = await get_instance_status(instance['id'], instance['port']) if instance['port'] else {"status": instance['status']}
-            result.append({**dict(instance), "pairing_code": status_data.get("pairingCode"), "connected_user": status_data.get("user"), "created_at": instance['created_at'].isoformat(), "approved_at": instance['approved_at'].isoformat() if instance['approved_at'] else None, "expires_at": instance['expires_at'].isoformat() if instance['expires_at'] else None})
+            status_data = {"status": instance['status'], "pairingCode": None, "user": None}
+            if instance['status'] == 'approved' and instance['port']:
+                status_data = await get_instance_status(instance['id'], instance['port'])
+            
+            result.append({
+                "id": instance['id'],
+                "name": instance['name'],
+                "phone_number": instance['phone_number'],
+                "status": status_data.get("status", instance['status']),
+                "server_name": instance['server_name'],
+                "owner_id": instance['owner_id'],
+                "port": instance['port'],
+                "pairing_code": status_data.get("pairingCode"),
+                "connected_user": status_data.get("user"),
+                "created_at": instance['created_at'].isoformat(),
+                "approved_at": instance['approved_at'].isoformat() if instance['approved_at'] else None,
+                "expires_at": instance['expires_at'].isoformat() if instance['expires_at'] else None,
+                "duration_months": instance['duration_months']
+            })
     return {"instances": result}
 
 @app.get("/api/instances/{instance_id}/pairing-code")

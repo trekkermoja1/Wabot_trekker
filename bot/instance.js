@@ -124,7 +124,7 @@ const server = http.createServer(async (req, res) => {
         res.end(JSON.stringify({
             instanceId,
             status: connectionStatus,
-            pairingCode,
+            pairingCode: pairingCode || null,
             pairingCodeGeneratedAt,
             phoneNumber,
             isAuthenticated,
@@ -135,7 +135,7 @@ const server = http.createServer(async (req, res) => {
         console.log(chalk.blue(`📱 Pairing code request for ${instanceId}. Current code: ${pairingCode}, Status: ${connectionStatus}`));
         res.writeHead(200);
         res.end(JSON.stringify({
-            pairingCode,
+            pairingCode: pairingCode || null,
             pairingCodeGeneratedAt,
             status: connectionStatus,
             isAuthenticated
@@ -242,17 +242,33 @@ async function startBot() {
 
         // Request pairing code if not connected
         if (!sock.authState.creds.registered) {
-            setTimeout(async () => {
+            console.log(chalk.blue('🔑 Requesting pairing code...'));
+            connectionStatus = 'pairing';
+            
+            const requestPairing = async () => {
                 try {
-                    const code = await sock.requestPairingCode(phoneNumber);
+                    // Use cleanPhone which is validated and cleaned
+                    let code = await sock.requestPairingCode(cleanPhone);
+                    code = code?.match(/.{1,4}/g)?.join('-') || code;
                     pairingCode = code;
-                    console.log(`\n==================================================`);
-                    console.log(`🔑 PAIRING CODE: ${code}`);
-                    console.log(`==================================================\n`);
+                    pairingCodeGeneratedAt = Date.now();
+                    
+                    console.log(chalk.green(`\n${'='.repeat(50)}`));
+                    console.log(chalk.green(`🔑 PAIRING CODE: ${chalk.bold.white(code)}`));
+                    console.log(chalk.green(`${'='.repeat(50)}`));
                 } catch (err) {
                     console.error(chalk.red('❌ Failed to request pairing code:'), err);
+                    if (err.message.includes('rate-overlimit')) {
+                        console.log(chalk.yellow('⏳ Rate limit hit, retrying in 30s...'));
+                        setTimeout(requestPairing, 30000);
+                    } else {
+                        // Don't set error status immediately, retry a few times
+                        console.log(chalk.yellow('🔄 Retrying pairing code request in 10s...'));
+                        setTimeout(requestPairing, 10000);
+                    }
                 }
-            }, 5000);
+            };
+            setTimeout(requestPairing, 5000);
         }
         
         // Handle credentials update
@@ -263,7 +279,9 @@ async function startBot() {
             const { connection, lastDisconnect, isNewLogin, isOnline } = update;
 
             if (connection === 'connecting') {
-                connectionStatus = 'connecting';
+                if (connectionStatus !== 'pairing') {
+                    connectionStatus = 'connecting';
+                }
                 console.log(chalk.yellow('🔄 Connecting to WhatsApp...'));
             }
 
@@ -356,35 +374,6 @@ async function startBot() {
             }
         });
 
-        // Request pairing code if not registered
-        if (!sock.authState.creds.registered) {
-            connectionStatus = 'requesting_code';
-            console.log(chalk.blue('🔑 Requesting pairing code...'));
-            
-            await delay(3000); // Wait 3 seconds before requesting pairing code
-
-            try {
-                let code = await sock.requestPairingCode(cleanPhone);
-                code = code?.match(/.{1,4}/g)?.join('-') || code;
-                pairingCode = code;
-                pairingCodeGeneratedAt = Date.now();
-                connectionStatus = 'pairing';
-                
-                console.log(chalk.green(`\n${'='.repeat(50)}`));
-                console.log(chalk.green(`🔑 PAIRING CODE: ${chalk.bold.white(code)}`));
-                console.log(chalk.green(`${'='.repeat(50)}`));
-                console.log(chalk.yellow(`\n📱 Enter this code in WhatsApp:`));
-                console.log(chalk.yellow(`   1. Open WhatsApp on your phone`));
-                console.log(chalk.yellow(`   2. Go to Settings → Linked Devices`));
-                console.log(chalk.yellow(`   3. Tap "Link a Device"`));
-                console.log(chalk.yellow(`   4. Select "Link with phone number instead"`));
-                console.log(chalk.yellow(`   5. Enter the code shown above\n`));
-                
-            } catch (error) {
-                console.error(chalk.red('❌ Error requesting pairing code:'), error.message);
-                connectionStatus = 'error';
-                pairingCode = null;
-            }
         } else {
             console.log(chalk.green('✅ Already registered, connecting...'));
             connectionStatus = 'connecting';
