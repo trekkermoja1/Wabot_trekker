@@ -2169,6 +2169,14 @@ libphonenumber-js@^1.11.18:
   resolved "https://registry.npmjs.org/libphonenumber-js/-/libphonenumber-js-1.12.33.tgz"
   integrity sha512-r9kw4OA6oDO4dPXkOrXTkArQAafIKAU71hChInV4FxZ69dxCfbwQGDPzqR5/vea94wU705/3AZroEbSoeVWrQw==
 
+libsignal-node@^2.0.1:
+  version "2.0.1"
+  resolved "https://registry.npmjs.org/libsignal-node/-/libsignal-node-2.0.1.tgz"
+  integrity sha512-wmEEUNX6ccTqZk4JtjhLGVtW7A4ARIjEJebgulVk4ETkLmCPkYJvJ/MAURv3pIrdX7tYY40C5zUq+Efl3ec9qA==
+  dependencies:
+    curve25519-js "^0.0.4"
+    protobufjs "6.8.8"
+
 libsignal@^2.0.1:
   version "2.0.1"
   resolved "https://registry.npmjs.org/libsignal/-/libsignal-2.0.1.tgz"

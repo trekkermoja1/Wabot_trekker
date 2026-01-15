@@ -340,14 +340,15 @@ async def start_instance_internal(instance_id: str, phone_number: str, port: int
     """Helper to start a bot instance process"""
     bot_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'bot')
     try:
-        # Check if process is already running
+        # Check if process is already running and alive
         if instance_id in bot_processes:
-            try:
-                if bot_processes[instance_id].poll() is None:
-                    return True
-            except:
-                pass
+            proc = bot_processes[instance_id]
+            if proc.poll() is None:
+                return True
+            else:
+                del bot_processes[instance_id]
         
+        # In Replit environment, we want logs in the console
         process = subprocess.Popen(
             ['node', 'instance.js', instance_id, phone_number, str(port)],
             cwd=bot_dir,
@@ -365,7 +366,13 @@ async def start_instance_internal(instance_id: str, phone_number: str, port: int
             """, process.pid, instance_id)
         
         print(f"✅ Started bot instance {instance_id} on port {port}")
-        await asyncio.sleep(2) # Give it a moment to start the API
+        
+        # Verify it didn't crash immediately
+        await asyncio.sleep(3)
+        if process.poll() is not None:
+            print(f"❌ Bot instance {instance_id} crashed immediately after start")
+            return False
+            
         return True
     except Exception as e:
         print(f"❌ Failed to start bot instance {instance_id}: {e}")
