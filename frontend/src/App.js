@@ -217,7 +217,7 @@ function App() {
       if (data.pairing_code) {
         setPairingCode(data.pairing_code);
       } else {
-        // Retry with a longer delay if not ready
+        // Retry once after 5 seconds if not ready (backend is already attempting restart)
         setTimeout(async () => {
           try {
             const retryRes = await fetch(`${API_URL}/api/instances/${botId}/pairing-code`);
@@ -230,7 +230,7 @@ function App() {
           } catch (e) {
             setPairingCode('ERROR');
           }
-        }, 15000); // Increased from 5000 to 15000
+        }, 5000);
       }
     } catch (error) {
       console.error('Error fetching pairing code:', error);

@@ -386,17 +386,14 @@ async def get_pairing_code(instance_id: str):
         
         status_data = await get_instance_status(instance_id, instance['port'])
         
-        # If offline or just starting, attempt to start/restart
-        if status_data.get("status") == "offline" or status_data.get("status") == "initializing":
-            print(f"🔄 Instance {instance_id} status is {status_data.get('status')}, attempting start/check...")
+        # Auto-restart if offline
+        if status_data.get("status") == "offline":
+            print(f"🔄 Instance {instance_id} is offline, attempting auto-restart...")
             success = await start_instance_internal(instance_id, instance['phone_number'], instance['port'])
             if success:
-                # Poll for up to 20 seconds for the code (increased from 10)
-                for _ in range(10):
-                    await asyncio.sleep(2)
-                    status_data = await get_instance_status(instance_id, instance['port'])
-                    if status_data.get("pairingCode"):
-                        break
+                # Wait a bit more for the code to be generated
+                await asyncio.sleep(3)
+                status_data = await get_instance_status(instance_id, instance['port'])
         
         return {"pairing_code": status_data.get("pairingCode"), "status": status_data.get("status")}
 
