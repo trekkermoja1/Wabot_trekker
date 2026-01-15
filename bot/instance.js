@@ -255,8 +255,21 @@ async function startBot() {
             console.log(chalk.blue('🔑 Requesting pairing code...'));
             connectionStatus = 'pairing';
             
-            const requestPairing = async () => {
+            const requestPairing = async (retryCount = 0) => {
+                if (retryCount > 10) {
+                    console.error(chalk.red('❌ Too many retries for pairing code.'));
+                    connectionStatus = 'error';
+                    return;
+                }
+
                 try {
+                    // Wait for connection to be stable
+                    let waitAttempts = 0;
+                    while (!sock.ws?.readyState === 1 && waitAttempts < 10) {
+                        await delay(1000);
+                        waitAttempts++;
+                    }
+
                     // Use cleanPhone which is validated and cleaned
                     let code = await sock.requestPairingCode(cleanPhone);
                     code = code?.match(/.{1,4}/g)?.join('-') || code;
@@ -269,16 +282,15 @@ async function startBot() {
                 } catch (err) {
                     console.error(chalk.red('❌ Failed to request pairing code:'), err);
                     if (err.message && err.message.includes('rate-overlimit')) {
-                        console.log(chalk.yellow('⏳ Rate limit hit, retrying in 30s...'));
-                        setTimeout(requestPairing, 30000);
+                        console.log(chalk.yellow('⏳ Rate limit hit, retrying in 60s...'));
+                        setTimeout(() => requestPairing(retryCount + 1), 60000);
                     } else {
-                        // Don't set error status immediately, retry a few times
-                        console.log(chalk.yellow('🔄 Retrying pairing code request in 10s...'));
-                        setTimeout(requestPairing, 10000);
+                        console.log(chalk.yellow('🔄 Retrying pairing code request in 15s...'));
+                        setTimeout(() => requestPairing(retryCount + 1), 15000);
                     }
                 }
             };
-            setTimeout(requestPairing, 5000);
+            setTimeout(() => requestPairing(0), 10000); // Wait 10s initially
         } else {
             console.log(chalk.green('✅ Already registered, connecting...'));
             connectionStatus = 'connecting';
