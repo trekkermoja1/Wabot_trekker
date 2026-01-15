@@ -694,11 +694,30 @@ function App() {
           <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
             <h2 className="text-2xl font-bold text-gray-800 mb-4">WhatsApp Pairing Code</h2>
             
-            <div className="bg-emerald-50 border-2 border-emerald-200 rounded-lg p-6 mb-6 text-center">
-              <p className="text-sm text-gray-600 mb-2">Enter this code in WhatsApp:</p>
-              <p className="text-4xl font-bold text-emerald-600 tracking-wider font-mono">
-                {pairingCode}
-              </p>
+            <div className="bg-emerald-50 border-2 border-emerald-200 rounded-lg p-6 mb-6 text-center min-h-[140px] flex flex-col justify-center items-center">
+              {fetchingPairingCode ? (
+                <div className="flex flex-col items-center">
+                  <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-emerald-600 mb-3"></div>
+                  <p className="text-sm text-gray-600">Generating code, please wait...</p>
+                </div>
+              ) : pairingCode === 'ERROR' ? (
+                <div className="text-red-600">
+                  <p className="font-semibold">Failed to get code</p>
+                  <p className="text-sm">The instance might be starting up. Please try again in a moment.</p>
+                </div>
+              ) : pairingCode ? (
+                <>
+                  <p className="text-sm text-gray-600 mb-2">Enter this code in WhatsApp:</p>
+                  <p className="text-4xl font-bold text-emerald-600 tracking-wider font-mono">
+                    {pairingCode}
+                  </p>
+                </>
+              ) : (
+                <div className="flex flex-col items-center">
+                  <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-emerald-600 mb-3"></div>
+                  <p className="text-sm text-gray-600">Initializing instance...</p>
+                </div>
+              )}
             </div>
             
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
