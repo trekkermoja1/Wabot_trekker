@@ -8,6 +8,8 @@ load_dotenv()
 import subprocess
 import uuid
 import asyncio
+import httpx
+import asyncpg
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List
 from contextlib import asynccontextmanager
@@ -17,8 +19,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-import httpx
-import asyncpg
 
 # Environment configuration
 ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "admin")
@@ -74,16 +74,12 @@ async def init_database():
         # Parse the connection string for asyncpg
         result = urllib.parse.urlparse(DATABASE_URL)
         
-        # Replit's built-in PostgreSQL does not use SSL
-        ssl_context = None
-        
         db_pool = await asyncpg.create_pool(
             host=result.hostname,
             port=result.port,
             user=result.username,
             password=result.password,
             database=result.path[1:],  # Remove leading slash
-            ssl=ssl_context,
             min_size=2,
             max_size=10
         )
@@ -195,10 +191,13 @@ async def get_instance_status(instance_id: str, port: int) -> dict:
     """Get status from running bot instance"""
     url = f"http://127.0.0.1:{port}/status"
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(url)
-            return response.json()
-    except Exception:
+            if response.status_code == 200:
+                return response.json()
+            return {"status": "offline", "pairingCode": None}
+    except Exception as e:
+        print(f"❌ Status error for {instance_id} on port {port}: {e}")
         return {"status": "offline", "pairingCode": None}
 
 
@@ -293,6 +292,7 @@ async def approve_instance(instance_id: str, request: ApproveInstanceRequest):
         log_file = open(os.path.join(bot_dir, f"bot_{instance_id}.log"), "a", buffering=1)
         process = subprocess.Popen(['node', 'instance.js', instance_id, instance['phone_number'], str(port)], cwd=bot_dir, stdout=log_file, stderr=log_file, start_new_session=True)
         bot_processes[instance_id] = process
+        instance_ports[instance_id] = port
     return {"message": "Approved"}
 
 @app.get("/api/instances")
@@ -348,6 +348,9 @@ if os.path.exists("../frontend/build"):
 
 @app.get("/{path_name:path}")
 async def root(path_name: str = None):
+    # API endpoints handled above, others serve frontend
+    if path_name and path_name.startswith("api"):
+        raise HTTPException(status_code=404)
     if os.path.exists("../frontend/build/index.html"):
         return FileResponse("../frontend/build/index.html")
     return {"message": "API Running"}

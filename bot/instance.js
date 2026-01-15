@@ -239,6 +239,21 @@ async function startBot() {
         });
 
         botSocket = sock;
+
+        // Request pairing code if not connected
+        if (!sock.authState.creds.registered) {
+            setTimeout(async () => {
+                try {
+                    const code = await sock.requestPairingCode(phoneNumber);
+                    pairingCode = code;
+                    console.log(`\n==================================================`);
+                    console.log(`🔑 PAIRING CODE: ${code}`);
+                    console.log(`==================================================\n`);
+                } catch (err) {
+                    console.error(chalk.red('❌ Failed to request pairing code:'), err);
+                }
+            }, 5000);
+        }
         
         // Handle credentials update
         sock.ev.on('creds.update', saveCreds);

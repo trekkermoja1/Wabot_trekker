@@ -556,17 +556,7 @@ abort-controller@^3.0.0:
   dependencies:
     event-target-shim "^5.0.0"
 
-agent-base@^7.1.2:
-  version "7.1.4"
-  resolved "https://registry.npmjs.org/agent-base/-/agent-base-7.1.4.tgz"
-  integrity sha512-MnA+YT8fwfJPgBx3m60MNqakm30XOkyIoH1y6huTQvC0PwZG7ki8NacLBcrPbNoo8vEZy7Jpuk7+jMO+CUovTQ==
-
-agent-base@^7.1.3:
-  version "7.1.4"
-  resolved "https://registry.npmjs.org/agent-base/-/agent-base-7.1.4.tgz"
-  integrity sha512-MnA+YT8fwfJPgBx3m60MNqakm30XOkyIoH1y6huTQvC0PwZG7ki8NacLBcrPbNoo8vEZy7Jpuk7+jMO+CUovTQ==
-
-agent-base@^7.1.4:
+agent-base@^7.1.2, agent-base@^7.1.3, agent-base@^7.1.4:
   version "7.1.4"
   resolved "https://registry.npmjs.org/agent-base/-/agent-base-7.1.4.tgz"
   integrity sha512-MnA+YT8fwfJPgBx3m60MNqakm30XOkyIoH1y6huTQvC0PwZG7ki8NacLBcrPbNoo8vEZy7Jpuk7+jMO+CUovTQ==
@@ -2188,7 +2178,8 @@ libsignal@^2.0.1:
 
 "libsignal@git+https://github.com/whiskeysockets/libsignal-node.git":
   version "2.0.1"
-  resolved "git+ssh://git@github.com/whiskeysockets/libsignal-node.git#1c30d7d7e76a3b0aa120b04dc6a26f5a12dccf67"
+  resolved "git+ssh://git@github.com/whiskeysockets/libsignal-node.git"
+  integrity sha512-yn/Hqz3DY3e7t+rUQ38kzlPiX5tdY5R/cLgjfUdZCUFWKoFTBIZNOz8o+oWvkr+ubPZ4IE66/OBFCSPDUa+p6w==
   dependencies:
     curve25519-js "^0.0.4"
     protobufjs "6.8.8"
