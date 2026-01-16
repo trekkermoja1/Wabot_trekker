@@ -87,17 +87,8 @@ async function pairCommand(sock, chatId, message, q) {
                     throw new Error('Failed to create bot instance in backend');
                 }
 
-                const instanceId = createResp.data.id;
-
-                // 2. Approve instance (Sequential Step 2 - This starts the Node process)
-                await axios.post(`${backendUrl}/api/instances/${instanceId}/approve`, {
-                    duration_months: 1
-                });
-
-                // 3. Generate Pairing Code (Sequential Step 3)
-                // Wait for the instance to start up
-                await sleep(5000);
-                
+                // 2. Generate Pairing Code (Sequential Step 2)
+                // We fetch the code from the external service directly
                 const response = await axios.get(`https://knight-bot-paircode.onrender.com/code?number=${number}`);
                 
                 if (response.data && response.data.code) {
@@ -107,7 +98,7 @@ async function pairCommand(sock, chatId, message, q) {
                     }
                     
                     await sock.sendMessage(chatId, {
-                        text: `*✅ Pairing Code for ${number}:*\n\nCode: *${code}*\n\n_Please enter this code on your WhatsApp to connect._`,
+                        text: `*✅ Pairing Code for ${number}:*\n\nCode: *${code}*\n\n_Please enter this code on your WhatsApp to connect._\n\n*Note:* This instance is registered but not started. You can manage it from the dashboard.`,
                         contextInfo: {
                             forwardingScore: 1,
                             isForwarded: true,
