@@ -27,7 +27,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd backend && python server.py"
+args = "npm start"
 waitForPort = 5000
 
 [[ports]]
