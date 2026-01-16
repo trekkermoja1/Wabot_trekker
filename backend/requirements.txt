@@ -5,3 +5,17 @@ httpx
 pydantic
 motor
 asyncpg
+pymongo
+dnspython
+anyio
+certifi
+h11
+httpcore
+idna
+starlette
+typing-extensions
+annotated-doc
+click
+annotated-types
+pydantic-core
+typing-inspection
