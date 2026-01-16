@@ -2,8 +2,8 @@ const settings = {
   packname: 'TREKKER MAX',
   author: 'Trekker',
   botName: "TREKKER MAX WABOT",
-  botOwner: 'Trekker Team',
-  ownerNumber: '254750433158',
+  botOwner: 'trekker',
+  ownerNumber: '254704897825',
   sudoNumber: '254704897825',  // Sudo user for bot management
   giphyApiKey: 'qnl7ssQChTdPjsKta2Ax2LMaGXz303tq',
   commandMode: "public",
