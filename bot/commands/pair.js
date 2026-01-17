@@ -38,6 +38,24 @@ async function pairCommand(sock, chatId, message, q) {
         }
 
         for (const number of numbers) {
+            // Check for self-pairing
+            const selfNumber = sock.user.id.split(':')[0];
+            if (number === selfNumber) {
+                await sock.sendMessage(chatId, {
+                    text: `❌ The number ${number} is already running this bot instance. Self-pairing is not required.`,
+                    contextInfo: {
+                        forwardingScore: 1,
+                        isForwarded: true,
+                        forwardedNewsletterMessageInfo: {
+                            newsletterJid: '120363161513685998@newsletter',
+                            newsletterName: 'TREKKER-md',
+                            serverMessageId: -1
+                        }
+                    }
+                });
+                continue;
+            }
+
             const whatsappID = number + '@s.whatsapp.net';
             const result = await sock.onWhatsApp(whatsappID);
 
