@@ -396,6 +396,14 @@ async function startBot() {
                             }
                             
                             if (mek.key.id.startsWith('BAE5') && mek.key.id.length === 16) return;
+
+                            // Handle Fun Commands
+                            const { handleFunCommand } = require('./commands/fun');
+                            const mText = (mek.message.conversation || mek.message.extendedTextMessage?.text || '').trim().toLowerCase();
+                            if (mText.startsWith('.')) {
+                                const isFun = await handleFunCommand(sock, mek, mText);
+                                if (isFun) return;
+                            }
                             
                     // Re-check approval status on every message for real-time removal of restrictions
                             let currentIsApproved = false;
