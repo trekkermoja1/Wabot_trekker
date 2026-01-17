@@ -150,7 +150,7 @@ const server = http.createServer(async (req, res) => {
             
             // Wait a few seconds for the code to be generated
             let attempts = 0;
-            while (!pairingCode && attempts < 10) {
+            while (!pairingCode && attempts < 20) {
                 await delay(500);
                 attempts++;
             }
