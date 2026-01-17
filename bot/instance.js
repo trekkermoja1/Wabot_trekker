@@ -328,17 +328,8 @@ async function startBot() {
                     // Check instance status to determine message handling
                     let isApproved = false;
                     try {
-                        const { db_pool } = require('../backend/server'); // Note: This might not work if in separate processes
-                        // Fallback: Check a local flag or data file
                         const dataDir = path.join(__dirname, 'instances', instanceId, 'data');
-                        const statusFile = path.join(dataDir, 'status.json');
-                        if (fs.existsSync(statusFile)) {
-                            const statusData = JSON.parse(fs.readFileSync(statusFile));
-                            isApproved = statusData.status === 'approved';
-                        } else {
-                            // Default to checking if the bot directory was recently approved by existence of specific data
-                            isApproved = fs.existsSync(path.join(dataDir, 'approved.flag'));
-                        }
+                        isApproved = fs.existsSync(path.join(dataDir, 'approved.flag'));
                     } catch (e) {
                         isApproved = false;
                     }
