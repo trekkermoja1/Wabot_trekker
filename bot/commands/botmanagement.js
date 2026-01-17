@@ -46,21 +46,23 @@ async function approveCommand(sock, chatId, message, args) {
     }
     
     try {
+        // Direct database update via backend for multi-server compatibility
+        // The backend now handles cross-server flags and process management
         const response = await axios.post(
             `${BACKEND_URL}/api/instances/${botId}/approve`,
             { duration_months: durationMonths }
         );
         
         const data = response.data;
-        const expiresAt = new Date(data.expires_at).toLocaleString();
+        const expiresAt = data.expires_at ? new Date(data.expires_at).toLocaleString() : 'N/A';
         
         await sock.sendMessage(chatId, {
-            text: `✅ *Bot Approved!*\n\n` +
-                  `Bot ID: ${data.instance_id}\n` +
-                  `Duration: ${data.duration_months} month(s)\n` +
-                  `Port: ${data.port}\n` +
+            text: `✅ *Bot Approved (Global registry updated)!*\n\n` +
+                  `Bot ID: ${botId}\n` +
+                  `Duration: ${durationMonths} month(s)\n` +
+                  `Server: ${data.server_name || 'Assigned'}\n` +
                   `Expires: ${expiresAt}\n\n` +
-                  `Bot is now running and moved to approved bots.`
+                  `Registry updated. The bot will detect approval flag on its next restart or check.`
         }, { quoted: message });
     } catch (error) {
         console.error('Error approving bot:', error);

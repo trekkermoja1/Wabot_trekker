@@ -408,57 +408,69 @@ async def approve_instance(instance_id: str, request: ApproveInstanceRequest):
     async with db_pool.acquire() as conn:
         instance = await conn.fetchrow("SELECT * FROM bot_instances WHERE id = $1", instance_id)
         if not instance: raise HTTPException(status_code=404)
-        port = get_next_port()
+        
+        port = instance['port'] or get_next_port()
         expires_at = datetime.utcnow() + timedelta(days=30 * request.duration_months)
-        await conn.execute("UPDATE bot_instances SET status = 'approved', duration_months = $1, approved_at = NOW(), expires_at = $2, port = $3 WHERE id = $4", request.duration_months, expires_at, port, instance_id)
         
-        # Create approval flag for the bot process
-        bot_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'bot')
-        flag_dir = os.path.join(bot_dir, 'instances', instance_id, 'data')
-        os.makedirs(flag_dir, recursive=True)
-        with open(os.path.join(flag_dir, 'approved.flag'), 'w') as f:
-            f.write('approved')
-        
-        # Kill existing process if any before restarting with approved status
-        if instance_id in bot_processes:
-            try:
-                bot_processes[instance_id].terminate()
-                bot_processes[instance_id].wait(timeout=2)
-            except:
-                try: bot_processes[instance_id].kill()
-                except: pass
-            del bot_processes[instance_id]
-
-        # In Replit environment, we want logs in the console
-        process = subprocess.Popen(
-            ['node', 'instance.js', instance_id, instance['phone_number'], str(port)],
-            cwd=bot_dir,
-            stdout=None, # Inherit stdout
-            stderr=None, # Inherit stderr
-            start_new_session=True
-        )
-        bot_processes[instance_id] = process
-        instance_ports[instance_id] = port
-        
-        # Update PID in DB
+        # 1. Update Database Registry (Global)
         await conn.execute("""
-            UPDATE bot_instances SET pid = $1 WHERE id = $2
-        """, process.pid, instance_id)
+            UPDATE bot_instances 
+            SET status = 'approved', 
+                duration_months = $1, 
+                approved_at = NOW(), 
+                expires_at = $2, 
+                port = $3,
+                updated_at = NOW()
+            WHERE id = $4
+        """, request.duration_months, expires_at, port, instance_id)
         
-    return {"message": "Approved and restarted"}
+        # 2. Local File Flag & Process Management (Only if on this server)
+        if instance['server_name'] == SERVERNAME:
+            bot_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'bot')
+            flag_dir = os.path.join(bot_dir, 'instances', instance_id, 'data')
+            os.makedirs(flag_dir, recursive=True)
+            with open(os.path.join(flag_dir, 'approved.flag'), 'w') as f:
+                f.write('approved')
+            
+            if instance_id in bot_processes:
+                try:
+                    bot_processes[instance_id].terminate()
+                    bot_processes[instance_id].wait(timeout=2)
+                except:
+                    try: bot_processes[instance_id].kill()
+                    except: pass
+                del bot_processes[instance_id]
+
+            process = subprocess.Popen(
+                ['node', 'instance.js', instance_id, instance['phone_number'], str(port)],
+                cwd=bot_dir,
+                stdout=None,
+                stderr=None,
+                start_new_session=True
+            )
+            bot_processes[instance_id] = process
+            instance_ports[instance_id] = port
+            await conn.execute("UPDATE bot_instances SET pid = $1 WHERE id = $2", process.pid, instance_id)
+            
+        return {
+            "message": "Approved in registry", 
+            "expires_at": expires_at.isoformat(),
+            "server_name": instance['server_name']
+        }
 
 @app.get("/api/instances")
 async def list_instances(status: Optional[str] = None):
     async with db_pool.acquire() as conn:
         if status:
-            instances = await conn.fetch("SELECT * FROM bot_instances WHERE server_name = $1 AND status = $2 ORDER BY created_at DESC", SERVERNAME, status)
+            instances = await conn.fetch("SELECT * FROM bot_instances WHERE status = $1 ORDER BY created_at DESC", status)
         else:
-            instances = await conn.fetch("SELECT * FROM bot_instances WHERE server_name = $1 ORDER BY created_at DESC", SERVERNAME)
+            instances = await conn.fetch("SELECT * FROM bot_instances ORDER BY created_at DESC")
         
         result = []
         for instance in instances:
             status_data = {"status": instance['status'], "pairingCode": None, "user": None}
-            if instance['status'] == 'approved' and instance['port']:
+            # Only try to fetch live status if it's on THIS server
+            if instance['status'] == 'approved' and instance['port'] and instance['server_name'] == SERVERNAME:
                 status_data = await get_instance_status(instance['id'], instance['port'])
             
             result.append({
