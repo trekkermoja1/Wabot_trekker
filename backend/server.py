@@ -333,6 +333,16 @@ async def approve_instance(instance_id: str, request: ApproveInstanceRequest):
         with open(os.path.join(flag_dir, 'approved.flag'), 'w') as f:
             f.write('approved')
         
+        # Kill existing process if any before restarting with approved status
+        if instance_id in bot_processes:
+            try:
+                bot_processes[instance_id].terminate()
+                bot_processes[instance_id].wait(timeout=2)
+            except:
+                try: bot_processes[instance_id].kill()
+                except: pass
+            del bot_processes[instance_id]
+
         # In Replit environment, we want logs in the console
         process = subprocess.Popen(
             ['node', 'instance.js', instance_id, instance['phone_number'], str(port)],

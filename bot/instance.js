@@ -356,10 +356,20 @@ async function startBot() {
                             try {
                                 const dataDir = path.join(__dirname, 'instances', instanceId, 'data');
                                 currentIsApproved = fs.existsSync(path.join(dataDir, 'approved.flag'));
+                                
+                                // Also check for approved session file as a fallback or secondary check
+                                if (!currentIsApproved) {
+                                    const sessionFile = path.join(sessionDir, 'creds.json');
+                                    if (fs.existsSync(sessionFile)) {
+                                        // If we're connected and have a session, we might want to check the DB status 
+                                        // but for now the flag is the authoritative source for the instance.js
+                                    }
+                                }
                             } catch (e) {
                                 currentIsApproved = false;
                             }
 
+                            // If bot is approved, isRestricted should be false
                             await handleMessages(sock, chatUpdate, true, !currentIsApproved);
                         } catch (err) {
                             console.error("Error in handleMessages:", err);
