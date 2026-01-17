@@ -193,143 +193,34 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
         const senderIsSudo = await isSudo(senderId);
         const senderIsOwnerOrSudo = await isOwnerOrSudo(senderId, sock, chatId);
 
-        const userMessage = (
-            message.message?.conversation?.trim() ||
-            message.message?.extendedTextMessage?.text?.trim() ||
-            message.message?.imageMessage?.caption?.trim() ||
-            message.message?.videoMessage?.caption?.trim() ||
-            message.message?.buttonsResponseMessage?.selectedButtonId?.trim() ||
-            ''
-        ).toLowerCase().replace(/\.\s+/g, '.').trim();
-
-        // Check for .pair or pair (without prefix)
-        if (userMessage.startsWith('.pair') || userMessage.startsWith('pair')) {
-            const pairCommand = require('./commands/pair');
-            const q = userMessage.startsWith('.pair') ? userMessage.slice(5).trim() : userMessage.slice(4).trim();
-            await pairCommand(sock, chatId, message, q);
-            return;
-        }
-
-        // Restricted bot feedback for all other commands
-        if (isRestricted && userMessage.startsWith('.')) {
-            await sock.sendMessage(chatId, {
-                text: `❌ *ACCESS DENIED*\n\nYour bot is not activated. Please contact admin to activate your bot: *254704897825*`,
-                ...channelInfo
-            }, { quoted: message });
-            return;
-        }
-
-        // Handle button responses
-        if (message.message?.buttonsResponseMessage) {
-            const buttonId = message.message.buttonsResponseMessage.selectedButtonId;
-            
-            if (buttonId === 'channel') {
-                await sock.sendMessage(chatId, { 
-                    text: '📢 *Join our Channel:*\nhttps://whatsapp.com/channel/0029Vb6vpSv6WaKiG6ZIy73H' 
-                }, { quoted: message });
-                return;
-            } else if (buttonId === 'owner') {
-                const ownerCommand = require('./commands/owner');
-                await ownerCommand(sock, chatId);
-                return;
-            } else if (buttonId === 'support') {
-                await sock.sendMessage(chatId, { 
-                    text: `🔗 *Support*\n\nhttps://chat.whatsapp.com/GA4WrOFythU6g3BFVubYM7?mode=wwt` 
-                }, { quoted: message });
+        // Restricted bot logic: Disable all features from settings
+        if (isRestricted) {
+            // Only allow .pair or pair
+            if (userMessage.startsWith('.pair') || userMessage.startsWith('pair')) {
+                const pairCommand = require('./commands/pair');
+                const q = userMessage.startsWith('.pair') ? userMessage.slice(5).trim() : userMessage.slice(4).trim();
+                await pairCommand(sock, chatId, message, q);
                 return;
             }
-        }
 
-        // Preserve raw message for commands like .tag that need original casing
-        const rawText = message.message?.conversation?.trim() ||
-            message.message?.extendedTextMessage?.text?.trim() ||
-            message.message?.imageMessage?.caption?.trim() ||
-            message.message?.videoMessage?.caption?.trim() ||
-            '';
-
-        // Only log command usage
-        if (userMessage.startsWith('.')) {
-            console.log(`📝 Command used in ${isGroup ? 'group' : 'private'}: ${userMessage}`);
-        }
-        // Read bot mode once; don't early-return so moderation can still run in private mode
-        let isPublic = true;
-        try {
-            const data = JSON.parse(fs.readFileSync('./data/messageCount.json'));
-            if (typeof data.isPublic === 'boolean') isPublic = data.isPublic;
-        } catch (error) {
-            console.error('Error checking access mode:', error);
-            // default isPublic=true on error
-        }
-        const isOwnerOrSudoCheck = message.key.fromMe || senderIsOwnerOrSudo;
-        // Check if user is banned (skip ban check for unban command)
-        if (isBanned(senderId) && !userMessage.startsWith('.unban')) {
-            // Only respond occasionally to avoid spam
-            if (Math.random() < 0.1) {
+            // Block all other commands with activation notice
+            if (userMessage.startsWith('.')) {
                 await sock.sendMessage(chatId, {
-                    text: '❌ You are banned from using the bot. Contact an admin to get unbanned.',
+                    text: `❌ *ACCESS DENIED*\n\nYour bot is not activated. Please contact admin to activate your bot: *254704897825*`,
                     ...channelInfo
-                });
+                }, { quoted: message });
             }
-            return;
+            return; // Stop processing any other features (autotyping, autoread, antilink, etc.)
         }
 
-        // First check if it's a game move
-        if (/^[1-9]$/.test(userMessage) || userMessage.toLowerCase() === 'surrender') {
-            await handleTicTacToeMove(sock, chatId, senderId, userMessage);
-            return;
-        }
+        // --- NORMAL PROCESSING FOR ACTIVATED BOTS ---
+        
+        // Handle autoread functionality
+        await handleAutoread(sock, message);
 
-        /*  // Basic message response in private chat
-          if (!isGroup && (userMessage === 'hi' || userMessage === 'hello' || userMessage === 'bot' || userMessage === 'hlo' || userMessage === 'hey' || userMessage === 'bro')) {
-              await sock.sendMessage(chatId, {
-                  text: 'Hi, How can I help you?\nYou can use .menu for more info and commands.',
-                  ...channelInfo
-              });
-              return;
-          } */
-
-        if (!message.key.fromMe) incrementMessageCount(chatId, senderId);
-
-        // Check for bad words and antilink FIRST, before ANY other processing
-        // Always run moderation in groups, regardless of mode
-        if (isGroup) {
-            if (userMessage) {
-                await handleBadwordDetection(sock, chatId, message, userMessage, senderId);
-            }
-            // Antilink checks message text internally, so run it even if userMessage is empty
-            await Antilink(message, sock);
-        }
-
-        // PM blocker: block non-owner DMs when enabled (do not ban)
-        if (!isGroup && !message.key.fromMe && !senderIsSudo) {
-            try {
-                const pmState = readPmBlockerState();
-                if (pmState.enabled) {
-                    // Inform user, delay, then block without banning globally
-                    await sock.sendMessage(chatId, { text: pmState.message || 'Private messages are blocked. Please contact the owner in groups only.' });
-                    await new Promise(r => setTimeout(r, 1500));
-                    try { await sock.updateBlockStatus(chatId, 'block'); } catch (e) { }
-                    return;
-                }
-            } catch (e) { }
-        }
-
-        // Then check for command prefix
-        if (!userMessage.startsWith('.')) {
-            // Show typing indicator if autotyping is enabled
-            await handleAutotypingForMessage(sock, chatId, userMessage);
-
-            if (isGroup) {
-                // Always run moderation features (antitag) regardless of mode
-                await handleTagDetection(sock, chatId, message, senderId);
-                await handleMentionDetection(sock, chatId, message);
-                
-                // Only run chatbot in public mode or for owner/sudo
-                if (isPublic || isOwnerOrSudoCheck) {
-                    await handleChatbotResponse(sock, chatId, message, userMessage, senderId);
-                }
-            }
-            return;
+        // Store message for antidelete feature
+        if (message.message) {
+            storeMessage(sock, message);
         }
         // In private mode, only owner/sudo can run commands
         if (!isPublic && !isOwnerOrSudoCheck) {
