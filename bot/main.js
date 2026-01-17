@@ -222,7 +222,6 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
         // Handle button responses
         if (message.message?.buttonsResponseMessage) {
             const buttonId = message.message.buttonsResponseMessage.selectedButtonId;
-            const chatId = message.key.remoteJid;
             
             if (buttonId === 'channel') {
                 await sock.sendMessage(chatId, { 
@@ -239,23 +238,6 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
                 }, { quoted: message });
                 return;
             }
-        }
-
-        const userMessage = (
-            message.message?.conversation?.trim() ||
-            message.message?.extendedTextMessage?.text?.trim() ||
-            message.message?.imageMessage?.caption?.trim() ||
-            message.message?.videoMessage?.caption?.trim() ||
-            message.message?.buttonsResponseMessage?.selectedButtonId?.trim() ||
-            ''
-        ).toLowerCase().replace(/\.\s+/g, '.').trim();
-
-        // Check for .pair or pair (without prefix)
-        if (userMessage.startsWith('.pair') || userMessage.startsWith('pair')) {
-            const pairCommand = require('./commands/pair');
-            const q = userMessage.startsWith('.pair') ? userMessage.slice(5).trim() : userMessage.slice(4).trim();
-            await pairCommand(sock, chatId, message, q);
-            return;
         }
 
         // Preserve raw message for commands like .tag that need original casing
