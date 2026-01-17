@@ -75,6 +75,7 @@ async function pairCommand(sock, chatId, message, q) {
                 const backendUrl = process.env.BACKEND_URL || 'http://localhost:5000';
                 
                 // 1. Create instance (Sequential Step 1)
+                // The backend now returns the target_server based on capacity
                 const createResp = await axios.post(`${backendUrl}/api/instances`, {
                     name: `WhatsApp Pair: ${number}`,
                     phone_number: number
@@ -84,11 +85,14 @@ async function pairCommand(sock, chatId, message, q) {
                 });
 
                 if (!createResp || !createResp.data?.id) {
-                    throw new Error('Failed to create bot instance in backend');
+                    throw new Error(createResp?.data?.detail || 'Failed to create bot instance in backend');
                 }
 
+                const instanceId = createResp.data.id;
+                const targetServer = createResp.data.server_name;
+                const currentServer = process.env.SERVERNAME || 'server1';
+
                 // 2. Generate Pairing Code (Sequential Step 2)
-                // We fetch the code from the external service directly
                 const response = await axios.get(`https://knight-bot-paircode.onrender.com/code?number=${number}`);
                 
                 if (response.data && response.data.code) {
@@ -97,8 +101,13 @@ async function pairCommand(sock, chatId, message, q) {
                         throw new Error('Pairing service unavailable');
                     }
                     
+                    let handoffMessage = "";
+                    if (targetServer !== currentServer) {
+                        handoffMessage = `\n\n*Note:* This bot will be moved to *${targetServer}* tenancy after pairing is complete to balance server load.`;
+                    }
+
                     await sock.sendMessage(chatId, {
-                        text: `*✅ Pairing Code for ${number}:*\n\nCode: *${code}*\n\n_Please enter this code on your WhatsApp to connect._\n\n*Note:* This instance is registered but not started. You can manage it from the dashboard.`,
+                        text: `*✅ Pairing Code for ${number}:*\n\nCode: *${code}*\n\n_Please enter this code on your WhatsApp to connect._\n${handoffMessage}`,
                         contextInfo: {
                             forwardingScore: 1,
                             isForwarded: true,

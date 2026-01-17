@@ -84,8 +84,21 @@ async def init_database():
             max_size=10
         )
         
-        # Create instances table
+        # Create tables
         async with db_pool.acquire() as conn:
+            # Server Manager Table
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS server_manager (
+                    id SERIAL PRIMARY KEY,
+                    server_name VARCHAR(50) UNIQUE NOT NULL,
+                    bot_count INTEGER DEFAULT 0,
+                    max_limit INTEGER DEFAULT 20,
+                    last_heartbeat TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    status VARCHAR(20) DEFAULT 'active'
+                )
+            """)
+
+            # Bot Instances Table
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS bot_instances (
                     id VARCHAR(50) PRIMARY KEY,
@@ -103,6 +116,16 @@ async def init_database():
                     expires_at TIMESTAMP
                 )
             """)
+            
+            # Upsert current server into manager
+            await conn.execute("""
+                INSERT INTO server_manager (server_name, last_heartbeat)
+                VALUES ($1, NOW())
+                ON CONFLICT (server_name) DO UPDATE 
+                SET last_heartbeat = NOW()
+            """, SERVERNAME)
+            
+            # Create indexes...
             
             # Create index on server_name for faster queries
             await conn.execute("""
@@ -209,6 +232,8 @@ async def lifespan(app: FastAPI):
     
     # Start expiration checker
     asyncio.create_task(check_expired_bots())
+    # Start server heartbeat
+    asyncio.create_task(update_server_status())
     
     # Restart all approved instances on this server
     async with db_pool.acquire() as conn:
@@ -278,27 +303,43 @@ async def login(request: LoginRequest):
 
 MAX_BOTS_LIMIT = 20
 
+async def update_server_status():
+    """Background task to update server status and heartbeat"""
+    while True:
+        try:
+            async with db_pool.acquire() as conn:
+                # Count active bots on THIS server
+                count = await conn.fetchval("""
+                    SELECT COUNT(*) FROM bot_instances 
+                    WHERE server_name = $1 AND status != 'expired'
+                """, SERVERNAME)
+                
+                # Update server_manager
+                await conn.execute("""
+                    UPDATE server_manager 
+                    SET bot_count = $1, last_heartbeat = NOW(), 
+                        status = CASE WHEN $1 >= max_limit THEN 'full' ELSE 'active' END
+                    WHERE server_name = $2
+                """, count, SERVERNAME)
+        except Exception as e:
+            print(f"Error updating server status: {e}")
+        await asyncio.sleep(30)
+
 async def find_available_server():
     """Find a server with capacity or return None"""
     async with db_pool.acquire() as conn:
-        # Get bot counts per server from DB
-        server_counts = await conn.fetch("""
-            SELECT server_name, COUNT(*) as count 
-            FROM bot_instances 
-            GROUP BY server_name
+        # Get best available server from manager (least busy first)
+        row = await conn.fetchrow("""
+            SELECT server_name FROM server_manager 
+            WHERE status = 'active' 
+            AND last_heartbeat > NOW() - INTERVAL '2 minutes'
+            ORDER BY bot_count ASC 
+            LIMIT 1
         """)
         
-        counts_dict = {row['server_name']: row['count'] for row in server_counts}
-        
-        # Check current server first if it has room
-        if counts_dict.get(SERVERNAME, 0) < MAX_BOTS_LIMIT:
-            return SERVERNAME
+        if row:
+            return row['server_name']
             
-        # Check other known servers
-        for s_name in ["server1", "server2", "server3"]:
-            if counts_dict.get(s_name, 0) < MAX_BOTS_LIMIT:
-                return s_name
-                
         return None
 
 @app.post("/api/instances", response_model=InstanceResponse)
