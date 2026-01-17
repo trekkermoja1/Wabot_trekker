@@ -237,11 +237,10 @@ async function startBot() {
         const { version, isLatest } = await fetchLatestBaileysVersion();
         console.log(chalk.gray(`📦 Using Baileys version: ${version.join('.')}, isLatest: ${isLatest}`));
         
-        // Ensure Baileys is loaded
-        if (!makeWASocket) {
-            await loadBaileys();
-        }
-    
+        // Check approval status
+        const dataDir = path.join(__dirname, 'instances', instanceId, 'data');
+        const isApproved = fs.existsSync(path.join(dataDir, 'approved.flag'));
+
         const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
         
         const sock = makeWASocket({
