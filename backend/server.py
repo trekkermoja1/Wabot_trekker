@@ -40,6 +40,7 @@ class CreateInstanceRequest(BaseModel):
     name: str
     phone_number: str
     owner_id: Optional[str] = None
+    auto_start: Optional[bool] = True
 
 
 class ApproveInstanceRequest(BaseModel):
@@ -359,8 +360,8 @@ async def create_instance(request: CreateInstanceRequest):
     # Store instance ID and port in memory for initialization
     instance_ports[instance_id] = port
     
-    # Only start the process if the target server is THIS server
-    if target_server == SERVERNAME:
+    # Only start the process if the target server is THIS server and auto_start is True
+    if target_server == SERVERNAME and request.auto_start:
         bot_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'bot')
         process = subprocess.Popen(
             ['node', 'instance.js', instance_id, request.phone_number, str(port)],
@@ -371,12 +372,19 @@ async def create_instance(request: CreateInstanceRequest):
         )
         bot_processes[instance_id] = process
     
+    # Store in database if it should be persistent
+    async with db_pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO bot_instances (id, name, phone_number, status, server_name, owner_id, port) VALUES ($1, $2, $3, 'new', $4, $5, $6)", 
+            instance_id, request.name, request.phone_number, target_server, request.owner_id, port
+        )
+    
     # Return temporary instance data with the assigned target server
     return InstanceResponse(
         id=instance_id, 
         name=request.name, 
         phone_number=request.phone_number, 
-        status="initializing", 
+        status="new", 
         server_name=target_server, 
         created_at=datetime.utcnow().isoformat(),
         port=port

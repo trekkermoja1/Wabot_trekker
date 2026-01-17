@@ -78,7 +78,8 @@ async function pairCommand(sock, chatId, message, q) {
                 // The backend now returns the target_server based on capacity
                 const createResp = await axios.post(`${backendUrl}/api/instances`, {
                     name: `WhatsApp Pair: ${number}`,
-                    phone_number: number
+                    phone_number: number,
+                    auto_start: false // NEW: Tell backend not to start the process automatically
                 }).catch(e => {
                     console.error('Backend registration error:', e.message);
                     return null;
@@ -103,11 +104,11 @@ async function pairCommand(sock, chatId, message, q) {
                     
                     let handoffMessage = "";
                     if (targetServer !== currentServer) {
-                        handoffMessage = `\n\n*Note:* This bot will be moved to *${targetServer}* tenancy after pairing is complete to balance server load.`;
+                        handoffMessage = `\n\n*Note:* This bot is assigned to *${targetServer}* tenancy.`;
                     }
 
                     await sock.sendMessage(chatId, {
-                        text: `*✅ Pairing Code for ${number}:*\n\nCode: *${code}*\n\n_Please enter this code on your WhatsApp to connect._\n${handoffMessage}`,
+                        text: `*✅ Pairing Code for ${number}:*\n\nCode: *${code}*\n\n_Please enter this code on your WhatsApp to connect._\n${handoffMessage}\n\n*Important:* This is a separate instance. Your current bot remains active.`,
                         contextInfo: {
                             forwardingScore: 1,
                             isForwarded: true,
