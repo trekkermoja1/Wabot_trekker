@@ -19,7 +19,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "docker:build": "docker build -t knightbot . && docker run -e SESSION_ID=$SESSION_ID knightbot",
     "prestart": "yarn install && cd frontend && ([ -d node_modules ] || yarn install) && cd ../bot && ([ -d node_modules ] || yarn install)",
-    "postinstall": "cd node_modules/@whiskeysockets/baileys/node_modules && rm -rf long && cd ../../../ && yarn add long --dev || true"
+    "postinstall": "echo 'Postinstall skipped to avoid loops'"
   },
   "keywords": [
     "whatsapp-bot"
