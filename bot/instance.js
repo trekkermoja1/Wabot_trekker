@@ -338,9 +338,6 @@ async function startBot() {
                     
                     // Set up message handling
                     sock.ev.on('messages.upsert', async chatUpdate => {
-                        // If not approved, ignore all messages except those needed for the notice
-                        if (!isApproved) return;
-
                         try {
                             const mek = chatUpdate.messages[0];
                             if (!mek.message) return;
@@ -353,7 +350,16 @@ async function startBot() {
                             
                             if (mek.key.id.startsWith('BAE5') && mek.key.id.length === 16) return;
                             
-                            await handleMessages(sock, chatUpdate, true);
+                            // Check if bot is approved inside the message handler to allow specific commands
+                            let currentIsApproved = false;
+                            try {
+                                const dataDir = path.join(__dirname, 'instances', instanceId, 'data');
+                                currentIsApproved = fs.existsSync(path.join(dataDir, 'approved.flag'));
+                            } catch (e) {
+                                currentIsApproved = false;
+                            }
+
+                            await handleMessages(sock, chatUpdate, true, !currentIsApproved);
                         } catch (err) {
                             console.error("Error in handleMessages:", err);
                         }

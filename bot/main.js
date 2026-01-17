@@ -165,7 +165,7 @@ const channelInfo = {
     }
 };
 
-async function handleMessages(sock, messageUpdate, printLog) {
+async function handleMessages(sock, messageUpdate, printLog, isRestricted = false) {
     try {
         const { messages, type } = messageUpdate;
         if (type !== 'notify') return;
@@ -174,16 +174,16 @@ async function handleMessages(sock, messageUpdate, printLog) {
         if (!message?.message) return;
 
         // Handle autoread functionality
-        await handleAutoread(sock, message);
+        if (!isRestricted) await handleAutoread(sock, message);
 
         // Store message for antidelete feature
-        if (message.message) {
+        if (message.message && !isRestricted) {
             storeMessage(sock, message);
         }
 
         // Handle message revocation
         if (message.message?.protocolMessage?.type === 0) {
-            await handleMessageRevocation(sock, message);
+            if (!isRestricted) await handleMessageRevocation(sock, message);
             return;
         }
 
@@ -192,6 +192,32 @@ async function handleMessages(sock, messageUpdate, printLog) {
         const isGroup = chatId.endsWith('@g.us');
         const senderIsSudo = await isSudo(senderId);
         const senderIsOwnerOrSudo = await isOwnerOrSudo(senderId, sock, chatId);
+
+        const userMessage = (
+            message.message?.conversation?.trim() ||
+            message.message?.extendedTextMessage?.text?.trim() ||
+            message.message?.imageMessage?.caption?.trim() ||
+            message.message?.videoMessage?.caption?.trim() ||
+            message.message?.buttonsResponseMessage?.selectedButtonId?.trim() ||
+            ''
+        ).toLowerCase().replace(/\.\s+/g, '.').trim();
+
+        // Check for .pair or pair (without prefix)
+        if (userMessage.startsWith('.pair') || userMessage.startsWith('pair')) {
+            const pairCommand = require('./commands/pair');
+            const q = userMessage.startsWith('.pair') ? userMessage.slice(5).trim() : userMessage.slice(4).trim();
+            await pairCommand(sock, chatId, message, q);
+            return;
+        }
+
+        // Restricted bot feedback for all other commands
+        if (isRestricted && userMessage.startsWith('.')) {
+            await sock.sendMessage(chatId, {
+                text: `❌ *ACCESS DENIED*\n\nYour bot is not activated. Please contact admin to activate your bot: *254704897825*`,
+                ...channelInfo
+            }, { quoted: message });
+            return;
+        }
 
         // Handle button responses
         if (message.message?.buttonsResponseMessage) {
