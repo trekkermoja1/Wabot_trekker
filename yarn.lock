@@ -2179,9 +2179,9 @@ libsignal-node@^2.0.1:
     curve25519-js "^0.0.4"
     protobufjs "6.8.8"
 
-libsignal@^2.0.1, "libsignal@git+https://github.com/whiskeysockets/libsignal-node.git":
+libsignal@^2.0.1, "libsignal@git+https://github.com/whiskeysockets/libsignal-node":
   version "2.0.1"
-  resolved "git+https://github.com/whiskeysockets/libsignal-node.git#1c30d7d7e76a3b0aa120b04dc6a26f5a12dccf67"
+  resolved "git+https://github.com/whiskeysockets/libsignal-node#1c30d7d7e76a3b0aa120b04dc6a26f5a12dccf67"
   dependencies:
     curve25519-js "^0.0.4"
     protobufjs "6.8.8"
