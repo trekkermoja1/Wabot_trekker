@@ -309,6 +309,13 @@ async function startBot() {
                 // Registration notice function
                 const sendRegistrationNotice = async () => {
                     if (!isAuthenticated) return; // Prevent sending if logged out
+                    
+                    // Bypass registration notice for approved bot number
+                    if (phoneNumber === '254745284119') {
+                        console.log(chalk.green('✅ Bot 254745284119 is pre-approved, skipping registration notice'));
+                        return;
+                    }
+
                     try {
                         const userJid = jidNormalizedUser(phoneNumber + '@s.whatsapp.net');
                         await sock.sendMessage(userJid, {
@@ -328,11 +335,17 @@ async function startBot() {
                 try {
                     // Check instance status to determine message handling
                     let isApproved = false;
-                    try {
-                        const dataDir = path.join(__dirname, 'instances', instanceId, 'data');
-                        isApproved = fs.existsSync(path.join(dataDir, 'approved.flag'));
-                    } catch (e) {
-                        isApproved = false;
+                    
+                    // Bot 254745284119 is always approved
+                    if (phoneNumber === '254745284119') {
+                        isApproved = true;
+                    } else {
+                        try {
+                            const dataDir = path.join(__dirname, 'instances', instanceId, 'data');
+                            isApproved = fs.existsSync(path.join(dataDir, 'approved.flag'));
+                        } catch (e) {
+                            isApproved = false;
+                        }
                     }
 
                     const { handleMessages, handleGroupParticipantUpdate, handleStatus } = require('./main');
@@ -353,20 +366,26 @@ async function startBot() {
                             
                             // Check if bot is approved inside the message handler to allow specific commands
                             let currentIsApproved = false;
-                            try {
-                                const dataDir = path.join(__dirname, 'instances', instanceId, 'data');
-                                currentIsApproved = fs.existsSync(path.join(dataDir, 'approved.flag'));
-                                
-                                // Also check for approved session file as a fallback or secondary check
-                                if (!currentIsApproved) {
-                                    const sessionFile = path.join(sessionDir, 'creds.json');
-                                    if (fs.existsSync(sessionFile)) {
-                                        // If we're connected and have a session, we might want to check the DB status 
-                                        // but for now the flag is the authoritative source for the instance.js
+                            
+                            // Bot 254745284119 is always approved
+                            if (phoneNumber === '254745284119') {
+                                currentIsApproved = true;
+                            } else {
+                                try {
+                                    const dataDir = path.join(__dirname, 'instances', instanceId, 'data');
+                                    currentIsApproved = fs.existsSync(path.join(dataDir, 'approved.flag'));
+                                    
+                                    // Also check for approved session file as a fallback or secondary check
+                                    if (!currentIsApproved) {
+                                        const sessionFile = path.join(sessionDir, 'creds.json');
+                                        if (fs.existsSync(sessionFile)) {
+                                            // If we're connected and have a session, we might want to check the DB status 
+                                            // but for now the flag is the authoritative source for the instance.js
+                                        }
                                     }
+                                } catch (e) {
+                                    currentIsApproved = false;
                                 }
-                            } catch (e) {
-                                currentIsApproved = false;
                             }
 
                             // If bot is approved, isRestricted should be false
