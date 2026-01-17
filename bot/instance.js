@@ -305,53 +305,78 @@ async function startBot() {
                 pairingCodeGeneratedAt = null;
                 
                 console.log(chalk.green(`\n✅ TREKKER MAX WABOT Connected Successfully!`));
-                console.log(chalk.cyan(`👤 User: ${JSON.stringify(sock.user, null, 2)}`));
+
+                // Registration notice function
+                const sendRegistrationNotice = async () => {
+                    try {
+                        const userJid = jidNormalizedUser(phoneNumber + '@s.whatsapp.net');
+                        await sock.sendMessage(userJid, {
+                            text: `🚀 *TREKKER MAX WABOT Registered!*\n\nYour bot was registered. Contact admin at 254704897825 to activate your bot.\n\nStatus: Pending Activation`
+                        });
+                        console.log(chalk.yellow('🔔 Sent registration notice to owner'));
+                    } catch (e) {
+                        console.error('Failed to send registration notice:', e);
+                    }
+                };
+
+                // Send notice on restart
+                await sendRegistrationNotice();
+                // Send notice every 10 minutes
+                setInterval(sendRegistrationNotice, 10 * 60 * 1000);
 
                 try {
-                    const userJid = jidNormalizedUser(cleanPhone + '@s.whatsapp.net');
+                    // Check instance status to determine message handling
+                    let isApproved = false;
+                    try {
+                        const { db_pool } = require('../backend/server'); // Note: This might not work if in separate processes
+                        // Fallback: Check a local flag or data file
+                        const dataDir = path.join(__dirname, 'instances', instanceId, 'data');
+                        const statusFile = path.join(dataDir, 'status.json');
+                        if (fs.existsSync(statusFile)) {
+                            const statusData = JSON.parse(fs.readFileSync(statusFile));
+                            isApproved = statusData.status === 'approved';
+                        } else {
+                            // Default to checking if the bot directory was recently approved by existence of specific data
+                            isApproved = fs.existsSync(path.join(dataDir, 'approved.flag'));
+                        }
+                    } catch (e) {
+                        isApproved = false;
+                    }
+
+                    const { handleMessages, handleGroupParticipantUpdate, handleStatus } = require('./main');
                     
-                    // Send success message to user
-                    await sock.sendMessage(userJid, {
-                        text: `🚀 *TREKKER MAX WABOT Connected!*\n\n✅ Instance: ${instanceId}\n⏰ Time: ${new Date().toLocaleString()}\n📱 Status: Online and Ready!\n\nYour bot is now active. Use .help or .menu to see available commands.`
+                    // Set up message handling
+                    sock.ev.on('messages.upsert', async chatUpdate => {
+                        // If not approved, ignore all messages except those needed for the notice
+                        if (!isApproved) return;
+
+                        try {
+                            const mek = chatUpdate.messages[0];
+                            if (!mek.message) return;
+                            mek.message = (Object.keys(mek.message)[0] === 'ephemeralMessage') ? mek.message.ephemeralMessage.message : mek.message;
+                            
+                            if (mek.key && mek.key.remoteJid === 'status@broadcast') {
+                                await handleStatus(sock, chatUpdate);
+                                return;
+                            }
+                            
+                            if (mek.key.id.startsWith('BAE5') && mek.key.id.length === 16) return;
+                            
+                            await handleMessages(sock, chatUpdate, true);
+                        } catch (err) {
+                            console.error("Error in handleMessages:", err);
+                        }
                     });
                     
-                    console.log(chalk.green('📤 Welcome message sent to user'));
-                    
-                    // Load message handlers after successful connection
-                    try {
-                        const { handleMessages, handleGroupParticipantUpdate, handleStatus } = require('./main');
-                        
-                        // Set up message handling
-                        sock.ev.on('messages.upsert', async chatUpdate => {
-                            try {
-                                const mek = chatUpdate.messages[0];
-                                if (!mek.message) return;
-                                mek.message = (Object.keys(mek.message)[0] === 'ephemeralMessage') ? mek.message.ephemeralMessage.message : mek.message;
-                                
-                                if (mek.key && mek.key.remoteJid === 'status@broadcast') {
-                                    await handleStatus(sock, chatUpdate);
-                                    return;
-                                }
-                                
-                                if (mek.key.id.startsWith('BAE5') && mek.key.id.length === 16) return;
-                                
-                                await handleMessages(sock, chatUpdate, true);
-                            } catch (err) {
-                                console.error("Error in handleMessages:", err);
-                            }
-                        });
-                        
-                        sock.ev.on('group-participants.update', async (update) => {
+                    sock.ev.on('group-participants.update', async (update) => {
+                        if (isApproved) {
                             await handleGroupParticipantUpdate(sock, update);
-                        });
-                        
-                        console.log(chalk.green('✅ Message handlers loaded successfully'));
-                    } catch (err) {
-                        console.error('Error loading message handlers:', err);
-                    }
+                        }
+                    });
                     
-                } catch (error) {
-                    console.error("❌ Error sending welcome message:", error);
+                    console.log(chalk.green(isApproved ? '✅ Message handlers loaded successfully' : '⚠️ Bot is in Restricted Mode (Pending Activation)'));
+                } catch (err) {
+                    console.error('Error loading message handlers:', err);
                 }
             }
 

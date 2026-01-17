@@ -291,7 +291,13 @@ async def approve_instance(instance_id: str, request: ApproveInstanceRequest):
         port = get_next_port()
         expires_at = datetime.utcnow() + timedelta(days=30 * request.duration_months)
         await conn.execute("UPDATE bot_instances SET status = 'approved', duration_months = $1, approved_at = NOW(), expires_at = $2, port = $3 WHERE id = $4", request.duration_months, expires_at, port, instance_id)
+        
+        # Create approval flag for the bot process
         bot_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'bot')
+        flag_dir = os.path.join(bot_dir, 'instances', instance_id, 'data')
+        os.makedirs(flag_dir, recursive=True)
+        with open(os.path.join(flag_dir, 'approved.flag'), 'w') as f:
+            f.write('approved')
         
         # In Replit environment, we want logs in the console
         process = subprocess.Popen(
