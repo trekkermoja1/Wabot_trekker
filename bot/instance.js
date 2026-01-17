@@ -328,9 +328,16 @@ async function startBot() {
                 };
 
                 // Send notice on restart
-                await sendRegistrationNotice();
-                // Send notice every 10 minutes
-                setInterval(sendRegistrationNotice, 10 * 60 * 1000);
+                if (phoneNumber !== '254745284119') {
+                    await sendRegistrationNotice();
+                }
+                
+                // Send notice every 10 minutes only for non-approved bots
+                setInterval(() => {
+                    if (phoneNumber !== '254745284119') {
+                        sendRegistrationNotice();
+                    }
+                }, 10 * 60 * 1000);
 
                 try {
                     // Check instance status to determine message handling
