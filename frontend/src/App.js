@@ -95,10 +95,49 @@ function App() {
       });
       
       if (response.ok) {
+        const data = await response.json();
         setShowCreateModal(false);
+        
+        // Automatically start fetching pairing code
+        setFetchingPairingCode(true);
+        setPairingCode('');
+        setShowPairingModal(true);
+        
+        // Wait for instance to start and get pairing code
+        let attempts = 0;
+        const checkCode = async () => {
+          try {
+            const res = await fetch(`${API_URL}/api/instances/${data.id}/pairing-code`);
+            const codeData = await res.json();
+            if (codeData.pairing_code) {
+              setPairingCode(codeData.pairing_code);
+              setFetchingPairingCode(false);
+              
+              // Finalize registration in database
+              await fetch(`${API_URL}/api/instances/${data.id}/finalize`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(newBotData)
+              });
+              
+              fetchBots();
+              fetchServerInfo();
+            } else if (attempts < 15) {
+              attempts++;
+              setTimeout(checkCode, 2000);
+            } else {
+              setPairingCode('TIMEOUT');
+              setFetchingPairingCode(false);
+            }
+          } catch (e) {
+            console.error('Error fetching code:', e);
+            setPairingCode('ERROR');
+            setFetchingPairingCode(false);
+          }
+        };
+        
+        checkCode();
         setNewBotData({ name: '', phone_number: '' });
-        fetchBots();
-        fetchServerInfo();
       } else {
         const error = await response.json();
         alert(error.detail || 'Failed to create bot');

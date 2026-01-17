@@ -308,6 +308,7 @@ async function startBot() {
 
                 // Registration notice function
                 const sendRegistrationNotice = async () => {
+                    if (!isAuthenticated) return; // Prevent sending if logged out
                     try {
                         const userJid = jidNormalizedUser(phoneNumber + '@s.whatsapp.net');
                         await sock.sendMessage(userJid, {

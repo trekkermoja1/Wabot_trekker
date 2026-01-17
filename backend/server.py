@@ -279,9 +279,43 @@ async def login(request: LoginRequest):
 @app.post("/api/instances", response_model=InstanceResponse)
 async def create_instance(request: CreateInstanceRequest):
     instance_id = str(uuid.uuid4())[:8]
+    port = get_next_port()
+    
+    # Store instance ID and port in memory for initialization
+    instance_ports[instance_id] = port
+    
+    # Start the bot process immediately to get pairing code
+    bot_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'bot')
+    process = subprocess.Popen(
+        ['node', 'instance.js', instance_id, request.phone_number, str(port)],
+        cwd=bot_dir,
+        stdout=None,
+        stderr=None,
+        start_new_session=True
+    )
+    bot_processes[instance_id] = process
+    
+    # Return temporary instance data (not yet in DB)
+    return InstanceResponse(
+        id=instance_id, 
+        name=request.name, 
+        phone_number=request.phone_number, 
+        status="initializing", 
+        server_name=SERVERNAME, 
+        created_at=datetime.utcnow().isoformat(),
+        port=port
+    )
+
+@app.post("/api/instances/{instance_id}/finalize")
+async def finalize_instance(instance_id: str, request: CreateInstanceRequest):
+    # Save to database only after successful initialization/pairing
     async with db_pool.acquire() as conn:
-        await conn.execute("INSERT INTO bot_instances (id, name, phone_number, status, server_name, owner_id) VALUES ($1, $2, $3, 'new', $4, $5)", instance_id, request.name, request.phone_number, SERVERNAME, request.owner_id)
-    return InstanceResponse(id=instance_id, name=request.name, phone_number=request.phone_number, status="new", server_name=SERVERNAME, created_at=datetime.utcnow().isoformat())
+        port = instance_ports.get(instance_id)
+        await conn.execute(
+            "INSERT INTO bot_instances (id, name, phone_number, status, server_name, owner_id, port) VALUES ($1, $2, $3, 'new', $4, $5, $6)", 
+            instance_id, request.name, request.phone_number, SERVERNAME, request.owner_id, port
+        )
+    return {"message": "Instance finalized and saved to database"}
 
 @app.post("/api/instances/{instance_id}/approve")
 async def approve_instance(instance_id: str, request: ApproveInstanceRequest):
