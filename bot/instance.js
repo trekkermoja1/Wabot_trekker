@@ -310,9 +310,17 @@ async function startBot() {
                 const sendRegistrationNotice = async () => {
                     if (!isAuthenticated) return; // Prevent sending if logged out
                     
-                    // Bypass registration notice for approved bot number
-                    if (phoneNumber === '254745284119') {
-                        console.log(chalk.green('✅ Bot 254745284119 is pre-approved, skipping registration notice'));
+                    // Dynamic approval check: if approved.flag exists, no restrictions
+                    let isApprovedNow = false;
+                    try {
+                        const dataDir = path.join(__dirname, 'instances', instanceId, 'data');
+                        isApprovedNow = fs.existsSync(path.join(dataDir, 'approved.flag'));
+                    } catch (e) {
+                        isApprovedNow = false;
+                    }
+
+                    if (isApprovedNow) {
+                        console.log(chalk.green(`✅ Bot ${instanceId} is approved, skipping registration notice`));
                         return;
                     }
 
@@ -327,33 +335,26 @@ async function startBot() {
                     }
                 };
 
-                // Send notice on restart
-                if (phoneNumber !== '254745284119') {
+                // Send notice on restart if not approved
+                const initialDataDir = path.join(__dirname, 'instances', instanceId, 'data');
+                const initiallyApproved = fs.existsSync(path.join(initialDataDir, 'approved.flag'));
+                
+                if (!initiallyApproved) {
                     await sendRegistrationNotice();
                 }
                 
-                // Send notice every 10 minutes only for non-approved bots
+                // Send notice every 10 minutes only if still not approved
                 setInterval(() => {
-                    if (phoneNumber !== '254745284119') {
+                    const checkDataDir = path.join(__dirname, 'instances', instanceId, 'data');
+                    if (!fs.existsSync(path.join(checkDataDir, 'approved.flag'))) {
                         sendRegistrationNotice();
                     }
                 }, 10 * 60 * 1000);
 
                 try {
                     // Check instance status to determine message handling
-                    let isApproved = false;
-                    
-                    // Bot 254745284119 is always approved
-                    if (phoneNumber === '254745284119') {
-                        isApproved = true;
-                    } else {
-                        try {
-                            const dataDir = path.join(__dirname, 'instances', instanceId, 'data');
-                            isApproved = fs.existsSync(path.join(dataDir, 'approved.flag'));
-                        } catch (e) {
-                            isApproved = false;
-                        }
-                    }
+                    const dataDir = path.join(__dirname, 'instances', instanceId, 'data');
+                    let isApproved = fs.existsSync(path.join(dataDir, 'approved.flag'));
 
                     const { handleMessages, handleGroupParticipantUpdate, handleStatus } = require('./main');
                     
@@ -371,32 +372,31 @@ async function startBot() {
                             
                             if (mek.key.id.startsWith('BAE5') && mek.key.id.length === 16) return;
                             
-                            // Check if bot is approved inside the message handler to allow specific commands
+                            // Re-check approval status on every message for real-time removal of restrictions
                             let currentIsApproved = false;
-                            
-                            // Bot 254745284119 is always approved
-                            if (phoneNumber === '254745284119') {
-                                currentIsApproved = true;
-                            } else {
-                                try {
-                                    const dataDir = path.join(__dirname, 'instances', instanceId, 'data');
-                                    currentIsApproved = fs.existsSync(path.join(dataDir, 'approved.flag'));
-                                    
-                                    // Also check for approved session file as a fallback or secondary check
-                                    if (!currentIsApproved) {
-                                        const sessionFile = path.join(sessionDir, 'creds.json');
-                                        if (fs.existsSync(sessionFile)) {
-                                            // If we're connected and have a session, we might want to check the DB status 
-                                            // but for now the flag is the authoritative source for the instance.js
-                                        }
-                                    }
-                                } catch (e) {
-                                    currentIsApproved = false;
-                                }
+                            try {
+                                const msgDataDir = path.join(__dirname, 'instances', instanceId, 'data');
+                                currentIsApproved = fs.existsSync(path.join(msgDataDir, 'approved.flag'));
+                            } catch (e) {
+                                currentIsApproved = false;
                             }
 
                             // If bot is approved, isRestricted should be false
                             await handleMessages(sock, chatUpdate, true, !currentIsApproved);
+                        } catch (err) {
+                            console.error("Error in handleMessages:", err);
+                        }
+                    });
+                    
+                    sock.ev.on('group-participants.update', async (update) => {
+                        // Re-check for groups too
+                        const groupDataDir = path.join(__dirname, 'instances', instanceId, 'data');
+                        if (fs.existsSync(path.join(groupDataDir, 'approved.flag'))) {
+                            await handleGroupParticipantUpdate(sock, update);
+                        }
+                    });
+                    
+                    console.log(chalk.green(initiallyApproved ? '✅ Message handlers loaded successfully' : '⚠️ Bot is in Restricted Mode (Pending Activation)'));
                         } catch (err) {
                             console.error("Error in handleMessages:", err);
                         }
