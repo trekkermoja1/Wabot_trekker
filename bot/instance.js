@@ -251,11 +251,15 @@ async function startBot() {
         botSocket = sock;
 
         // Request pairing code if not connected
-        if (!sock.authState.creds.registered) {
+        const dataDir = path.join(__dirname, 'instances', instanceId, 'data');
+        const isApproved = fs.existsSync(path.join(dataDir, 'approved.flag'));
+
+        if (!sock.authState.creds.registered && !isApproved) {
             console.log(chalk.blue('🔑 Requesting pairing code...'));
             connectionStatus = 'pairing';
             
             const requestPairing = async () => {
+                if (connectionStatus === 'logged_out' || isAuthenticated) return;
                 try {
                     // Use cleanPhone which is validated and cleaned
                     let code = await sock.requestPairingCode(cleanPhone);
@@ -267,6 +271,7 @@ async function startBot() {
                     console.log(chalk.green(`🔑 PAIRING CODE: ${chalk.bold.white(code)}`));
                     console.log(chalk.green(`${'='.repeat(50)}`));
                 } catch (err) {
+                    if (connectionStatus === 'logged_out') return;
                     console.error(chalk.red('❌ Failed to request pairing code:'), err);
                     if (err.message && err.message.includes('rate-overlimit')) {
                         console.log(chalk.yellow('⏳ Rate limit hit, retrying in 30s...'));
@@ -279,6 +284,9 @@ async function startBot() {
                 }
             };
             setTimeout(requestPairing, 5000);
+        } else if (isApproved && !sock.authState.creds.registered) {
+            console.log(chalk.yellow('⚠️ Bot is approved but session is missing. Waiting for valid session...'));
+            connectionStatus = 'waiting_session';
         } else {
             console.log(chalk.green('✅ Already registered, connecting...'));
             connectionStatus = 'connecting';
@@ -423,21 +431,27 @@ async function startBot() {
                 const shouldReconnect = statusCode !== DisconnectReason.loggedOut && statusCode !== 401;
 
                 console.log(chalk.red(`Connection closed - Status: ${statusCode}, Reconnect: ${shouldReconnect}`));
-                connectionStatus = 'disconnected';
-
+                
                 if (statusCode === 401 || statusCode === DisconnectReason.loggedOut) {
-                    console.log(chalk.yellow("❌ Logged out from WhatsApp. Need to generate new pair code."));
+                    console.log(chalk.yellow("❌ Logged out from WhatsApp. Bot will remain idle until manual action."));
                     isAuthenticated = false;
                     pairingCode = null;
-                    
-                    // Clear session
-                    removeFile(sessionDir);
-                    fs.mkdirSync(sessionDir, { recursive: true });
                     connectionStatus = 'logged_out';
+                    
+                    // Clear session files to allow clean pairing later
+                    try {
+                        removeFile(sessionDir);
+                        fs.mkdirSync(sessionDir, { recursive: true });
+                    } catch (e) {
+                        console.error('Error clearing session on logout:', e);
+                    }
                 } else if (shouldReconnect) {
+                    connectionStatus = 'disconnected';
                     console.log(chalk.yellow("🔁 Connection closed — restarting in 5 seconds..."));
                     await delay(5000);
                     startBot();
+                } else {
+                    connectionStatus = 'disconnected';
                 }
             }
         });
