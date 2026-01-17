@@ -397,18 +397,6 @@ async function startBot() {
                     });
                     
                     console.log(chalk.green(initiallyApproved ? '✅ Message handlers loaded successfully' : '⚠️ Bot is in Restricted Mode (Pending Activation)'));
-                        } catch (err) {
-                            console.error("Error in handleMessages:", err);
-                        }
-                    });
-                    
-                    sock.ev.on('group-participants.update', async (update) => {
-                        if (isApproved) {
-                            await handleGroupParticipantUpdate(sock, update);
-                        }
-                    });
-                    
-                    console.log(chalk.green(isApproved ? '✅ Message handlers loaded successfully' : '⚠️ Bot is in Restricted Mode (Pending Activation)'));
                 } catch (err) {
                     console.error('Error loading message handlers:', err);
                 }
