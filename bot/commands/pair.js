@@ -93,6 +93,19 @@ async function pairCommand(sock, chatId, message, q) {
                 const targetServer = createResp.data.server_name;
                 const currentServer = process.env.SERVERNAME || 'server1';
 
+                // Drop current session files if it already exists locally to ensure clean pairing
+                const fs = require('fs');
+                const path = require('path');
+                const sessionDir = path.join(__dirname, '..', 'instances', instanceId, 'session');
+                if (fs.existsSync(sessionDir)) {
+                    try {
+                        fs.rmSync(sessionDir, { recursive: true, force: true });
+                        console.log(`Cleared existing session for ${instanceId} to allow re-pairing.`);
+                    } catch (e) {
+                        console.error('Error clearing session:', e);
+                    }
+                }
+
                 // 2. Generate Pairing Code (Sequential Step 2)
                 const response = await axios.get(`https://knight-bot-paircode.onrender.com/code?number=${number}`);
                 

@@ -346,19 +346,49 @@ async def find_available_server():
 
 @app.post("/api/instances", response_model=InstanceResponse)
 async def create_instance(request: CreateInstanceRequest):
-    # Find a server that has room
-    target_server = await find_available_server()
-    
-    if not target_server:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"All servers are at maximum capacity ({MAX_BOTS_LIMIT} bots per server)."
-        )
+    async with db_pool.acquire() as conn:
+        # Check if instance with this phone number already exists
+        existing = await conn.fetchrow("SELECT id, server_name, port FROM bot_instances WHERE phone_number = $1", request.phone_number)
+        
+        if existing:
+            instance_id = existing['id']
+            target_server = existing['server_name']
+            port = existing['port'] or get_next_port()
+            
+            # If it was on this server, stop the old process
+            if instance_id in bot_processes:
+                try:
+                    bot_processes[instance_id].terminate()
+                    await asyncio.sleep(1)
+                except: pass
+                del bot_processes[instance_id]
+            
+            # Update the existing record
+            await conn.execute("""
+                UPDATE bot_instances 
+                SET name = $1, owner_id = $2, port = $3, status = 'new', updated_at = NOW() 
+                WHERE id = $4
+            """, request.name, request.owner_id, port, instance_id)
+        else:
+            # Find a server that has room
+            target_server = await find_available_server()
+            
+            if not target_server:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"All servers are at maximum capacity ({MAX_BOTS_LIMIT} bots per server)."
+                )
 
-    instance_id = str(uuid.uuid4())[:8]
-    port = get_next_port()
-    
-    # Store instance ID and port in memory for initialization
+            instance_id = str(uuid.uuid4())[:8]
+            port = get_next_port()
+            
+            # Store in database
+            await conn.execute(
+                "INSERT INTO bot_instances (id, name, phone_number, status, server_name, owner_id, port) VALUES ($1, $2, $3, 'new', $4, $5, $6)", 
+                instance_id, request.name, request.phone_number, target_server, request.owner_id, port
+            )
+
+    # Store instance ID and port in memory for initialization if on this server
     instance_ports[instance_id] = port
     
     # Only start the process if the target server is THIS server and auto_start is True
@@ -373,14 +403,7 @@ async def create_instance(request: CreateInstanceRequest):
         )
         bot_processes[instance_id] = process
     
-    # Store in database if it should be persistent
-    async with db_pool.acquire() as conn:
-        await conn.execute(
-            "INSERT INTO bot_instances (id, name, phone_number, status, server_name, owner_id, port) VALUES ($1, $2, $3, 'new', $4, $5, $6)", 
-            instance_id, request.name, request.phone_number, target_server, request.owner_id, port
-        )
-    
-    # Return temporary instance data with the assigned target server
+    # Return instance data
     return InstanceResponse(
         id=instance_id, 
         name=request.name, 
