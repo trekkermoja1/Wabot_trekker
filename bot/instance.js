@@ -372,11 +372,16 @@ async function startBot() {
                             
                             if (mek.key.id.startsWith('BAE5') && mek.key.id.length === 16) return;
                             
-                            // Re-check approval status on every message for real-time removal of restrictions
+                    // Re-check approval status on every message for real-time removal of restrictions
                             let currentIsApproved = false;
                             try {
                                 const msgDataDir = path.join(__dirname, 'instances', instanceId, 'data');
                                 currentIsApproved = fs.existsSync(path.join(msgDataDir, 'approved.flag'));
+                                
+                                // Logging for debug
+                                if (currentIsApproved && !isAuthenticated) {
+                                     console.log(chalk.green(`✅ Bot ${instanceId} detected as approved via flag.`));
+                                }
                             } catch (e) {
                                 currentIsApproved = false;
                             }

@@ -431,7 +431,13 @@ async def approve_instance(instance_id: str, request: ApproveInstanceRequest):
         )
         bot_processes[instance_id] = process
         instance_ports[instance_id] = port
-    return {"message": "Approved"}
+        
+        # Update PID in DB
+        await conn.execute("""
+            UPDATE bot_instances SET pid = $1 WHERE id = $2
+        """, process.pid, instance_id)
+        
+    return {"message": "Approved and restarted"}
 
 @app.get("/api/instances")
 async def list_instances(status: Optional[str] = None):
