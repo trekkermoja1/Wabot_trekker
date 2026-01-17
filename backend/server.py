@@ -422,7 +422,18 @@ async def start_instance_internal(instance_id: str, phone_number: str, port: int
 async def get_pairing_code(instance_id: str):
     async with db_pool.acquire() as conn:
         instance = await conn.fetchrow("SELECT * FROM bot_instances WHERE id = $1", instance_id)
-        if not instance or not instance['port']: raise HTTPException(status_code=404)
+        
+        # If not in DB, check memory for newly created/initializing instances
+        if not instance:
+            port = instance_ports.get(instance_id)
+            if not port:
+                raise HTTPException(status_code=404)
+            
+            status_data = await get_instance_status(instance_id, port)
+            return {"pairing_code": status_data.get("pairingCode"), "status": status_data.get("status")}
+
+        if not instance['port']:
+            raise HTTPException(status_code=404)
         
         status_data = await get_instance_status(instance_id, instance['port'])
         
