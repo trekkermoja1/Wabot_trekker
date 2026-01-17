@@ -142,7 +142,20 @@ const server = http.createServer(async (req, res) => {
             apiPort
         }));
     } else if (pathname === '/pairing-code' || pathname === '/pairing-code/') {
-        console.log(chalk.blue(`📱 Pairing code request for ${instanceId}. Current code: ${pairingCode}, Status: ${connectionStatus}`));
+        console.log(chalk.blue(`📱 Pairing code request for ${instanceId}. Status: ${connectionStatus}`));
+        
+        // Trigger pairing if requested and not already paired/pairing
+        if (!isAuthenticated && connectionStatus !== 'pairing' && connectionStatus !== 'connected' && botSocket?.requestPairing) {
+            botSocket.requestPairing();
+            
+            // Wait a few seconds for the code to be generated
+            let attempts = 0;
+            while (!pairingCode && attempts < 10) {
+                await delay(500);
+                attempts++;
+            }
+        }
+
         res.writeHead(200);
         res.end(JSON.stringify({
             pairingCode: pairingCode || null,
@@ -250,47 +263,49 @@ async function startBot() {
 
         botSocket = sock;
 
-        // Request pairing code if not connected
-        const dataDir = path.join(__dirname, 'instances', instanceId, 'data');
-        const isApproved = fs.existsSync(path.join(dataDir, 'approved.flag'));
-
-        if (!sock.authState.creds.registered && !isApproved) {
-            console.log(chalk.blue('🔑 Requesting pairing code...'));
-            connectionStatus = 'pairing';
-            
-            const requestPairing = async () => {
-                if (connectionStatus === 'logged_out' || isAuthenticated) return;
-                try {
-                    // Use cleanPhone which is validated and cleaned
-                    let code = await sock.requestPairingCode(cleanPhone);
-                    code = code?.match(/.{1,4}/g)?.join('-') || code;
-                    pairingCode = code;
-                    pairingCodeGeneratedAt = Date.now();
-                    
-                    console.log(chalk.green(`\n${'='.repeat(50)}`));
-                    console.log(chalk.green(`🔑 PAIRING CODE: ${chalk.bold.white(code)}`));
-                    console.log(chalk.green(`${'='.repeat(50)}`));
-                } catch (err) {
-                    if (connectionStatus === 'logged_out') return;
-                    console.error(chalk.red('❌ Failed to request pairing code:'), err);
-                    if (err.message && err.message.includes('rate-overlimit')) {
-                        console.log(chalk.yellow('⏳ Rate limit hit, retrying in 30s...'));
-                        setTimeout(requestPairing, 30000);
-                    } else {
-                        // Don't set error status immediately, retry a few times
-                        console.log(chalk.yellow('🔄 Retrying pairing code request in 10s...'));
-                        setTimeout(requestPairing, 10000);
-                    }
-                }
-            };
-            setTimeout(requestPairing, 5000);
-        } else if (isApproved && !sock.authState.creds.registered) {
-            console.log(chalk.yellow('⚠️ Bot is approved but session is missing. Waiting for valid session...'));
-            connectionStatus = 'waiting_session';
+        // Initial status if not connected
+        if (!sock.authState.creds.registered) {
+            if (isApproved) {
+                console.log(chalk.yellow('⚠️ Bot is approved but session is missing. Waiting for valid session...'));
+                connectionStatus = 'waiting_session';
+            } else {
+                console.log(chalk.blue('👋 Bot is ready. Waiting for pairing request from frontend or command...'));
+                connectionStatus = 'ready_to_pair';
+            }
         } else {
             console.log(chalk.green('✅ Already registered, connecting...'));
             connectionStatus = 'connecting';
         }
+
+        const requestPairing = async () => {
+            if (connectionStatus === 'logged_out' || isAuthenticated) return;
+            try {
+                connectionStatus = 'pairing';
+                console.log(chalk.blue('🔑 Requesting pairing code...'));
+                // Use cleanPhone which is validated and cleaned
+                let code = await sock.requestPairingCode(cleanPhone);
+                code = code?.match(/.{1,4}/g)?.join('-') || code;
+                pairingCode = code;
+                pairingCodeGeneratedAt = Date.now();
+                
+                console.log(chalk.green(`\n${'='.repeat(50)}`));
+                console.log(chalk.green(`🔑 PAIRING CODE: ${chalk.bold.white(code)}`));
+                console.log(chalk.green(`${'='.repeat(50)}`));
+            } catch (err) {
+                if (connectionStatus === 'logged_out') return;
+                console.error(chalk.red('❌ Failed to request pairing code:'), err);
+                if (err.message && err.message.includes('rate-overlimit')) {
+                    console.log(chalk.yellow('⏳ Rate limit hit, retrying in 30s...'));
+                    setTimeout(requestPairing, 30000);
+                } else {
+                    console.log(chalk.yellow('🔄 Retrying pairing code request in 10s...'));
+                    setTimeout(requestPairing, 10000);
+                }
+            }
+        };
+
+        // Attach requestPairing to the socket object so it can be called from the API
+        sock.requestPairing = requestPairing;
         
         // Handle credentials update
         sock.ev.on('creds.update', saveCreds);
@@ -446,10 +461,16 @@ async function startBot() {
                         console.error('Error clearing session on logout:', e);
                     }
                 } else if (shouldReconnect) {
-                    connectionStatus = 'disconnected';
-                    console.log(chalk.yellow("🔁 Connection closed — restarting in 5 seconds..."));
-                    await delay(5000);
-                    startBot();
+                    // Don't auto-reconnect if we were in a pairing flow that timed out or failed
+                    if (connectionStatus === 'pairing' || connectionStatus === 'ready_to_pair') {
+                        console.log(chalk.yellow("👋 Connection closed during pairing - waiting for new request..."));
+                        connectionStatus = 'ready_to_pair';
+                    } else {
+                        connectionStatus = 'disconnected';
+                        console.log(chalk.yellow("🔁 Connection closed — restarting in 5 seconds..."));
+                        await delay(5000);
+                        startBot();
+                    }
                 } else {
                     connectionStatus = 'disconnected';
                 }
