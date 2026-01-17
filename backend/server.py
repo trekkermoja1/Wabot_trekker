@@ -309,10 +309,10 @@ async def update_server_status():
     while True:
         try:
             async with db_pool.acquire() as conn:
-                # Count active bots on THIS server
+                # Count ONLY approved bots on THIS server
                 count = await conn.fetchval("""
                     SELECT COUNT(*) FROM bot_instances 
-                    WHERE server_name = $1 AND status != 'expired'
+                    WHERE server_name = $1 AND status = 'approved'
                 """, SERVERNAME)
                 
                 # Update server_manager
@@ -330,6 +330,7 @@ async def find_available_server():
     """Find a server with capacity or return None"""
     async with db_pool.acquire() as conn:
         # Get best available server from manager (least busy first)
+        # Based on approved bots count
         row = await conn.fetchrow("""
             SELECT server_name FROM server_manager 
             WHERE status = 'active' 
