@@ -276,46 +276,83 @@ async def login(request: LoginRequest):
         return {"success": True, "message": "Login successful"}
     raise HTTPException(status_code=401)
 
+MAX_BOTS_LIMIT = 20
+
+async def find_available_server():
+    """Find a server with capacity or return None"""
+    async with db_pool.acquire() as conn:
+        # Get bot counts per server from DB
+        server_counts = await conn.fetch("""
+            SELECT server_name, COUNT(*) as count 
+            FROM bot_instances 
+            GROUP BY server_name
+        """)
+        
+        counts_dict = {row['server_name']: row['count'] for row in server_counts}
+        
+        # Check current server first if it has room
+        if counts_dict.get(SERVERNAME, 0) < MAX_BOTS_LIMIT:
+            return SERVERNAME
+            
+        # Check other known servers
+        for s_name in ["server1", "server2", "server3"]:
+            if counts_dict.get(s_name, 0) < MAX_BOTS_LIMIT:
+                return s_name
+                
+        return None
+
 @app.post("/api/instances", response_model=InstanceResponse)
 async def create_instance(request: CreateInstanceRequest):
+    # Find a server that has room
+    target_server = await find_available_server()
+    
+    if not target_server:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"All servers are at maximum capacity ({MAX_BOTS_LIMIT} bots per server)."
+        )
+
     instance_id = str(uuid.uuid4())[:8]
     port = get_next_port()
     
     # Store instance ID and port in memory for initialization
     instance_ports[instance_id] = port
     
-    # Start the bot process immediately to get pairing code
-    bot_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'bot')
-    process = subprocess.Popen(
-        ['node', 'instance.js', instance_id, request.phone_number, str(port)],
-        cwd=bot_dir,
-        stdout=None,
-        stderr=None,
-        start_new_session=True
-    )
-    bot_processes[instance_id] = process
+    # Only start the process if the target server is THIS server
+    if target_server == SERVERNAME:
+        bot_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'bot')
+        process = subprocess.Popen(
+            ['node', 'instance.js', instance_id, request.phone_number, str(port)],
+            cwd=bot_dir,
+            stdout=None,
+            stderr=None,
+            start_new_session=True
+        )
+        bot_processes[instance_id] = process
     
-    # Return temporary instance data (not yet in DB)
+    # Return temporary instance data with the assigned target server
     return InstanceResponse(
         id=instance_id, 
         name=request.name, 
         phone_number=request.phone_number, 
         status="initializing", 
-        server_name=SERVERNAME, 
+        server_name=target_server, 
         created_at=datetime.utcnow().isoformat(),
         port=port
     )
 
 @app.post("/api/instances/{instance_id}/finalize")
 async def finalize_instance(instance_id: str, request: CreateInstanceRequest):
-    # Save to database only after successful initialization/pairing
+    # Use server_name from request or fallback
+    target_server = getattr(request, 'server_name', SERVERNAME)
+    
     async with db_pool.acquire() as conn:
         port = instance_ports.get(instance_id)
         await conn.execute(
             "INSERT INTO bot_instances (id, name, phone_number, status, server_name, owner_id, port) VALUES ($1, $2, $3, 'new', $4, $5, $6)", 
-            instance_id, request.name, request.phone_number, SERVERNAME, request.owner_id, port
+            instance_id, request.name, request.phone_number, target_server, request.owner_id, port
         )
-    return {"message": "Instance finalized and saved to database"}
+    return {"message": f"Instance finalized and assigned to {target_server}"}
 
 @app.post("/api/instances/{instance_id}/approve")
 async def approve_instance(instance_id: str, request: ApproveInstanceRequest):
