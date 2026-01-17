@@ -4,8 +4,7 @@
   "description": "WhatsApp Bot",
   "main": "index.js",
   "scripts": {
-    "start": "yarn install && pip install -r backend/requirements.txt && cd frontend && yarn install --legacy-peer-deps && yarn build && cd .. && mkdir -p backend/static && cp -r frontend/build/* backend/static/ && cd bot && yarn install && cd .. && cd backend && python server.py",
-    "start:backend": "pip install python-dotenv uvicorn fastapi httpx pydantic asyncpg motor && cd backend && python server.py",
+    "start": "pip install -r backend/requirements.txt && cd frontend && ([ -d node_modules ] || yarn install --legacy-peer-deps) && ([ -d build ] || yarn build) && cd .. && mkdir -p backend/static && (cp -r frontend/build/* backend/static/ || true) && cd bot && ([ -d node_modules ] || yarn install) && cd .. && cd backend && python server.py",
     "build:frontend": "cd frontend && ([ -d node_modules ] || yarn install --legacy-peer-deps) && yarn build && mkdir -p ../backend/static && cp -r build/* ../backend/static/ && cd ../bot && ([ -d node_modules ] || yarn install)",
     "stop": "pkill -f 'python server.py' || true",
     "start:bot": "node index.js",
@@ -18,7 +17,7 @@
     "install:force": "yarn install --force",
     "test": "echo \"Error: no test specified\" && exit 1",
     "docker:build": "docker build -t knightbot . && docker run -e SESSION_ID=$SESSION_ID knightbot",
-    "prestart": "yarn install && cd frontend && ([ -d node_modules ] || yarn install) && cd ../bot && ([ -d node_modules ] || yarn install)",
+    "prestart": "echo 'Prestart skipped to avoid redundant installs'",
     "postinstall": "echo 'Postinstall skipped to avoid loops'"
   },
   "keywords": [
