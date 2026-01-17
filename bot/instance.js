@@ -306,50 +306,53 @@ async function startBot() {
                 
                 console.log(chalk.green(`\n✅ TREKKER MAX WABOT Connected Successfully!`));
 
-                // Registration notice function
-                const sendRegistrationNotice = async () => {
-                    if (!isAuthenticated) return; // Prevent sending if logged out
+                // Registration and Expiry notice function
+                const sendStatusNotice = async () => {
+                    if (!isAuthenticated) return;
                     
-                    // Dynamic approval check: if approved.flag exists, no restrictions
-                    let isApprovedNow = false;
                     try {
-                        const dataDir = path.join(__dirname, 'instances', instanceId, 'data');
-                        isApprovedNow = fs.existsSync(path.join(dataDir, 'approved.flag'));
-                    } catch (e) {
-                        isApprovedNow = false;
-                    }
+                        const backendUrl = process.env.BACKEND_URL || 'http://localhost:5000';
+                        const response = await require('axios').get(`${backendUrl}/api/instances?status=approved`);
+                        const instanceData = response.data.instances.find(i => i.id === instanceId);
+                        
+                        if (!instanceData) {
+                            // If not approved, send registration notice
+                            const userJid = jidNormalizedUser(phoneNumber + '@s.whatsapp.net');
+                            await sock.sendMessage(userJid, {
+                                text: `🚀 *TREKKER MAX WABOT Registered!*\n\nYour bot was registered. Contact admin at 254704897825 to activate your bot.\n\nStatus: Pending Activation`
+                            });
+                            return;
+                        }
 
-                    if (isApprovedNow) {
-                        console.log(chalk.green(`✅ Bot ${instanceId} is approved, skipping registration notice`));
-                        return;
-                    }
+                        // Check expiry
+                        if (instanceData.expires_at) {
+                            const expiresAt = new Date(instanceData.expires_at);
+                            const now = new Date();
+                            const diffMs = expiresAt - now;
+                            const diffDays = diffMs / (1000 * 60 * 60 * 24);
+                            const diffHours = diffMs / (1000 * 60 * 60);
 
-                    try {
-                        const userJid = jidNormalizedUser(phoneNumber + '@s.whatsapp.net');
-                        await sock.sendMessage(userJid, {
-                            text: `🚀 *TREKKER MAX WABOT Registered!*\n\nYour bot was registered. Contact admin at 254704897825 to activate your bot.\n\nStatus: Pending Activation`
-                        });
-                        console.log(chalk.yellow('🔔 Sent registration notice to owner'));
+                            if (diffDays > 0 && diffDays <= 3) {
+                                const userJid = jidNormalizedUser(phoneNumber + '@s.whatsapp.net');
+                                const timeStr = diffHours < 24 
+                                    ? `${Math.floor(diffHours)} hours` 
+                                    : `${Math.floor(diffDays)} days`;
+                                    
+                                await sock.sendMessage(userJid, {
+                                    text: `⚠️ *Package Expiry Notice*\n\nYour bot will expire soon in about ${timeStr}. Please contact admin 254704897825 to renew your package.`
+                                });
+                            }
+                        }
                     } catch (e) {
-                        console.error('Failed to send registration notice:', e);
+                        console.error('Failed to send status notice:', e);
                     }
                 };
 
-                // Send notice on restart if not approved
-                const initialDataDir = path.join(__dirname, 'instances', instanceId, 'data');
-                const initiallyApproved = fs.existsSync(path.join(initialDataDir, 'approved.flag'));
+                // Send notice on restart
+                await sendStatusNotice();
                 
-                if (!initiallyApproved) {
-                    await sendRegistrationNotice();
-                }
-                
-                // Send notice every 10 minutes only if still not approved
-                setInterval(() => {
-                    const checkDataDir = path.join(__dirname, 'instances', instanceId, 'data');
-                    if (!fs.existsSync(path.join(checkDataDir, 'approved.flag'))) {
-                        sendRegistrationNotice();
-                    }
-                }, 10 * 60 * 1000);
+                // Send notice every hour to check for imminent expiry
+                setInterval(sendStatusNotice, 60 * 60 * 1000);
 
                 try {
                     // Check instance status to determine message handling
