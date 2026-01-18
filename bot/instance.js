@@ -342,8 +342,14 @@ async function startBot() {
                     if (!isAuthenticated) return;
                     
                     try {
-                        const backendUrl = process.env.BACKEND_URL || 'http://localhost:5000';
-                        const response = await require('axios').get(`${backendUrl}/api/instances?status=approved`);
+                        const backendUrl = process.env.BACKEND_URL || 'http://0.0.0.0:5000';
+                        const response = await require('axios').get(`${backendUrl}/api/instances?status=approved`, {
+                            timeout: 5000,
+                            validateStatus: false
+                        });
+                        
+                        if (response.status !== 200 || !response.data?.instances) return;
+                        
                         const instanceData = response.data.instances.find(i => i.id === instanceId);
                         
                         if (!instanceData) {
@@ -375,7 +381,7 @@ async function startBot() {
                             }
                         }
                     } catch (e) {
-                        console.error('Failed to send status notice:', e);
+                        console.error('Failed to send status notice:', e.message);
                     }
                 };
 
@@ -386,10 +392,6 @@ async function startBot() {
                 setInterval(sendStatusNotice, 60 * 60 * 1000);
 
                 try {
-                    // Check instance status to determine message handling
-                    const dataDir = path.join(__dirname, 'instances', instanceId, 'data');
-                    let isApproved = fs.existsSync(path.join(dataDir, 'approved.flag'));
-
                     const { handleMessages, handleGroupParticipantUpdate, handleStatus } = require('./main');
                     
                     // Set up message handling
@@ -422,15 +424,20 @@ async function startBot() {
                                 
                                 // Also check backend as a fallback
                                 if (!currentIsApproved) {
-                                    const backendUrl = process.env.BACKEND_URL || 'http://localhost:5000';
-                                    const response = await require('axios').get(`${backendUrl}/api/instances?id=${instanceId}`);
-                                    const instanceData = response.data.instances.find(i => i.id === instanceId);
-                                    currentIsApproved = instanceData?.status === 'approved';
-                                    
-                                    // If approved on backend, sync to local flag
-                                    if (currentIsApproved) {
-                                        if (!fs.existsSync(msgDataDir)) fs.mkdirSync(msgDataDir, { recursive: true });
-                                        fs.writeFileSync(path.join(msgDataDir, 'approved.flag'), new Date().toISOString());
+                                    const backendUrl = process.env.BACKEND_URL || 'http://0.0.0.0:5000';
+                                    const response = await require('axios').get(`${backendUrl}/api/instances?id=${instanceId}`, {
+                                        timeout: 5000,
+                                        validateStatus: false
+                                    });
+                                    if (response.status === 200 && response.data?.instances) {
+                                        const instanceData = response.data.instances.find(i => i.id === instanceId);
+                                        currentIsApproved = instanceData?.status === 'approved';
+                                        
+                                        // If approved on backend, sync to local flag
+                                        if (currentIsApproved) {
+                                            if (!fs.existsSync(msgDataDir)) fs.mkdirSync(msgDataDir, { recursive: true });
+                                            fs.writeFileSync(path.join(msgDataDir, 'approved.flag'), new Date().toISOString());
+                                        }
                                     }
                                 }
                                 
@@ -439,12 +446,12 @@ async function startBot() {
                                      console.log(chalk.green(`✅ Bot ${instanceId} detected as approved.`));
                                 }
                             } catch (e) {
-                                // Fallback to current state if API fails
+                                // Silent failure for API, fallback to flag
                                 const msgDataDir = path.join(__dirname, 'instances', instanceId, 'data');
                                 currentIsApproved = fs.existsSync(path.join(msgDataDir, 'approved.flag'));
                             }
 
-            // If bot is approved, isRestricted should be false
+                            // If bot is approved, isRestricted should be false
                             await handleMessages(sock, chatUpdate, true, !currentIsApproved);
                         } catch (err) {
                             console.error("Error in handleMessages:", err);
@@ -459,12 +466,30 @@ async function startBot() {
                         }
                     });
                     
-                    const backendUrl = process.env.BACKEND_URL || 'http://localhost:5000';
-                    const response = await require('axios').get(`${backendUrl}/api/instances?id=${instanceId}`);
-                    const instanceData = response.data.instances.find(i => i.id === instanceId);
-                    const initiallyApproved = instanceData?.status === 'approved' || fs.existsSync(path.join(dataDir, 'approved.flag'));
+                    try {
+                        const backendUrl = process.env.BACKEND_URL || 'http://0.0.0.0:5000';
+                        const response = await require('axios').get(`${backendUrl}/api/instances?id=${instanceId}`, {
+                            timeout: 5000,
+                            validateStatus: false
+                        });
+                        
+                        let initiallyApproved = false;
+                        if (response.status === 200 && response.data?.instances) {
+                            const instanceData = response.data.instances.find(i => i.id === instanceId);
+                            initiallyApproved = instanceData?.status === 'approved';
+                        }
+                        
+                        if (!initiallyApproved) {
+                            const dataDirFallback = path.join(__dirname, 'instances', instanceId, 'data');
+                            initiallyApproved = fs.existsSync(path.join(dataDirFallback, 'approved.flag'));
+                        }
 
-                    console.log(chalk.green(initiallyApproved ? '✅ Message handlers loaded successfully' : '⚠️ Bot is in Restricted Mode (Pending Activation)'));
+                        console.log(chalk.green(initiallyApproved ? '✅ Message handlers loaded successfully' : '⚠️ Bot is in Restricted Mode (Pending Activation)'));
+                    } catch (err) {
+                        const dataDirFallback = path.join(__dirname, 'instances', instanceId, 'data');
+                        const initiallyApproved = fs.existsSync(path.join(dataDirFallback, 'approved.flag'));
+                        console.log(chalk.green(initiallyApproved ? '✅ Message handlers loaded successfully' : '⚠️ Bot is in Restricted Mode (Pending Activation)'));
+                    }
                 } catch (err) {
                     console.error('Error loading message handlers:', err);
                 }
