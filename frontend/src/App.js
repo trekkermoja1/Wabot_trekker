@@ -97,47 +97,12 @@ function App() {
       if (response.ok) {
         const data = await response.json();
         setShowCreateModal(false);
-        
-        // Automatically start fetching pairing code
-        setFetchingPairingCode(true);
-        setPairingCode('');
-        setShowPairingModal(true);
-        
-        // Wait for instance to start and get pairing code
-        let attempts = 0;
-        const checkCode = async () => {
-          try {
-            const res = await fetch(`${API_URL}/api/instances/${data.id}/pairing-code`);
-            const codeData = await res.json();
-            if (codeData.pairing_code) {
-              setPairingCode(codeData.pairing_code);
-              setFetchingPairingCode(false);
-              
-              // Finalize registration in database
-              await fetch(`${API_URL}/api/instances/${data.id}/finalize`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(newBotData)
-              });
-              
-              fetchBots();
-              fetchServerInfo();
-            } else if (attempts < 15) {
-              attempts++;
-              setTimeout(checkCode, 2000);
-            } else {
-              setPairingCode('TIMEOUT');
-              setFetchingPairingCode(false);
-            }
-          } catch (e) {
-            console.error('Error fetching code:', e);
-            setPairingCode('ERROR');
-            setFetchingPairingCode(false);
-          }
-        };
-        
-        checkCode();
         setNewBotData({ name: '', phone_number: '' });
+        fetchBots();
+        fetchServerInfo();
+        
+        // Don't auto-open pairing modal, let user click "Pair Code"
+        alert('Bot created successfully!');
       } else {
         const error = await response.json();
         alert(error.detail || 'Failed to create bot');
@@ -270,63 +235,36 @@ function App() {
     setFetchingPairingCode(true);
     setPairingCode('');
     setShowPairingModal(true);
+    
+    // First, try to start the bot if it's not running
     try {
-      const response = await fetch(`${API_URL}/api/instances/${botId}/pairing-code`);
-      const data = await response.json();
-      if (data.pairing_code) {
-        setPairingCode(data.pairing_code);
-      } else {
-        // Retry once after 5 seconds if not ready (backend is already attempting restart)
-        setTimeout(async () => {
-          try {
-            const retryRes = await fetch(`${API_URL}/api/instances/${botId}/pairing-code`);
-            const retryData = await retryRes.json();
-            if (retryData.pairing_code) {
-              setPairingCode(retryData.pairing_code);
-            } else {
-              setPairingCode('ERROR');
-            }
-          } catch (e) {
-            setPairingCode('ERROR');
-          }
-        }, 5000);
-      }
-    } catch (error) {
-      console.error('Error fetching pairing code:', error);
-      setPairingCode('ERROR');
-    } finally {
-      setFetchingPairingCode(false);
-    }
-  };
+      await fetch(`${API_URL}/api/instances/${botId}/start`, { method: 'POST' });
+    } catch (e) {}
 
-  const regeneratePairingCode = async (botId) => {
-    setFetchingPairingCode(true);
-    setPairingCode('');
-    setShowPairingModal(true);
-    try {
-      const response = await fetch(`${API_URL}/api/instances/${botId}/regenerate-code`, {
-        method: 'POST'
-      });
-      const data = await response.json();
-      if (data.pairingCode || data.pairing_code) {
-        setPairingCode(data.pairingCode || data.pairing_code);
-      } else {
-        setTimeout(async () => {
-          try {
-            const retryRes = await fetch(`${API_URL}/api/instances/${botId}/pairing-code`);
-            const retryData = await retryRes.json();
-            setPairingCode(retryData.pairing_code || 'ERROR');
-          } catch (e) {
-            setPairingCode('ERROR');
-          }
-        }, 5000);
+    let attempts = 0;
+    const maxAttempts = 20;
+
+    const poll = async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/instances/${botId}/pairing-code`);
+        const data = await response.json();
+        if (data.pairing_code) {
+          setPairingCode(data.pairing_code);
+          setFetchingPairingCode(false);
+        } else if (attempts < maxAttempts) {
+          attempts++;
+          setTimeout(poll, 1000);
+        } else {
+          setPairingCode('TIMEOUT');
+          setFetchingPairingCode(false);
+        }
+      } catch (error) {
+        setPairingCode('ERROR');
+        setFetchingPairingCode(false);
       }
-    } catch (error) {
-      console.error('Error regenerating pairing code:', error);
-      setPairingCode('ERROR');
-    } finally {
-      setFetchingPairingCode(false);
-    }
+    };
+
+    poll();
   };
 
   const formatDate = (dateString) => {
@@ -474,39 +412,11 @@ function App() {
                     </div>
                     
                     <div className="flex gap-2">
-                      <button
-                        onClick={() => handleStartBot(bot.id)}
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-medium transition"
-                      >
-                        Start
-                      </button>
-                      <button
-                        onClick={() => handleStopBot(bot.id)}
-                        className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg font-medium transition"
-                      >
-                        Stop
-                      </button>
-                      <button
-                        onClick={() => {
-                          setSelectedBot(bot);
-                          setShowApproveModal(true);
-                        }}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition"
-                      >
-                        Approve
-                      </button>
-                      <button
-                        onClick={() => getPairingCode(bot.id)}
-                        className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-medium transition"
-                      >
-                        Pair Code
-                      </button>
-                      <button
-                        onClick={() => handleDeleteBot(bot.id)}
-                        className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition"
-                      >
-                        Delete
-                      </button>
+                      <button onClick={() => handleStartBot(bot.id)} className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-medium transition">Start</button>
+                      <button onClick={() => handleStopBot(bot.id)} className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg font-medium transition">Stop</button>
+                      <button onClick={() => { setSelectedBot(bot); setShowApproveModal(true); }} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition">Approve</button>
+                      <button onClick={() => getPairingCode(bot.id)} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-medium transition">Pair Code</button>
+                      <button onClick={() => handleDeleteBot(bot.id)} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition">Delete</button>
                     </div>
                   </div>
                 </div>
@@ -541,36 +451,10 @@ function App() {
                     </div>
                     
                     <div className="flex gap-2">
-                      <button
-                        onClick={() => handleStartBot(bot.id)}
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-medium transition"
-                      >
-                        Start
-                      </button>
-                      <button
-                        onClick={() => getPairingCode(bot.id)}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition"
-                      >
-                        Pair Code
-                      </button>
-                      <button
-                        onClick={() => regeneratePairingCode(bot.id)}
-                        className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-medium transition"
-                      >
-                        Regenerate
-                      </button>
-                      <button
-                        onClick={() => handleStopBot(bot.id)}
-                        className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg font-medium transition"
-                      >
-                        Stop
-                      </button>
-                      <button
-                        onClick={() => handleDeleteBot(bot.id)}
-                        className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition"
-                      >
-                        Delete
-                      </button>
+                      <button onClick={() => handleStartBot(bot.id)} className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-medium transition">Start</button>
+                      <button onClick={() => handleStopBot(bot.id)} className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg font-medium transition">Stop</button>
+                      <button onClick={() => getPairingCode(bot.id)} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-medium transition">Pair Code</button>
+                      <button onClick={() => handleDeleteBot(bot.id)} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition">Delete</button>
                     </div>
                   </div>
                 </div>
@@ -610,7 +494,7 @@ function App() {
                         }}
                         className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-medium transition"
                       >
-                        Renew / Pay
+                        Renew
                       </button>
                       <button
                         onClick={() => handleDeleteBot(bot.id)}
@@ -627,51 +511,48 @@ function App() {
         )}
       </div>
 
-      {/* Create Bot Modal */}
+      {/* Create Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
-            <h2 className="text-2xl font-bold text-gray-800 mb-6">Create New Bot</h2>
-            
+          <div className="bg-white rounded-xl max-w-md w-full p-6">
+            <h2 className="text-2xl font-bold mb-4">Create New Bot</h2>
             <form onSubmit={handleCreateBot} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Bot Name</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Bot Name</label>
                 <input
                   type="text"
                   value={newBotData.name}
                   onChange={(e) => setNewBotData({...newBotData, name: e.target.value})}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500"
-                  placeholder="My Bot"
+                  className="w-full px-4 py-2 border rounded-lg"
+                  placeholder="e.g. My Awesome Bot"
                   required
                 />
               </div>
-              
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Phone Number</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
                 <input
                   type="text"
                   value={newBotData.phone_number}
                   onChange={(e) => setNewBotData({...newBotData, phone_number: e.target.value})}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500"
-                  placeholder="+1234567890"
+                  className="w-full px-4 py-2 border rounded-lg"
+                  placeholder="e.g. 254704897825"
                   required
                 />
               </div>
-              
               <div className="flex gap-3 mt-6">
-                <button
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                  className="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 py-3 rounded-lg font-medium transition"
-                >
-                  Cancel
-                </button>
                 <button
                   type="submit"
                   disabled={loading}
-                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-lg font-medium transition disabled:opacity-50"
+                  className="flex-1 bg-emerald-600 text-white py-2 rounded-lg font-medium"
                 >
                   {loading ? 'Creating...' : 'Create'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(false)}
+                  className="flex-1 bg-gray-200 text-gray-800 py-2 rounded-lg font-medium"
+                >
+                  Cancel
                 </button>
               </div>
             </form>
@@ -679,152 +560,115 @@ function App() {
         </div>
       )}
 
-      {/* Approve Bot Modal */}
-      {showApproveModal && selectedBot && (
+      {/* Approve Modal */}
+      {showApproveModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
-            <h2 className="text-2xl font-bold text-gray-800 mb-4">Approve Bot</h2>
-            <p className="text-gray-600 mb-6">Bot: <span className="font-semibold">{selectedBot.name}</span></p>
-            
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-3">Select Duration</label>
-              <div className="grid grid-cols-2 gap-3">
-                {[1, 2, 3, 6, 12].map(months => (
-                  <button
-                    key={months}
-                    type="button"
-                    onClick={() => setSelectedDuration(months)}
-                    className={`py-3 rounded-lg font-medium transition ${
-                      selectedDuration === months
-                        ? 'bg-emerald-600 text-white'
-                        : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
-                    }`}
-                  >
-                    {months} Month{months > 1 ? 's' : ''}
-                  </button>
-                ))}
+          <div className="bg-white rounded-xl max-w-md w-full p-6">
+            <h2 className="text-2xl font-bold mb-2">Approve Bot</h2>
+            <p className="text-gray-600 mb-4">Set duration for {selectedBot?.name}</p>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Duration (Months)</label>
+                <select
+                  value={selectedDuration}
+                  onChange={(e) => setSelectedDuration(parseInt(e.target.value))}
+                  className="w-full px-4 py-2 border rounded-lg"
+                >
+                  <option value={1}>1 Month</option>
+                  <option value={3}>3 Months</option>
+                  <option value={6}>6 Months</option>
+                  <option value={12}>12 Months</option>
+                </select>
               </div>
-            </div>
-            
-            <div className="flex gap-3">
-              <button
-                onClick={() => {
-                  setShowApproveModal(false);
-                  setSelectedBot(null);
-                }}
-                className="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 py-3 rounded-lg font-medium transition"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleApproveBot}
-                disabled={loading}
-                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-lg font-medium transition disabled:opacity-50"
-              >
-                {loading ? 'Approving...' : 'Approve'}
-              </button>
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={handleApproveBot}
+                  disabled={loading}
+                  className="flex-1 bg-emerald-600 text-white py-2 rounded-lg font-medium"
+                >
+                  {loading ? 'Processing...' : 'Approve Now'}
+                </button>
+                <button
+                  onClick={() => setShowApproveModal(false)}
+                  className="flex-1 bg-gray-200 text-gray-800 py-2 rounded-lg font-medium"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Renew Bot Modal */}
-      {showRenewModal && selectedBot && (
+      {/* Renew Modal */}
+      {showRenewModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
-            <h2 className="text-2xl font-bold text-gray-800 mb-4">Renew / Pay for Bot</h2>
-            <p className="text-gray-600 mb-6">Bot: <span className="font-semibold">{selectedBot.name}</span></p>
-            
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-3">Select Duration</label>
-              <div className="grid grid-cols-2 gap-3">
-                {[1, 2, 3, 6, 12].map(months => (
-                  <button
-                    key={months}
-                    type="button"
-                    onClick={() => setSelectedDuration(months)}
-                    className={`py-3 rounded-lg font-medium transition ${
-                      selectedDuration === months
-                        ? 'bg-emerald-600 text-white'
-                        : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
-                    }`}
-                  >
-                    {months} Month{months > 1 ? 's' : ''}
-                  </button>
-                ))}
+          <div className="bg-white rounded-xl max-w-md w-full p-6">
+            <h2 className="text-2xl font-bold mb-2">Renew Bot</h2>
+            <p className="text-gray-600 mb-4">Extend duration for {selectedBot?.name}</p>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Duration (Months)</label>
+                <select
+                  value={selectedDuration}
+                  onChange={(e) => setSelectedDuration(parseInt(e.target.value))}
+                  className="w-full px-4 py-2 border rounded-lg"
+                >
+                  <option value={1}>1 Month</option>
+                  <option value={3}>3 Months</option>
+                  <option value={6}>6 Months</option>
+                  <option value={12}>12 Months</option>
+                </select>
               </div>
-            </div>
-            
-            <div className="flex gap-3">
-              <button
-                onClick={() => {
-                  setShowRenewModal(false);
-                  setSelectedBot(null);
-                }}
-                className="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 py-3 rounded-lg font-medium transition"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleRenewBot}
-                disabled={loading}
-                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-lg font-medium transition disabled:opacity-50"
-              >
-                {loading ? 'Processing...' : 'Renew & Pay'}
-              </button>
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={handleRenewBot}
+                  disabled={loading}
+                  className="flex-1 bg-emerald-600 text-white py-2 rounded-lg font-medium"
+                >
+                  {loading ? 'Renewing...' : 'Renew Now'}
+                </button>
+                <button
+                  onClick={() => setShowRenewModal(false)}
+                  className="flex-1 bg-gray-200 text-gray-800 py-2 rounded-lg font-medium"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Pairing Code Modal */}
+      {/* Pairing Modal */}
       {showPairingModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
-            <h2 className="text-2xl font-bold text-gray-800 mb-4">WhatsApp Pairing Code</h2>
+          <div className="bg-white rounded-xl max-w-md w-full p-8 text-center">
+            <h2 className="text-2xl font-bold mb-4">WhatsApp Pairing Code</h2>
+            <p className="text-gray-600 mb-6">
+              Enter this code on your phone in Linked Devices > Link with Phone Number
+            </p>
             
-            <div className="bg-emerald-50 border-2 border-emerald-200 rounded-lg p-6 mb-6 text-center min-h-[140px] flex flex-col justify-center items-center">
+            <div className="bg-gray-100 rounded-xl p-6 mb-6">
               {fetchingPairingCode ? (
                 <div className="flex flex-col items-center">
                   <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-emerald-600 mb-3"></div>
-                  <p className="text-sm text-gray-600">Generating code, please wait...</p>
+                  <p className="text-sm font-medium text-emerald-600">Requesting code...</p>
                 </div>
+              ) : pairingCode === 'TIMEOUT' ? (
+                <p className="text-xl font-bold text-red-500">Request Timed Out. Please try again.</p>
               ) : pairingCode === 'ERROR' ? (
-                <div className="text-red-600">
-                  <p className="font-semibold">Failed to get code</p>
-                  <p className="text-sm">The instance might be starting up. Please try again in a moment.</p>
-                </div>
-              ) : pairingCode ? (
-                <>
-                  <p className="text-sm text-gray-600 mb-2">Enter this code in WhatsApp:</p>
-                  <p className="text-4xl font-bold text-emerald-600 tracking-wider font-mono">
-                    {pairingCode}
-                  </p>
-                </>
+                <p className="text-xl font-bold text-red-500">Error generating code. Is the bot running?</p>
               ) : (
-                <div className="flex flex-col items-center">
-                  <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-emerald-600 mb-3"></div>
-                  <p className="text-sm text-gray-600">Initializing instance...</p>
-                </div>
+                <p className="text-4xl font-mono font-bold tracking-widest text-gray-800">
+                  {pairingCode}
+                </p>
               )}
             </div>
             
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-              <p className="text-sm text-gray-700 mb-2 font-medium">How to pair:</p>
-              <ol className="text-sm text-gray-600 space-y-1 list-decimal list-inside">
-                <li>Open WhatsApp on your phone</li>
-                <li>Go to Settings → Linked Devices</li>
-                <li>Tap "Link a Device"</li>
-                <li>Enter the code above</li>
-              </ol>
-            </div>
-            
             <button
-              onClick={() => {
-                setShowPairingModal(false);
-                setPairingCode('');
-              }}
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-lg font-medium transition"
+              onClick={() => setShowPairingModal(false)}
+              className="w-full bg-emerald-600 text-white py-3 rounded-lg font-bold"
             >
               Close
             </button>
