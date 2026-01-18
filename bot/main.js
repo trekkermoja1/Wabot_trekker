@@ -170,8 +170,8 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
         const { messages, type } = messageUpdate;
         if (type !== 'notify') return;
 
-        const message = messages[0];
-        if (!message?.message) return;
+        const rawText = message.message.conversation || message.message.extendedTextMessage?.text || message.message.imageMessage?.caption || message.message.videoMessage?.caption || '';
+        const userMessage = rawText.trim().toLowerCase();
 
         // Handle autoread functionality
         if (!isRestricted) await handleAutoread(sock, message);
@@ -192,6 +192,13 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
         const isGroup = chatId.endsWith('@g.us');
         const senderIsSudo = await isSudo(senderId);
         const senderIsOwnerOrSudo = await isOwnerOrSudo(senderId, sock, chatId);
+
+        // Access mode check
+        let isPublic = true;
+        try {
+            const countData = JSON.parse(fs.readFileSync('./data/messageCount.json'));
+            isPublic = countData.isPublic !== false;
+        } catch (e) {}
 
         // Restricted bot logic: Disable all features from settings
         if (isRestricted) {
@@ -215,15 +222,8 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
 
         // --- NORMAL PROCESSING FOR ACTIVATED BOTS ---
         
-        // Handle autoread functionality
-        await handleAutoread(sock, message);
-
-        // Store message for antidelete feature
-        if (message.message) {
-            storeMessage(sock, message);
-        }
         // In private mode, only owner/sudo can run commands
-        if (!isPublic && !isOwnerOrSudoCheck) {
+        if (!isPublic && !senderIsOwnerOrSudo) {
             return;
         }
 
