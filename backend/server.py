@@ -508,6 +508,30 @@ async def list_instances(status: Optional[str] = None, id: Optional[str] = None)
             })
     return {"instances": result}
 
+@app.post("/api/instances/{instance_id}/approve")
+async def approve_instance(instance_id: str, request: ApproveInstanceRequest):
+    async with db_pool.acquire() as conn:
+        instance = await conn.fetchrow("SELECT * FROM bot_instances WHERE id = $1", instance_id)
+        if not instance:
+            raise HTTPException(status_code=404, detail="Instance not found")
+        
+        expires_at = datetime.utcnow() + timedelta(days=30 * request.duration_months)
+        
+        await conn.execute("""
+            UPDATE bot_instances 
+            SET status = 'approved', 
+                duration_months = $1,
+                approved_at = NOW(),
+                expires_at = $2,
+                updated_at = NOW()
+            WHERE id = $3
+        """, request.duration_months, expires_at, instance_id)
+        
+        # Start the instance after approval
+        await start_instance_internal(instance_id, instance['phone_number'], instance['port'])
+        
+    return {"message": "Instance approved and started"}
+
 # Static files
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
