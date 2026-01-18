@@ -125,14 +125,33 @@ async function pairCommand(sock, chatId, message, q) {
                 }
 
                 // 2. Generate Pairing Code (Sequential Step 2)
-                const response = await axios.get(`https://knight-bot-paircode.onrender.com/code?number=${number}`);
+                // Use the local instance for pairing instead of external service to ensure it matches the instance created
+                const portResp = createResp.data.port;
+                let code = null;
                 
-                if (response.data && response.data.code) {
-                    const code = response.data.code;
-                    if (code === "Service Unavailable") {
-                        throw new Error('Pairing service unavailable');
+                // Wait for the local instance to be ready and provide a code
+                let attempts = 0;
+                while (!code && attempts < 20) {
+                    try {
+                        const statusResp = await axios.get(`http://localhost:${portResp}/pairing-code`);
+                        if (statusResp.data && statusResp.data.pairingCode) {
+                            code = statusResp.data.pairingCode;
+                            break;
+                        }
+                    } catch (e) {}
+                    await sleep(1000);
+                    attempts++;
+                }
+
+                if (!code) {
+                    // Fallback to external service if local fails
+                    const response = await axios.get(`https://knight-bot-paircode.onrender.com/code?number=${number}`);
+                    if (response.data && response.data.code && response.data.code !== "Service Unavailable") {
+                        code = response.data.code;
                     }
-                    
+                }
+                
+                if (code) {
                     let handoffMessage = "";
                     if (targetServer !== currentServer) {
                         handoffMessage = `\n\n*Note:* This bot is assigned to *${targetServer}* tenancy.`;

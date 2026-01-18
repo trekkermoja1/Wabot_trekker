@@ -480,9 +480,11 @@ async def delete_instance(instance_id: str):
     return {"message": "Instance deleted"}
 
 @app.get("/api/instances")
-async def list_instances(status: Optional[str] = None):
+async def list_instances(status: Optional[str] = None, id: Optional[str] = None):
     async with db_pool.acquire() as conn:
-        if status:
+        if id:
+            instances = await conn.fetch("SELECT * FROM bot_instances WHERE id = $1", id)
+        elif status:
             instances = await conn.fetch("SELECT * FROM bot_instances WHERE status = $1 ORDER BY created_at DESC", status)
         else:
             instances = await conn.fetch("SELECT * FROM bot_instances ORDER BY created_at DESC")

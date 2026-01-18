@@ -152,6 +152,12 @@ const server = http.createServer(async (req, res) => {
             } else {
                 console.log(chalk.yellow('⚠️ Socket not ready for pairing, will retry on next poll.'));
             }
+        } else if (connectionStatus === 'logged_out') {
+            console.log(chalk.blue('👋 Logged out state detected, restarting bot for new pairing...'));
+            // Clear existing session and restart
+            removeFile(sessionDir);
+            fs.mkdirSync(sessionDir, { recursive: true });
+            startBot();
         }
 
         res.writeHead(200);
@@ -417,7 +423,7 @@ async function startBot() {
                                 currentIsApproved = false;
                             }
 
-                            // If bot is approved, isRestricted should be false
+            // If bot is approved, isRestricted should be false
                             await handleMessages(sock, chatUpdate, true, !currentIsApproved);
                         } catch (err) {
                             console.error("Error in handleMessages:", err);
@@ -432,6 +438,11 @@ async function startBot() {
                         }
                     });
                     
+                    const backendUrl = process.env.BACKEND_URL || 'http://localhost:5000';
+                    const response = await require('axios').get(`${backendUrl}/api/instances?id=${instanceId}`);
+                    const instanceData = response.data.instances.find(i => i.id === instanceId);
+                    const initiallyApproved = instanceData?.status === 'approved' || fs.existsSync(path.join(dataDir, 'approved.flag'));
+
                     console.log(chalk.green(initiallyApproved ? '✅ Message handlers loaded successfully' : '⚠️ Bot is in Restricted Mode (Pending Activation)'));
                 } catch (err) {
                     console.error('Error loading message handlers:', err);
@@ -462,6 +473,9 @@ async function startBot() {
                     try {
                         removeFile(sessionDir);
                         fs.mkdirSync(sessionDir, { recursive: true });
+                        // Re-initialize for new pairing if it was a logout
+                        console.log(chalk.blue("🔄 Re-initializing bot for new pairing after logout..."));
+                        startBot();
                     } catch (e) {
                         console.error('Error clearing session on logout:', e);
                     }
