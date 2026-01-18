@@ -53,6 +53,10 @@ const CONNECTION_TIMEOUT = 5 * 60 * 1000; // 5 minutes
 
 // Timeout check
 setInterval(() => {
+    if (isAuthenticated) {
+        startTime = Date.now(); // Reset start time if authenticated
+        return;
+    }
     if (!isAuthenticated && (Date.now() - startTime > CONNECTION_TIMEOUT)) {
         console.log(chalk.red(`\n❌ Connection not established within 5 minutes. Closing instance: ${instanceId}`));
         process.exit(1);
