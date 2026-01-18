@@ -456,6 +456,7 @@ async function startBot() {
 
             if (isNewLogin) {
                 console.log(chalk.magenta("🔐 New login via pair code"));
+                isAuthenticated = true; // Force authenticated status on new login
             }
 
             if (isOnline) {
@@ -486,8 +487,9 @@ async function startBot() {
                     }
                 } else if (shouldReconnect) {
                     // Don't auto-reconnect if we were in a pairing flow that timed out or failed
-                    if (isAuthenticated) {
-                        console.log(chalk.green("🔄 Reconnecting authenticated session..."));
+                    if (isAuthenticated || isNewLogin) {
+                        console.log(chalk.green("🔄 Reconnecting authenticated session or new login..."));
+                        isAuthenticated = true; // Ensure authenticated is true on new login
                         startBot();
                     } else if (connectionStatus === 'pairing' || connectionStatus === 'ready_to_pair') {
                         console.log(chalk.yellow("👋 Connection closed during pairing - waiting for new request..."));
