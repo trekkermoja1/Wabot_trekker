@@ -329,6 +329,7 @@ async function startBot() {
                 isAuthenticated = true;
                 pairingCode = null; // Clear pairing code once connected
                 pairingCodeGeneratedAt = null;
+                startTime = Date.now(); // Reset start time on success
                 
                 console.log(chalk.green(`\n✅ TREKKER MAX WABOT Connected Successfully!`));
 
@@ -481,7 +482,10 @@ async function startBot() {
                     }
                 } else if (shouldReconnect) {
                     // Don't auto-reconnect if we were in a pairing flow that timed out or failed
-                    if (connectionStatus === 'pairing' || connectionStatus === 'ready_to_pair') {
+                    if (isAuthenticated) {
+                        console.log(chalk.green("🔄 Reconnecting authenticated session..."));
+                        startBot();
+                    } else if (connectionStatus === 'pairing' || connectionStatus === 'ready_to_pair') {
                         console.log(chalk.yellow("👋 Connection closed during pairing - waiting for new request..."));
                         connectionStatus = 'ready_to_pair';
                     } else {
