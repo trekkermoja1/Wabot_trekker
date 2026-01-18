@@ -530,6 +530,12 @@ async def approve_instance(instance_id: str, request: ApproveInstanceRequest):
         # Start the instance after approval
         await start_instance_internal(instance_id, instance['phone_number'], instance['port'])
         
+        # Create approval flag for the bot to see on restart
+        instance_data_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'bot', 'instances', instance_id, 'data')
+        os.makedirs(instance_data_dir, exist_ok=True)
+        with open(os.path.join(instance_data_dir, 'approved.flag'), 'w') as f:
+            f.write(datetime.utcnow().isoformat())
+        
     return {"message": "Instance approved and started"}
 
 # Static files

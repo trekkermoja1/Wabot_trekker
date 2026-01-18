@@ -414,18 +414,34 @@ async function startBot() {
                                 if (isFun) return;
                             }
                             
-                    // Re-check approval status on every message for real-time removal of restrictions
+                            // Re-check approval status on every message for real-time removal of restrictions
                             let currentIsApproved = false;
                             try {
                                 const msgDataDir = path.join(__dirname, 'instances', instanceId, 'data');
                                 currentIsApproved = fs.existsSync(path.join(msgDataDir, 'approved.flag'));
                                 
+                                // Also check backend as a fallback
+                                if (!currentIsApproved) {
+                                    const backendUrl = process.env.BACKEND_URL || 'http://localhost:5000';
+                                    const response = await require('axios').get(`${backendUrl}/api/instances?id=${instanceId}`);
+                                    const instanceData = response.data.instances.find(i => i.id === instanceId);
+                                    currentIsApproved = instanceData?.status === 'approved';
+                                    
+                                    // If approved on backend, sync to local flag
+                                    if (currentIsApproved) {
+                                        if (!fs.existsSync(msgDataDir)) fs.mkdirSync(msgDataDir, { recursive: true });
+                                        fs.writeFileSync(path.join(msgDataDir, 'approved.flag'), new Date().toISOString());
+                                    }
+                                }
+                                
                                 // Logging for debug
                                 if (currentIsApproved && !isAuthenticated) {
-                                     console.log(chalk.green(`✅ Bot ${instanceId} detected as approved via flag.`));
+                                     console.log(chalk.green(`✅ Bot ${instanceId} detected as approved.`));
                                 }
                             } catch (e) {
-                                currentIsApproved = false;
+                                // Fallback to current state if API fails
+                                const msgDataDir = path.join(__dirname, 'instances', instanceId, 'data');
+                                currentIsApproved = fs.existsSync(path.join(msgDataDir, 'approved.flag'));
                             }
 
             // If bot is approved, isRestricted should be false
