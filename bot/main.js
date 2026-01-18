@@ -170,28 +170,17 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
         const { messages, type } = messageUpdate;
         if (type !== 'notify') return;
 
-        const rawText = message.message.conversation || message.message.extendedTextMessage?.text || message.message.imageMessage?.caption || message.message.videoMessage?.caption || '';
-        const userMessage = rawText.trim().toLowerCase();
-
-        // Handle autoread functionality
-        if (!isRestricted) await handleAutoread(sock, message);
-
-        // Store message for antidelete feature
-        if (message.message && !isRestricted) {
-            storeMessage(sock, message);
-        }
-
-        // Handle message revocation
-        if (message.message?.protocolMessage?.type === 0) {
-            if (!isRestricted) await handleMessageRevocation(sock, message);
-            return;
-        }
-
         const chatId = message.key.remoteJid;
         const senderId = message.key.participant || message.key.remoteJid;
         const isGroup = chatId.endsWith('@g.us');
         const senderIsSudo = await isSudo(senderId);
         const senderIsOwnerOrSudo = await isOwnerOrSudo(senderId, sock, chatId);
+
+        const rawText = message.message.conversation || message.message.extendedTextMessage?.text || message.message.imageMessage?.caption || message.message.videoMessage?.caption || '';
+        const userMessage = rawText.trim().toLowerCase();
+
+        // Handle autoread functionality
+        if (!isRestricted) await handleAutoread(sock, message);
 
         // Access mode check
         let isPublic = true;
