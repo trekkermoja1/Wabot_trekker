@@ -608,6 +608,22 @@ async def regenerate_code(instance_id: str):
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
+@app.post("/api/instances/{instance_id}/start")
+async def start_instance(instance_id: str):
+    async with db_pool.acquire() as conn:
+        instance = await conn.fetchrow("SELECT * FROM bot_instances WHERE id = $1", instance_id)
+        if not instance:
+            raise HTTPException(status_code=404, detail="Instance not found")
+        
+        if instance['server_name'] != SERVERNAME:
+            raise HTTPException(status_code=400, detail=f"This instance is assigned to {instance['server_name']}")
+        
+        success = await start_instance_internal(instance_id, instance['phone_number'], instance['port'])
+        if success:
+            return {"message": "Instance started"}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to start instance")
+
 @app.post("/api/instances/{instance_id}/stop")
 async def stop_instance(instance_id: str):
     if instance_id in bot_processes:
