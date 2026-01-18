@@ -145,14 +145,12 @@ const server = http.createServer(async (req, res) => {
         console.log(chalk.blue(`📱 Pairing code request for ${instanceId}. Status: ${connectionStatus}`));
         
         // Trigger pairing if requested and not already paired/pairing
-        if (!isAuthenticated && connectionStatus !== 'pairing' && connectionStatus !== 'connected' && botSocket?.requestPairing) {
-            botSocket.requestPairing();
-            
-            // Wait a few seconds for the code to be generated
-            let attempts = 0;
-            while (!pairingCode && attempts < 20) {
-                await delay(500);
-                attempts++;
+        if (!isAuthenticated && connectionStatus !== 'pairing' && connectionStatus !== 'connected') {
+            if (botSocket && botSocket.requestPairing) {
+                console.log(chalk.blue('🔑 Automatically triggering requestPairing() on code request.'));
+                botSocket.requestPairing();
+            } else {
+                console.log(chalk.yellow('⚠️ Socket not ready for pairing, will retry on next poll.'));
             }
         }
 
