@@ -308,6 +308,12 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
             console.log(`[COMMAND] ${senderId} sent: ${userMessage}`);
         }
 
+        // --- NEW COMMAND: .vv / .viewonce for everyone ---
+        if (userMessage === '.vv' || userMessage === '.viewonce') {
+            await viewOnceCommand(sock, chatId, message);
+            return;
+        }
+
         // Store message for antidelete
         await storeMessage(chatId, message);
 
