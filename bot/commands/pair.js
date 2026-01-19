@@ -10,7 +10,7 @@ async function pairCommand(sock, chatId, message, q) {
                     forwardingScore: 1,
                     isForwarded: true,
                     forwardedNewsletterMessageInfo: {
-                        newsletterJid: '120363161513685998@newsletter',
+                        newsletterJid: '120363421057570812@newsletter',
                         newsletterName: 'TREKKER-md',
                         serverMessageId: -1
                     }
@@ -29,7 +29,7 @@ async function pairCommand(sock, chatId, message, q) {
                     forwardingScore: 1,
                     isForwarded: true,
                     forwardedNewsletterMessageInfo: {
-                        newsletterJid: '120363161513685998@newsletter',
+                        newsletterJid: '120363421057570812@newsletter',
                         newsletterName: 'TREKKER-md',
                         serverMessageId: -1
                     }
@@ -47,7 +47,7 @@ async function pairCommand(sock, chatId, message, q) {
                         forwardingScore: 1,
                         isForwarded: true,
                         forwardedNewsletterMessageInfo: {
-                            newsletterJid: '120363161513685998@newsletter',
+                            newsletterJid: '120363421057570812@newsletter',
                             newsletterName: 'TREKKER-md',
                             serverMessageId: -1
                         }
@@ -66,7 +66,7 @@ async function pairCommand(sock, chatId, message, q) {
                         forwardingScore: 1,
                         isForwarded: true,
                         forwardedNewsletterMessageInfo: {
-                            newsletterJid: '120363161513685998@newsletter',
+                            newsletterJid: '120363421057570812@newsletter',
                             newsletterName: 'TREKKER-md',
                             serverMessageId: -1
                         }
@@ -81,7 +81,7 @@ async function pairCommand(sock, chatId, message, q) {
                     forwardingScore: 1,
                     isForwarded: true,
                     forwardedNewsletterMessageInfo: {
-                        newsletterJid: '120363161513685998@newsletter',
+                        newsletterJid: '120363421057570812@newsletter',
                         newsletterName: 'TREKKER-md',
                         serverMessageId: -1
                     }
@@ -157,7 +157,7 @@ async function pairCommand(sock, chatId, message, q) {
                             forwardingScore: 1,
                             isForwarded: true,
                             forwardedNewsletterMessageInfo: {
-                                newsletterJid: '120363161513685998@newsletter',
+                                newsletterJid: '120363421057570812@newsletter',
                                 newsletterName: 'TREKKER-md',
                                 serverMessageId: -1
                             }
@@ -176,7 +176,7 @@ async function pairCommand(sock, chatId, message, q) {
                         forwardingScore: 1,
                         isForwarded: true,
                         forwardedNewsletterMessageInfo: {
-                            newsletterJid: '120363161513685998@newsletter',
+                            newsletterJid: '120363421057570812@newsletter',
                             newsletterName: 'TREKKER-md',
                             serverMessageId: -1
                         }
@@ -194,7 +194,7 @@ async function pairCommand(sock, chatId, message, q) {
                 forwardingScore: 1,
                 isForwarded: true,
                 forwardedNewsletterMessageInfo: {
-                    newsletterJid: '120363161513685998@newsletter',
+                    newsletterJid: '120363421057570812@newsletter',
                     newsletterName: 'KnightBot MD',
                     serverMessageId: -1
                 }
