@@ -556,6 +556,7 @@ async def approve_instance(instance_id: str, request: ApproveInstanceRequest):
 async def sync_session(instance_id: str, request: SyncSessionRequest):
     async with db_pool.acquire() as conn:
         import json
+        # Use jsonb_set or simple assignment if it's already jsonb
         await conn.execute("""
             UPDATE bot_instances 
             SET session_data = $1, updated_at = NOW()
