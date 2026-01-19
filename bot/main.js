@@ -237,10 +237,9 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
         // Permission check
         if (isAdminCommand || isOwnerCommand) {
             if (!senderIsOwnerOrSudo) {
-                const groupAdmins = isGroup ? await isAdmin(sock, chatId) : [];
-                const senderIsAdmin = groupAdmins.includes(senderId);
+                const { isSenderAdmin } = isGroup ? await isAdmin(sock, chatId, senderId) : { isSenderAdmin: false };
                 
-                if (isAdminCommand && !senderIsAdmin) {
+                if (isAdminCommand && !isSenderAdmin) {
                     return await sock.sendMessage(chatId, {
                         text: "❌ You need to be an admin to use this command."
                     });
@@ -256,10 +255,9 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
 
         // Handle anti-link/anti-tag detection before command processing
         if (isGroup && !senderIsOwnerOrSudo) {
-            const groupAdmins = await isAdmin(sock, chatId);
-            const senderIsAdmin = groupAdmins.includes(senderId);
+            const { isSenderAdmin } = await isAdmin(sock, chatId, senderId);
             
-            if (!senderIsAdmin) {
+            if (!isSenderAdmin) {
                 const linkFound = await handleLinkDetection(sock, chatId, message, userMessage, senderId);
                 if (linkFound) return;
                 

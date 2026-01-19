@@ -121,7 +121,7 @@ function isAutotypingEnabled() {
 }
 
 // Function to handle autotyping for regular messages
-async function handleAutotypingForMessage(sock, chatId, userMessage) {
+async function handleAutotypingForMessage(sock, chatId) {
     if (isAutotypingEnabled()) {
         try {
             // First subscribe to presence updates for this chat
@@ -134,9 +134,8 @@ async function handleAutotypingForMessage(sock, chatId, userMessage) {
             // Then send the composing status
             await sock.sendPresenceUpdate('composing', chatId);
             
-            // Simulate typing time based on message length with increased minimum time
-            const typingDelay = Math.max(3000, Math.min(8000, userMessage.length * 150));
-            await new Promise(resolve => setTimeout(resolve, typingDelay));
+            // Simulate typing time
+            await new Promise(resolve => setTimeout(resolve, 3000));
             
             // Send composing again to ensure it stays visible
             await sock.sendPresenceUpdate('composing', chatId);
