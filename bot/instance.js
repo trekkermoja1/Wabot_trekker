@@ -251,6 +251,28 @@ async function startBot() {
 
         const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
         
+        // Load session from database if available and local session is empty
+        if (!state.creds.registered) {
+            try {
+                const backendUrl = process.env.BACKEND_URL || 'http://0.0.0.0:5000';
+                const response = await require('axios').get(`${backendUrl}/api/instances?id=${instanceId}`, {
+                    timeout: 5000,
+                    validateStatus: false
+                });
+                if (response.status === 200 && response.data?.instances) {
+                    const instanceData = response.data.instances.find(i => i.id === instanceId);
+                    if (instanceData?.session_data) {
+                        console.log(chalk.green(`📥 Loading session from database for ${instanceId}`));
+                        // Merge database session into current state
+                        Object.assign(state.creds, instanceData.session_data);
+                        await saveCreds();
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to load session from database:', e.message);
+            }
+        }
+
         const sock = makeWASocket({
             version,
             auth: {
@@ -315,7 +337,20 @@ async function startBot() {
         sock.requestPairing = requestPairing;
         
         // Handle credentials update
-        sock.ev.on('creds.update', saveCreds);
+        sock.ev.on('creds.update', async (update) => {
+            await saveCreds();
+            // Sync credentials to database for persistence
+            if (update.processedHistoryMessages || update.accountSettings) { // Only sync on meaningful updates
+                try {
+                    const backendUrl = process.env.BACKEND_URL || 'http://0.0.0.0:5000';
+                    await require('axios').post(`${backendUrl}/api/instances/${instanceId}/sync-session`, {
+                        session_data: state.creds
+                    }, { timeout: 5000, validateStatus: false });
+                } catch (e) {
+                    // Silent failure for sync
+                }
+            }
+        });
 
         // Handle connection updates
         sock.ev.on('connection.update', async (update) => {

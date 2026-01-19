@@ -52,6 +52,10 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class SyncSessionRequest(BaseModel):
+    session_data: dict
+
+
 class InstanceResponse(BaseModel):
     id: str
     name: str
@@ -65,6 +69,7 @@ class InstanceResponse(BaseModel):
     pairing_code: Optional[str] = None
     connected_user: Optional[dict] = None
     port: Optional[int] = None
+    session_data: Optional[dict] = None
 
 
 async def init_database():
@@ -504,7 +509,8 @@ async def list_instances(status: Optional[str] = None, id: Optional[str] = None)
                 "created_at": instance['created_at'].isoformat(),
                 "approved_at": instance['approved_at'].isoformat() if instance['approved_at'] else None,
                 "expires_at": instance['expires_at'].isoformat() if instance['expires_at'] else None,
-                "duration_months": instance['duration_months']
+                "duration_months": instance['duration_months'],
+                "session_data": instance['session_data']
             })
     return {"instances": result}
 
@@ -537,6 +543,17 @@ async def approve_instance(instance_id: str, request: ApproveInstanceRequest):
             f.write(datetime.utcnow().isoformat())
         
     return {"message": "Instance approved and started"}
+
+@app.post("/api/instances/{instance_id}/sync-session")
+async def sync_session(instance_id: str, request: SyncSessionRequest):
+    async with db_pool.acquire() as conn:
+        import json
+        await conn.execute("""
+            UPDATE bot_instances 
+            SET session_data = $1, updated_at = NOW()
+            WHERE id = $2
+        """, json.dumps(request.session_data), instance_id)
+    return {"message": "Session synced"}
 
 # Static files
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
