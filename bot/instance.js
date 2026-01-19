@@ -265,12 +265,32 @@ async function startBot() {
                 if (sessionData && sessionData.creds) {
                     console.log(chalk.green(`📥 Session ID found in database for ${instanceId}. Importing and connecting...`));
                     state.creds = sessionData.creds;
+                    
+                    // Convert and save to creds.json in the session folder
+                    try {
+                        const credsFilePath = path.join(sessionDir, 'creds.json');
+                        fs.writeFileSync(credsFilePath, JSON.stringify(state.creds, null, 2));
+                        console.log(chalk.green(`💾 Session saved to ${credsFilePath}`));
+                    } catch (err) {
+                        console.error(chalk.red(`❌ Failed to save creds.json: ${err.message}`));
+                    }
+                    
                     await saveCreds();
                     await delay(2000);
                 } else if (sessionData) {
                     // Try direct assignment if it's not wrapped in .creds
                     console.log(chalk.green(`📥 Session ID found in database (direct) for ${instanceId}. Importing and connecting...`));
                     Object.assign(state.creds, sessionData);
+                    
+                    // Convert and save to creds.json in the session folder
+                    try {
+                        const credsFilePath = path.join(sessionDir, 'creds.json');
+                        fs.writeFileSync(credsFilePath, JSON.stringify(state.creds, null, 2));
+                        console.log(chalk.green(`💾 Session saved to ${credsFilePath}`));
+                    } catch (err) {
+                        console.error(chalk.red(`❌ Failed to save creds.json: ${err.message}`));
+                    }
+
                     await saveCreds();
                     await delay(2000);
                 }
