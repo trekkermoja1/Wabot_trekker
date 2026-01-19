@@ -251,8 +251,8 @@ async function startBot() {
 
         const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
         
-        // EXCLUSIVELY load session from environment variable (provided by backend from DB)
-        if (process.env.SESSION_DATA) {
+        // Load session from environment variable if provided
+        if (!state.creds.registered && process.env.SESSION_DATA) {
             try {
                 let sessionData = process.env.SESSION_DATA;
                 if (typeof sessionData === 'string') {
@@ -263,18 +263,20 @@ async function startBot() {
                     }
                 }
                 if (sessionData && sessionData.creds) {
-                    console.log(chalk.green(`📥 Loading session from environment for ${instanceId}`));
-                    // Completely replace current creds with database creds
+                    console.log(chalk.green(`📥 Session ID found in database for ${instanceId}. Importing and connecting...`));
                     state.creds = sessionData.creds;
                     await saveCreds();
-                    // Wait to ensure write is finished
-                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    await delay(2000);
+                } else if (sessionData) {
+                    // Try direct assignment if it's not wrapped in .creds
+                    console.log(chalk.green(`📥 Session ID found in database (direct) for ${instanceId}. Importing and connecting...`));
+                    Object.assign(state.creds, sessionData);
+                    await saveCreds();
+                    await delay(2000);
                 }
             } catch (e) {
                 console.error('Failed to load session from environment:', e.message);
             }
-        } else {
-            console.log(chalk.yellow(`⚠️ No SESSION_DATA provided for ${instanceId}. Waiting for pairing...`));
         }
         
         // The previous direct database fetch logic is removed to ensure we only use 
@@ -305,14 +307,14 @@ async function startBot() {
         // Initial status if not connected
         if (!sock.authState.creds.registered) {
             if (isApproved) {
-                console.log(chalk.yellow('⚠️ Session not found in local, now fetching from database PostgreSQL under session_data...'));
+                // Status is already handled by the environment loading logic above
                 connectionStatus = 'waiting_session';
             } else {
                 console.log(chalk.blue('👋 Bot is ready. Waiting for pairing request from frontend or command...'));
                 connectionStatus = 'ready_to_pair';
             }
         } else {
-            console.log(chalk.green('✅ Session found, connecting to WhatsApp...'));
+            // This is only reached if state.creds.registered was already true or became true during load
             connectionStatus = 'connecting';
         }
 
