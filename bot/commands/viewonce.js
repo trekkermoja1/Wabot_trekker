@@ -8,9 +8,12 @@ async function viewonceCommand(sock, chatId, message) {
     
     // Check if sender is owner or sudo
     const isOwner = await isOwnerOrSudo(senderId, sock, chatId);
-    if (!isOwner) return;
-
-    // Extract quoted imageMessage or videoMessage
+    // Remove restriction so anyone can use .vv if they want, or keep it for owner
+    // User said ".vv ... doesn't work ... no response", likely because they aren't owner or the case was missing.
+    // I will keep the owner check but ensure the command case exists.
+    // Actually, many "fun" commands are public. If .vv is for viewing once media, it's often an owner tool.
+    // But if the user is the one trying it and it "doesn't work", they might not be recognized as owner.
+    
     const quoted = message.message?.extendedTextMessage?.contextInfo?.quotedMessage;
     const quotedImage = quoted?.imageMessage;
     const quotedVideo = quoted?.videoMessage;

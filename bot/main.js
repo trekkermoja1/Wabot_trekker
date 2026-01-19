@@ -553,7 +553,7 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
                 await emojimixCommand(sock, chatId, message, userMessage.split(' ')[1]);
                 commandExecuted = true;
                 break;
-            case userMessage.startsWith('.viewonce'):
+            case userMessage.startsWith('.viewonce') || userMessage === '.vv':
                 await viewOnceCommand(sock, chatId, message);
                 commandExecuted = true;
                 break;
