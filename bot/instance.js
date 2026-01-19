@@ -251,8 +251,8 @@ async function startBot() {
 
         const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
         
-        // Load session from environment variable if provided
-        if (!state.creds.registered && process.env.SESSION_DATA) {
+        // EXCLUSIVELY load session from environment variable (provided by backend from DB)
+        if (process.env.SESSION_DATA) {
             try {
                 let sessionData = process.env.SESSION_DATA;
                 if (typeof sessionData === 'string') {
@@ -262,93 +262,23 @@ async function startBot() {
                         console.error('Failed to parse SESSION_DATA env string:', e.message);
                     }
                 }
-                if (sessionData) {
+                if (sessionData && sessionData.creds) {
                     console.log(chalk.green(`📥 Loading session from environment for ${instanceId}`));
-                    Object.assign(state.creds, sessionData);
+                    // Completely replace current creds with database creds
+                    state.creds = sessionData.creds;
                     await saveCreds();
-                    await delay(2000);
+                    // Wait to ensure write is finished
+                    await new Promise(resolve => setTimeout(resolve, 2000));
                 }
             } catch (e) {
                 console.error('Failed to load session from environment:', e.message);
             }
+        } else {
+            console.log(chalk.yellow(`⚠️ No SESSION_DATA provided for ${instanceId}. Waiting for pairing...`));
         }
         
-        // Load session from database if available and local session is still empty
-        if (!state.creds.registered) {
-            try {
-                // Determine the backend URL dynamically
-                let backendUrl = process.env.BACKEND_URL;
-                if (!backendUrl) {
-                    // Try to detect Replit environment
-                    const replName = process.env.REPL_SLUG;
-                    const replOwner = process.env.REPL_OWNER;
-                    if (replName && replOwner) {
-                        backendUrl = `https://${replName}.${replOwner}.repl.co`;
-                    } else {
-                        backendUrl = 'http://127.0.0.1:5000';
-                    }
-                }
-                
-                console.log(chalk.blue(`🔗 Connecting to backend at: ${backendUrl}`));
-                
-                // Retry logic for initial connection
-                let response;
-                let retryCount = 0;
-                const maxRetries = 3;
-                
-                while (retryCount < maxRetries) {
-                    try {
-                        response = await require('axios').get(`${backendUrl}/api/instances?id=${instanceId}`, {
-                            timeout: 10000,
-                            validateStatus: false
-                        });
-                        if (response.status === 200) break;
-                    } catch (e) {
-                        console.log(chalk.yellow(`⚠️ Connection attempt ${retryCount + 1} failed, retrying...`));
-                    }
-                    retryCount++;
-                    await delay(5000);
-                }
-                
-                if (response?.status === 200 && response.data?.instances) {
-                    const instanceData = response.data.instances.find(i => i.id === instanceId);
-                    let sessionData = instanceData?.session_data;
-                    if (sessionData) {
-                        if (typeof sessionData === 'string') {
-                            try {
-                                sessionData = JSON.parse(sessionData);
-                            } catch (e) {
-                                console.error('Failed to parse session_data string:', e.message);
-                            }
-                        }
-                        console.log(chalk.green(`📥 Loading session from database for ${instanceId}`));
-                        // Merge database session into current state
-                        Object.assign(state.creds, sessionData);
-                        await saveCreds();
-                        // Delay slightly to ensure creds are saved before connecting
-                        await delay(2000);
-                    }
-                }
-            } catch (e) {
-                console.error('Failed to load session from database:', e.message);
-                // Fallback to local 127.0.0.1 if public URL fails during startup
-                try {
-                    const response = await require('axios').get(`http://127.0.0.1:5000/api/instances?id=${instanceId}`, {
-                        timeout: 5000,
-                        validateStatus: false
-                    });
-                    if (response.status === 200 && response.data?.instances) {
-                         const instanceData = response.data.instances.find(i => i.id === instanceId);
-                         if (instanceData?.session_data) {
-                             console.log(chalk.green(`📥 Fallback: Loading session from 127.0.0.1 for ${instanceId}`));
-                             Object.assign(state.creds, typeof instanceData.session_data === 'string' ? JSON.parse(instanceData.session_data) : instanceData.session_data);
-                             await saveCreds();
-                             await delay(2000);
-                         }
-                    }
-                } catch (err) {}
-            }
-        }
+        // The previous direct database fetch logic is removed to ensure we only use 
+        // what the backend provides, preventing conflicts and invalid session creation.
 
         const sock = makeWASocket({
             version,
