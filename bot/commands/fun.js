@@ -26,9 +26,8 @@ async function handleFunCommand(sock, msg, command) {
     let currentText = '';
 
     for (let i = 0; i < emojis.length; i++) {
-        currentText += emojis[i];
         await sock.sendMessage(from, { 
-            text: currentText, 
+            text: emojis[i], 
             edit: msg.key 
         });
         if (i < emojis.length - 1) {
