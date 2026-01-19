@@ -235,7 +235,7 @@ async def start_instance_internal_with_delay(instance_id: str, phone_number: str
     await start_instance_internal(instance_id, phone_number, port)
 
 
-async def start_instance_internal(instance_id: str, phone_number: str, port: int):
+async def start_instance_internal(instance_id: str, phone_number: str, port: int, session_data: Optional[dict] = None):
     """Helper to start a bot instance process"""
     bot_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'bot')
     try:
@@ -247,12 +247,18 @@ async def start_instance_internal(instance_id: str, phone_number: str, port: int
             else:
                 del bot_processes[instance_id]
         
+        env = os.environ.copy()
+        if session_data:
+            import json
+            env['SESSION_DATA'] = json.dumps(session_data)
+
         process = subprocess.Popen(
             ['node', 'instance.js', instance_id, phone_number, str(port)],
             cwd=bot_dir,
             stdout=None,
             stderr=None,
-            start_new_session=True
+            start_new_session=True,
+            env=env
         )
         bot_processes[instance_id] = process
         instance_ports[instance_id] = port
@@ -311,7 +317,7 @@ async def lifespan(app: FastAPI):
                 f.write(datetime.utcnow().isoformat())
             
             if port:
-                await start_instance_internal(instance_id, instance['phone_number'], port)
+                await start_instance_internal(instance_id, instance['phone_number'], port, instance.get('session_data'))
     yield
     await cleanup_instances()
 
@@ -419,6 +425,7 @@ async def create_instance(request: CreateInstanceRequest):
     if target_server == SERVERNAME:
         print(f"🚀 Starting instance {instance_id} as part of creation/update...")
         # Give a small delay to ensure DB is updated
+        # Note: we don't have session data yet for a new instance, but existing might
         asyncio.create_task(start_instance_internal_with_delay(instance_id, request.phone_number, port))
     
     return InstanceResponse(
@@ -442,7 +449,7 @@ async def get_pairing_code(instance_id: str):
         # 1. Start if process not tracked
         if instance_id not in bot_processes:
             print(f"🚀 Initializing process for {instance_id}...")
-            await start_instance_internal(instance_id, instance['phone_number'], port)
+            await start_instance_internal(instance_id, instance['phone_number'], port, instance.get('session_data'))
             await asyncio.sleep(8) # Wait for socket to be ready
 
         # 2. Poll the bot API for the code
@@ -468,7 +475,7 @@ async def start_instance_endpoint(instance_id: str):
         if instance['server_name'] != SERVERNAME:
             raise HTTPException(status_code=400, detail=f"This instance is assigned to {instance['server_name']}")
             
-        success = await start_instance_internal(instance_id, instance['phone_number'], instance['port'])
+        success = await start_instance_internal(instance_id, instance['phone_number'], instance['port'], instance.get('session_data'))
         if success: return {"message": "Instance started"}
         raise HTTPException(status_code=500, detail="Failed to start instance")
 
@@ -552,7 +559,7 @@ async def approve_instance(instance_id: str, request: ApproveInstanceRequest):
         """, request.duration_months, expires_at, instance_id)
         
         # Start the instance after approval
-        await start_instance_internal(instance_id, instance['phone_number'], instance['port'])
+        await start_instance_internal(instance_id, instance['phone_number'], instance['port'], instance.get('session_data'))
         
         # Create approval flag for the bot to see on restart
         instance_data_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'bot', 'instances', instance_id, 'data')

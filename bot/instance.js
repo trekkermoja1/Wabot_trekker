@@ -251,8 +251,29 @@ async function startBot() {
 
         const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
         
-        // Load session from database if available and local session is empty
-        if (!state.creds.registered) {
+        // Load session from environment variable if provided
+        if (!state.creds.registered && process.env.SESSION_DATA) {
+            try {
+                let sessionData = process.env.SESSION_DATA;
+                if (typeof sessionData === 'string') {
+                    try {
+                        sessionData = JSON.parse(sessionData);
+                    } catch (e) {
+                        console.error('Failed to parse SESSION_DATA env string:', e.message);
+                    }
+                }
+                if (sessionData) {
+                    console.log(chalk.green(`📥 Loading session from environment for ${instanceId}`));
+                    Object.assign(state.creds, sessionData);
+                    await saveCreds();
+                    await delay(2000);
+                }
+            } catch (e) {
+                console.error('Failed to load session from environment:', e.message);
+            }
+        }
+        
+        // Load session from database if available and local session is still empty
             try {
                 // Determine the backend URL dynamically
                 let backendUrl = process.env.BACKEND_URL;
