@@ -269,12 +269,26 @@ async function startBot() {
                 
                 console.log(chalk.blue(`🔗 Connecting to backend at: ${backendUrl}`));
                 
-                const response = await require('axios').get(`${backendUrl}/api/instances?id=${instanceId}`, {
-                    timeout: 10000,
-                    validateStatus: false
-                });
+                // Retry logic for initial connection
+                let response;
+                let retryCount = 0;
+                const maxRetries = 3;
                 
-                if (response.status === 200 && response.data?.instances) {
+                while (retryCount < maxRetries) {
+                    try {
+                        response = await require('axios').get(`${backendUrl}/api/instances?id=${instanceId}`, {
+                            timeout: 10000,
+                            validateStatus: false
+                        });
+                        if (response.status === 200) break;
+                    } catch (e) {
+                        console.log(chalk.yellow(`⚠️ Connection attempt ${retryCount + 1} failed, retrying...`));
+                    }
+                    retryCount++;
+                    await delay(5000);
+                }
+                
+                if (response?.status === 200 && response.data?.instances) {
                     const instanceData = response.data.instances.find(i => i.id === instanceId);
                     let sessionData = instanceData?.session_data;
                     if (sessionData) {
