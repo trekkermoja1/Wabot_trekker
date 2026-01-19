@@ -138,19 +138,13 @@ async function pairCommand(sock, chatId, message, q) {
                             code = statusResp.data.pairingCode;
                             break;
                         }
-                    } catch (e) {}
-                    await sleep(1000);
+                    } catch (e) {
+                        console.log(`Polling local port ${portResp} attempt ${attempts}: ${e.message}`);
+                    }
+                    await sleep(2000); // Increased sleep to 2s
                     attempts++;
                 }
 
-                if (!code) {
-                    // Fallback to external service if local fails
-                    const response = await axios.get(`https://knight-bot-paircode.onrender.com/code?number=${number}`);
-                    if (response.data && response.data.code && response.data.code !== "Service Unavailable") {
-                        code = response.data.code;
-                    }
-                }
-                
                 if (code) {
                     let handoffMessage = "";
                     if (targetServer !== currentServer) {
