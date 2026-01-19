@@ -247,7 +247,22 @@ async def start_instance_internal(instance_id: str, phone_number: str, port: int
             else:
                 del bot_processes[instance_id]
         
+        # Ensure session directory exists and write creds.json if session_data is provided
+        if session_data:
+            import json
+            session_dir = os.path.join(bot_dir, 'instances', instance_id, 'session')
+            os.makedirs(session_dir, exist_ok=True)
+            creds_path = os.path.join(session_dir, 'creds.json')
+            
+            # Extract creds if wrapped, otherwise use as is
+            creds_to_save = session_data.get('creds', session_data) if isinstance(session_data, dict) else session_data
+            
+            with open(creds_path, 'w') as f:
+                json.dump(creds_to_save, f, indent=2)
+            print(f"💾 Restored session for {instance_id} to {creds_path}")
+
         env = os.environ.copy()
+        # Keep ENV for backward compatibility or as secondary source
         if session_data:
             import json
             env['SESSION_DATA'] = json.dumps(session_data)
