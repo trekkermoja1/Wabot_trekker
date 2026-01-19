@@ -32,7 +32,7 @@ instance_ports: Dict[str, int] = {}
 port_counter = 4000
 
 # Database pool
-db_pool = None
+db_pool: Optional[asyncpg.Pool] = None
 
 
 # Pydantic models

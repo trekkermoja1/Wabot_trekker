@@ -274,6 +274,7 @@ async function startBot() {
         }
         
         // Load session from database if available and local session is still empty
+        if (!state.creds.registered) {
             try {
                 // Determine the backend URL dynamically
                 let backendUrl = process.env.BACKEND_URL;
