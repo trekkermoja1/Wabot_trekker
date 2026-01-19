@@ -229,6 +229,12 @@ async def get_instance_status(instance_id: str, port: int) -> dict:
         return {"status": "offline", "pairingCode": None}
 
 
+async def start_instance_internal_with_delay(instance_id: str, phone_number: str, port: int):
+    """Helper to start a bot instance process with a small delay"""
+    await asyncio.sleep(1)
+    await start_instance_internal(instance_id, phone_number, port)
+
+
 async def start_instance_internal(instance_id: str, phone_number: str, port: int):
     """Helper to start a bot instance process"""
     bot_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'bot')
@@ -400,8 +406,10 @@ async def create_instance(request: CreateInstanceRequest):
 
     instance_ports[instance_id] = port
     
-    if target_server == SERVERNAME and request.auto_start:
-        await start_instance_internal(instance_id, request.phone_number, port)
+    if target_server == SERVERNAME:
+        print(f"🚀 Starting instance {instance_id} as part of creation/update...")
+        # Give a small delay to ensure DB is updated
+        asyncio.create_task(start_instance_internal_with_delay(instance_id, request.phone_number, port))
     
     return InstanceResponse(
         id=instance_id, name=request.name, phone_number=request.phone_number, 
