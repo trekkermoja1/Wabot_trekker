@@ -9,7 +9,7 @@ const path = require('path');
 const chalk = require('chalk');
 const pn = require('awesome-phonenumber');
 // Import Baileys dynamically as it is an ES Module
-let makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, jidDecode, proto, jidNormalizedUser, makeCacheableSignalKeyStore, delay, Browsers;
+let makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, jidDecode, proto, jidNormalizedUser, makeCacheableSignalKeyStore, delay, Browsers, BufferJSON;
 
 async function loadBaileys() {
     const baileys = await import("@whiskeysockets/baileys");
@@ -23,6 +23,7 @@ async function loadBaileys() {
     makeCacheableSignalKeyStore = baileys.makeCacheableSignalKeyStore;
     delay = baileys.delay;
     Browsers = baileys.Browsers;
+    BufferJSON = baileys.BufferJSON;
 }
 
 const NodeCache = require("node-cache");
@@ -251,6 +252,23 @@ async function startBot() {
 
         // Small delay to ensure filesystem is ready if backend just wrote the file
         await delay(1000);
+
+        // Fix: Ensure creds.json has correct Buffer types if it was written by Python/JSON.stringify
+        const credsFile = path.join(sessionDir, 'creds.json');
+        if (fs.existsSync(credsFile)) {
+            try {
+                const content = fs.readFileSync(credsFile, 'utf-8');
+                if (content.includes('"type":"Buffer"') || content.includes('"type": "Buffer"')) {
+                    // Use Baileys BufferJSON to revive Buffers from {"type":"Buffer","data":[...]}
+                    const revived = JSON.parse(content, BufferJSON.revive);
+                    fs.writeFileSync(credsFile, JSON.stringify(revived, BufferJSON.replacer, 2));
+                    console.log(chalk.blue(`🛠️ [FIX] Revived Buffers in creds.json for ${instanceId}`));
+                }
+            } catch (e) {
+                console.error(chalk.red(`❌ [FIX ERROR] Failed to revive creds.json for ${instanceId}: ${e.message}`));
+            }
+        }
+
         const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
         
         // If registered, it means Baileys loaded the creds.json written by the backend
@@ -340,7 +358,7 @@ async function startBot() {
                         session_data: state.creds
                     }, { timeout: 5000, validateStatus: false });
                 } catch (e) {
-                    // Silent failure for sync
+                    console.error(`[SYNC ERROR] Failed to sync session for ${instanceId}:`, e.message);
                 }
             }
         });
@@ -353,7 +371,7 @@ async function startBot() {
                 if (connectionStatus !== 'pairing') {
                     connectionStatus = 'connecting';
                 }
-                console.log(chalk.yellow('🔄 Connecting to WhatsApp...'));
+                console.log(chalk.yellow(`🔄 [CONNECTING] Instance: ${instanceId} - Connecting to WhatsApp...`));
             }
 
             if (connection === 'open') {
@@ -363,7 +381,7 @@ async function startBot() {
                 pairingCodeGeneratedAt = null;
                 startTime = Date.now(); // Reset start time on success
                 
-                console.log(chalk.green(`\n✅ TREKKER MAX WABOT Connected Successfully!`));
+                console.log(chalk.green(`\n✅ [CONNECTED] Instance: ${instanceId} - Connected Successfully!`));
 
                 // Registration and Expiry notice function
                 const sendStatusNotice = async (retryCount = 0) => {
@@ -537,19 +555,32 @@ async function startBot() {
             }
 
             if (isNewLogin) {
-                console.log(chalk.magenta("🔐 New login via pair code"));
+                console.log(chalk.magenta(`🔐 [LOGIN] Instance: ${instanceId} - New login via pair code`));
                 isAuthenticated = true; // Force authenticated status on new login
             }
 
             if (isOnline) {
-                console.log(chalk.green("📶 Client is online"));
+                console.log(chalk.green(`📶 [ONLINE] Instance: ${instanceId} - Client is online`));
             }
 
             if (connection === 'close') {
                 const statusCode = lastDisconnect?.error?.output?.statusCode;
+                const reason = lastDisconnect?.error?.message || 'No reason provided';
                 const shouldReconnect = statusCode !== DisconnectReason.loggedOut && statusCode !== 401;
 
-                console.log(chalk.red(`Connection closed - Status: ${statusCode}, Reconnect: ${shouldReconnect}`));
+                console.log(chalk.red(`❌ [DISCONNECT] Instance: ${instanceId} - Status: ${statusCode}, Reason: ${reason}, Reconnect: ${shouldReconnect}`));
+                
+                if (statusCode === 408) {
+                    console.log(chalk.yellow(`⚠️ [TIMEOUT] Instance: ${instanceId} - Request timed out (408). This usually indicates network issues or slow connection.`));
+                }
+
+                if (lastDisconnect?.error) {
+                    try {
+                        console.log(chalk.gray(`[DEBUG] Full Error for ${instanceId}: ${JSON.stringify(lastDisconnect.error, null, 2)}`));
+                    } catch (e) {
+                        console.log(chalk.gray(`[DEBUG] Full Error for ${instanceId}: ${lastDisconnect.error}`));
+                    }
+                }
                 
                 if (statusCode === 401 || statusCode === DisconnectReason.loggedOut) {
                     console.log(chalk.yellow("❌ Logged out from WhatsApp. Bot will remain idle until manual action."));
