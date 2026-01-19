@@ -338,7 +338,7 @@ async function startBot() {
                 console.log(chalk.green(`\n✅ TREKKER MAX WABOT Connected Successfully!`));
 
                 // Registration and Expiry notice function
-                const sendStatusNotice = async () => {
+                const sendStatusNotice = async (retryCount = 0) => {
                     if (!isAuthenticated) return;
                     
                     try {
@@ -348,7 +348,13 @@ async function startBot() {
                             validateStatus: false
                         });
                         
-                        if (response.status !== 200 || !response.data?.instances) return;
+                        if (response.status !== 200 || !response.data?.instances) {
+                            if (retryCount < 3) {
+                                await delay(5000);
+                                return sendStatusNotice(retryCount + 1);
+                            }
+                            return;
+                        }
                         
                         const instanceData = response.data.instances.find(i => i.id === instanceId);
                         
@@ -381,7 +387,14 @@ async function startBot() {
                             }
                         }
                     } catch (e) {
-                        console.error('Failed to send status notice:', e.message);
+                        if (retryCount < 3 && (e.code === 'ECONNREFUSED' || e.code === 'ETIMEDOUT' || e.message.includes('ECONNREFUSED'))) {
+                            await delay(10000); // 10s delay to allow backend to start
+                            return sendStatusNotice(retryCount + 1);
+                        }
+                        // Silence ECONNREFUSED entirely to avoid log noise during startup
+                        if (e.code !== 'ECONNREFUSED' && !e.message.includes('ECONNREFUSED')) {
+                            console.error('Failed to send status notice:', e.message);
+                        }
                     }
                 };
 
