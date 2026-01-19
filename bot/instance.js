@@ -305,14 +305,14 @@ async function startBot() {
         // Initial status if not connected
         if (!sock.authState.creds.registered) {
             if (isApproved) {
-                console.log(chalk.yellow('⚠️ Bot is approved but session is missing. Waiting for valid session...'));
+                console.log(chalk.yellow('⚠️ Session not found in local, now fetching from database PostgreSQL under session_data...'));
                 connectionStatus = 'waiting_session';
             } else {
                 console.log(chalk.blue('👋 Bot is ready. Waiting for pairing request from frontend or command...'));
                 connectionStatus = 'ready_to_pair';
             }
         } else {
-            console.log(chalk.green('✅ Already registered, connecting...'));
+            console.log(chalk.green('✅ Session found, connecting to WhatsApp...'));
             connectionStatus = 'connecting';
         }
 
