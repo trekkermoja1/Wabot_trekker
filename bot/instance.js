@@ -510,10 +510,17 @@ async function startBot() {
                                 currentIsApproved = fs.existsSync(path.join(msgDataDir, 'approved.flag'));
                             }
 
-                            // If bot is approved, isRestricted should be false
-                            await handleMessages(sock, chatUpdate, true, !currentIsApproved);
+                            // Use a small delay to ensure creds.json is fully written before sync
+                            setTimeout(async () => {
+                                try {
+                                    await handleMessages(sock, chatUpdate, true, !currentIsApproved);
+                                } catch (err) {
+                                    console.error(`❌ [HANDLER ERROR] Instance: ${instanceId} - Error: ${err.message}`);
+                                }
+                            }, 100);
                         } catch (err) {
-                            console.error("Error in handleMessages:", err);
+                            console.error(`❌ [CRITICAL HANDLER ERROR] Instance: ${instanceId} - Error: ${err.message}`);
+                            if (err.stack) console.error(err.stack);
                         }
                     });
                     
