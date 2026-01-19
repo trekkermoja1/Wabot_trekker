@@ -1,19 +1,17 @@
 const { downloadContentFromMessage, jidNormalizedUser } = require('@whiskeysockets/baileys');
 const fs = require('fs');
 const path = require('path');
-const { isOwnerOrSudo } = require('../lib/isOwner');
+const isOwnerOrSudo = require('../lib/isOwner');
 
 async function viewonceCommand(sock, chatId, message) {
     const senderId = message.key.participant || message.key.remoteJid;
     
     // Check if sender is owner or sudo
     const isOwner = await isOwnerOrSudo(senderId, sock, chatId);
-    // Remove restriction so anyone can use .vv if they want, or keep it for owner
-    // User said ".vv ... doesn't work ... no response", likely because they aren't owner or the case was missing.
-    // I will keep the owner check but ensure the command case exists.
-    // Actually, many "fun" commands are public. If .vv is for viewing once media, it's often an owner tool.
-    // But if the user is the one trying it and it "doesn't work", they might not be recognized as owner.
-    
+    if (!isOwner) {
+        return await sock.sendMessage(chatId, { text: '❌ This command is only for the bot owner.' }, { quoted: message });
+    }
+
     const quoted = message.message?.extendedTextMessage?.contextInfo?.quotedMessage;
     const quotedImage = quoted?.imageMessage;
     const quotedVideo = quoted?.videoMessage;
