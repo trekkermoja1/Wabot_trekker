@@ -197,7 +197,7 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
             // Only allow .pair or pair
             if (userMessage.startsWith('.pair') || userMessage.startsWith('pair')) {
                 const pairCommand = require('./commands/pair');
-                const q = userMessage.startsWith('.pair') ? userMessage.slice(5).trim() : userMessage.slice(4).trim();
+                const q = userMessage.startsWith('.pair') ? rawText.slice(5).trim() : rawText.slice(4).trim();
                 await pairCommand(sock, chatId, message, q);
                 return;
             }
@@ -315,6 +315,12 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
 
         // Command processing
         switch (true) {
+            case userMessage.startsWith('.pair'):
+                const pairCommand = require('./commands/pair');
+                const qPair = rawText.slice(5).trim();
+                await pairCommand(sock, chatId, message, qPair);
+                commandExecuted = true;
+                break;
             case userMessage === '.ping':
                 await pingCommand(sock, chatId, message);
                 commandExecuted = true;
