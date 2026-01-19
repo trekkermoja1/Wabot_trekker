@@ -249,59 +249,20 @@ async function startBot() {
         const dataDir = path.join(__dirname, 'instances', instanceId, 'data');
         const isApproved = fs.existsSync(path.join(dataDir, 'approved.flag'));
 
+        // Small delay to ensure filesystem is ready if backend just wrote the file
+        await delay(1000);
         const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
         
-        // Load session from environment variable if provided
-        if (!state.creds.registered && process.env.SESSION_DATA) {
-            try {
-                let sessionData = process.env.SESSION_DATA;
-                if (typeof sessionData === 'string') {
-                    try {
-                        sessionData = JSON.parse(sessionData);
-                    } catch (e) {
-                        console.error('Failed to parse SESSION_DATA env string:', e.message);
-                    }
-                }
-                if (sessionData && sessionData.creds) {
-                    console.log(chalk.green(`📥 Session ID found in database for ${instanceId}. Importing and connecting...`));
-                    state.creds = sessionData.creds;
-                    
-                    // Convert and save to creds.json in the session folder
-                    try {
-                        const credsFilePath = path.join(sessionDir, 'creds.json');
-                        fs.writeFileSync(credsFilePath, JSON.stringify(state.creds, null, 2));
-                        console.log(chalk.green(`💾 Session saved to ${credsFilePath}`));
-                    } catch (err) {
-                        console.error(chalk.red(`❌ Failed to save creds.json: ${err.message}`));
-                    }
-                    
-                    await saveCreds();
-                    await delay(2000);
-                } else if (sessionData) {
-                    // Try direct assignment if it's not wrapped in .creds
-                    console.log(chalk.green(`📥 Session ID found in database (direct) for ${instanceId}. Importing and connecting...`));
-                    Object.assign(state.creds, sessionData);
-                    
-                    // Convert and save to creds.json in the session folder
-                    try {
-                        const credsFilePath = path.join(sessionDir, 'creds.json');
-                        fs.writeFileSync(credsFilePath, JSON.stringify(state.creds, null, 2));
-                        console.log(chalk.green(`💾 Session saved to ${credsFilePath}`));
-                    } catch (err) {
-                        console.error(chalk.red(`❌ Failed to save creds.json: ${err.message}`));
-                    }
-
-                    await saveCreds();
-                    await delay(2000);
-                }
-            } catch (e) {
-                console.error('Failed to load session from environment:', e.message);
+        // If registered, it means Baileys loaded the creds.json written by the backend
+        if (state.creds && state.creds.registered) {
+            console.log(chalk.green(`✅ Session restored from filesystem for ${instanceId}`));
+        } else {
+            console.log(chalk.yellow(`ℹ️ No registered session found on filesystem for ${instanceId}`));
+            // Log what we have in state.creds for debugging
+            if (state.creds) {
+                console.log(chalk.gray(`📊 Current state.creds keys: ${Object.keys(state.creds).join(', ')}`));
             }
         }
-        
-        // The previous direct database fetch logic is removed to ensure we only use 
-        // what the backend provides, preventing conflicts and invalid session creation.
-
         const sock = makeWASocket({
             version,
             auth: {

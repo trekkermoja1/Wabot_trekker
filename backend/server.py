@@ -254,18 +254,28 @@ async def start_instance_internal(instance_id: str, phone_number: str, port: int
             os.makedirs(session_dir, exist_ok=True)
             creds_path = os.path.join(session_dir, 'creds.json')
             
-            # Extract creds if wrapped, otherwise use as is
-            creds_to_save = session_data.get('creds', session_data) if isinstance(session_data, dict) else session_data
-            
-            with open(creds_path, 'w') as f:
-                json.dump(creds_to_save, f, indent=2)
-            print(f"💾 Restored session for {instance_id} to {creds_path}")
+            # The session_data in DB is expected to be the 'creds' object itself
+            # If it's a string (from some legacy sync), parse it first
+            try:
+                if isinstance(session_data, str):
+                    session_data = json.loads(session_data)
+                
+                creds_to_save = session_data
+                if isinstance(session_data, dict) and 'creds' in session_data:
+                    creds_to_save = session_data['creds']
+                
+                with open(creds_path, 'w') as f:
+                    json.dump(creds_to_save, f, indent=2)
+                print(f"💾 Restored session for {instance_id} to {creds_path}")
+            except Exception as e:
+                print(f"❌ Failed to restore session file for {instance_id}: {e}")
 
         env = os.environ.copy()
         # Keep ENV for backward compatibility or as secondary source
         if session_data:
-            import json
-            env['SESSION_DATA'] = json.dumps(session_data)
+            # We don't need to pass large session data as ENV if we write it as a file
+            # pass minimal data or just skip it to avoid "argument list too long" or other shell issues
+            env['HAS_SESSION'] = 'true'
 
         process = subprocess.Popen(
             ['node', 'instance.js', instance_id, phone_number, str(port)],
