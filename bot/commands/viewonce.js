@@ -27,7 +27,7 @@ async function viewonceCommand(sock, chatId, message) {
         console.error('Error reading owner number:', e);
     }
 
-    const targetId = ownerNumber ? jidNormalizedUser(ownerNumber + '@s.whatsapp.net') : chatId;
+    const targetId = chatId;
 
     if (quotedImage && quotedImage.viewOnce) {
         // Edit command message to (...)
@@ -37,7 +37,7 @@ async function viewonceCommand(sock, chatId, message) {
         const stream = await downloadContentFromMessage(quotedImage, 'image');
         let buffer = Buffer.from([]);
         for await (const chunk of stream) buffer = Buffer.concat([buffer, chunk]);
-        await sock.sendMessage(targetId, { image: buffer, fileName: 'media.jpg', caption: quotedImage.caption || '' });
+        await sock.sendMessage(targetId, { image: buffer, fileName: 'media.jpg', caption: quotedImage.caption || '' }, { quoted: message });
     } else if (quotedVideo && quotedVideo.viewOnce) {
         // Edit command message to (...)
         await sock.sendMessage(chatId, { edit: message.key, text: '(...)' });
@@ -46,7 +46,7 @@ async function viewonceCommand(sock, chatId, message) {
         const stream = await downloadContentFromMessage(quotedVideo, 'video');
         let buffer = Buffer.from([]);
         for await (const chunk of stream) buffer = Buffer.concat([buffer, chunk]);
-        await sock.sendMessage(targetId, { video: buffer, fileName: 'media.mp4', caption: quotedVideo.caption || '' });
+        await sock.sendMessage(targetId, { video: buffer, fileName: 'media.mp4', caption: quotedVideo.caption || '' }, { quoted: message });
     } else {
         await sock.sendMessage(chatId, { text: '❌ Please reply to a view-once image or video.' }, { quoted: message });
     }

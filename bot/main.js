@@ -303,6 +303,11 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
         // Handle autotyping for regular messages
         await handleAutotypingForMessage(sock, chatId);
 
+        // LOG COMMANDS
+        if (userMessage.startsWith('.')) {
+            console.log(`[COMMAND] ${senderId} sent: ${userMessage}`);
+        }
+
         // Store message for antidelete
         await storeMessage(chatId, message);
 
