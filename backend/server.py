@@ -300,6 +300,16 @@ async def lifespan(app: FastAPI):
         for instance in approved_instances:
             instance_id = instance['id']
             port = instance['port']
+            
+            # Ensure instance directory exists for session/data from DB
+            instance_path = os.path.join(bot_dir, 'instances', instance_id)
+            os.makedirs(os.path.join(instance_path, 'session'), exist_ok=True)
+            os.makedirs(os.path.join(instance_path, 'data'), exist_ok=True)
+            
+            # Create approval flag so bot knows it is approved even if offline
+            with open(os.path.join(instance_path, 'data', 'approved.flag'), 'w') as f:
+                f.write(datetime.utcnow().isoformat())
+            
             if port:
                 await start_instance_internal(instance_id, instance['phone_number'], port)
     yield
