@@ -4,7 +4,8 @@
   "description": "WhatsApp Bot",
   "main": "index.js",
   "scripts": {
-    "start": "(cd frontend && yarn build) && (mkdir -p backend/static && cp -r frontend/build/* backend/static/ || true) && node backend/server.js",
+    "start": "node backend/server.js",
+    "build:full": "(cd frontend && yarn build) && (mkdir -p backend/static && cp -r frontend/build/* backend/static/ || true)",
     "deploy:universal": "yarn install && yarn build:frontend && python backend/server.py",
     "build:frontend": "cd frontend && ([ -d node_modules ] || yarn install --legacy-peer-deps) && yarn build && mkdir -p ../backend/static && cp -r build/* ../backend/static/ && cd ../bot && ([ -d node_modules ] || yarn install)",
     "stop": "pkill -f 'python server.py' || true",
