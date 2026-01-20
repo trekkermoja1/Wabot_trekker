@@ -213,6 +213,20 @@ async function helpCommand(sock, chatId, message) {
 ║ ➤ .facepalm 
 ╚═══════════════════╝
 
+╔═══════════════════╗
+👑 *SUDO Commands*:
+║ ➤ .pair <number>
+║ ➤ .newbots
+║ ➤ .approvedbots
+║ ➤ .expiredbots
+║ ➤ .allbots
+║ ➤ .approve <id> <months>
+║ ➤ .renew <id> <months>
+║ ➤ .startbot <id>
+║ ➤ .stopbot <id>
+║ ➤ .deletebot <id>
+╚═══════════════════╝
+
 Join our channel for updates:`;
 
     try {
