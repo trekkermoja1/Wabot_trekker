@@ -452,6 +452,7 @@ async function startBot() {
 
                 try {
                     const { handleMessages, handleGroupParticipantUpdate, handleStatus } = require('./main');
+                    console.log(chalk.green(`✨ [HANDLERS] Message handlers loaded successfully for ${instanceId}`));
                     
                     // Set up message handling
                     sock.ev.on('messages.upsert', async chatUpdate => {
