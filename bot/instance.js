@@ -380,7 +380,8 @@ async function startBot() {
                 pairingCodeGeneratedAt = null;
                 startTime = Date.now(); // Reset start time on success
                 
-                console.log(chalk.green(`\n✅ [CONNECTED] Instance: ${instanceId} - Connected Successfully!`));
+                console.log(chalk.green(`\n📶 [ONLINE] Instance: ${instanceId} - Client is online`));
+                console.log(chalk.green(`✅ [CONNECTED] Instance: ${instanceId} - Connected Successfully!`));
                 console.log(chalk.blue(`👤 User: ${sock.user.id.split(':')[0]} (${sock.user.name || 'No Name'})`));
 
                 // Registration and Expiry notice function

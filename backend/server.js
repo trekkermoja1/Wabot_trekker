@@ -235,7 +235,7 @@ async function startInstanceInternal(instanceId, phoneNumber, port, sessionData 
     const proc = spawn('node', ['instance.js', instanceId, phoneNumber, String(port)], {
       cwd: botDir,
       detached: true,
-      stdio: 'ignore',
+      stdio: 'inherit',
       env
     });
 
