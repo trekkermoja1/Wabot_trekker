@@ -353,7 +353,7 @@ async function startBot() {
             // Sync credentials to database for persistence
             if (update.processedHistoryMessages || update.accountSettings) { // Only sync on meaningful updates
                 try {
-                    const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:5000';
+                    const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:8001';
                     await require('axios').post(`${backendUrl}/api/instances/${instanceId}/sync-session`, {
                         session_data: state.creds
                     }, { timeout: 5000, validateStatus: false });
@@ -390,7 +390,7 @@ async function startBot() {
                     if (!isAuthenticated) return;
                     
                     try {
-                        const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:5000';
+                        const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:8001';
                         const response = await require('axios').get(`${backendUrl}/api/instances?status=approved`, {
                             timeout: 5000,
                             validateStatus: false
@@ -489,7 +489,7 @@ async function startBot() {
                                 
                                 // Also check backend as a fallback
                                 if (!currentIsApproved) {
-                                    const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:5000';
+                                    const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:8001';
                                     const response = await require('axios').get(`${backendUrl}/api/instances?id=${instanceId}`, {
                                         timeout: 5000,
                                         validateStatus: false
