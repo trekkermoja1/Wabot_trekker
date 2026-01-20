@@ -90,7 +90,7 @@ async function pairCommand(sock, chatId, message, q) {
 
             try {
                 // Call local backend to handle instance creation/update
-                const backendUrl = process.env.BACKEND_URL || 'http://localhost:5000';
+                const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:8001';
                 
                 // 1. Create instance (Sequential Step 1)
                 // The backend now returns the target_server based on capacity
