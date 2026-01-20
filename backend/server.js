@@ -5,7 +5,11 @@ const { v4: uuidv4 } = require('uuid');
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
-require('dotenv').config();
+
+// Disable TLS certificate validation for self-signed certs
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
+require('dotenv').config({ quiet: true });
 
 const app = express();
 app.use(cors());
