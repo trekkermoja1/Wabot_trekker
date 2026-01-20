@@ -333,12 +333,11 @@ async function startBot() {
         // Attach requestPairing to the socket object so it can be called from the API
         sock.requestPairing = requestPairing;
 
-        // Initial status if not connected - AUTO request pairing code
+        // Initial status if not connected - DO NOT AUTO request pairing code
         if (!sock.authState.creds.registered) {
-            console.log(chalk.blue('👋 Session not registered. Auto-requesting pairing code...'));
+            console.log(chalk.blue('👋 Session not registered. Waiting for pairing request...'));
             connectionStatus = 'ready_to_pair';
-            // Auto-request pairing code after a short delay
-            setTimeout(requestPairing, 3000);
+            // REMOVED: Auto-request pairing code after a short delay
         } else {
             // This is only reached if state.creds.registered was already true or became true during load
             connectionStatus = 'connecting';
