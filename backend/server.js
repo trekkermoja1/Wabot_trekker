@@ -6,6 +6,7 @@ const { v4: uuidv4 } = require('uuid');
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const chalk = require('chalk');
 
 // Disable TLS certificate validation for self-signed certs
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
@@ -437,13 +438,16 @@ app.post('/api/instances/:instanceId/pair', async (req, res) => {
     const pairingCode = await getPairingCodeFromInstance(port, 40);
     
     if (!pairingCode) {
+      console.log(chalk.red(`❌ [PAIRING] Failed to generate pairing code for ${instanceId} after 40 attempts`));
       return res.status(500).json({ detail: 'Failed to generate pairing code - timeout' });
     }
     
     if (pairingCode === 'ALREADY_CONNECTED') {
+      console.log(chalk.green(`✅ [PAIRING] Bot ${instanceId} is already connected`));
       return res.json({ pairing_code: null, status: 'already_connected', message: 'Bot is already connected' });
     }
     
+    console.log(chalk.green(`🔑 [PAIRING] Generated code for ${instanceId}: ${pairingCode}`));
     res.json({ 
       pairing_code: pairingCode,
       instance_id: instanceId,
@@ -498,9 +502,11 @@ app.post('/api/instances/pair-new', async (req, res) => {
     const pairingCode = await getPairingCodeFromInstance(port, 40);
     
     if (!pairingCode) {
+      console.log(chalk.red(`❌ [PAIRING-NEW] Failed to generate pairing code for ${instanceId} after 40 attempts`));
       return res.status(500).json({ detail: 'Failed to generate pairing code - timeout' });
     }
     
+    console.log(chalk.green(`🔑 [PAIRING-NEW] Generated code for ${instanceId}: ${pairingCode}`));
     res.json({
       id: instanceId,
       pairing_code: pairingCode,
