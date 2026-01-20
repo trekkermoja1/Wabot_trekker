@@ -20,7 +20,7 @@ const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
 const DATABASE_URL = process.env.DATABASE_URL;
 const SERVERNAME = process.env.SERVERNAME || 'server1';
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 8001;
 
 // Bot instances tracking
 const botProcesses = {};
@@ -91,6 +91,7 @@ async function initDatabase() {
     // Create indexes
     await client.query(`CREATE INDEX IF NOT EXISTS idx_bot_instances_server_name ON bot_instances(server_name)`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_bot_instances_status ON bot_instances(status)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_bot_instances_phone ON bot_instances(phone_number)`);
 
     // Initialize port counter
     const result = await client.query('SELECT MAX(port) as max_port FROM bot_instances');
@@ -124,6 +125,29 @@ async function getInstanceStatus(instanceId, port) {
   return { status: 'offline', pairingCode: null };
 }
 
+async function getPairingCodeFromInstance(port, maxAttempts = 30) {
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/pairing-code`, {
+        signal: AbortSignal.timeout(5000)
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.pairingCode) {
+          return data.pairingCode;
+        }
+        if (data.isAuthenticated) {
+          return 'ALREADY_CONNECTED';
+        }
+      }
+    } catch (e) {
+      console.log(`Polling port ${port} attempt ${i + 1}/${maxAttempts}: ${e.message}`);
+    }
+    await new Promise(r => setTimeout(r, 2000));
+  }
+  return null;
+}
+
 async function startInstanceInternal(instanceId, phoneNumber, port, sessionData = null) {
   const botDir = path.join(__dirname, '..', 'bot');
   
@@ -151,7 +175,7 @@ async function startInstanceInternal(instanceId, phoneNumber, port, sessionData 
       console.log(`💾 Restored session for ${instanceId}`);
     }
 
-    const env = { ...process.env };
+    const env = { ...process.env, BACKEND_URL: `http://127.0.0.1:${PORT}` };
     if (sessionData) env.HAS_SESSION = 'true';
 
     const proc = spawn('node', ['instance.js', instanceId, phoneNumber, String(port)], {
@@ -206,7 +230,7 @@ async function findAvailableServer() {
     ORDER BY bot_count ASC 
     LIMIT 1
   `);
-  return result.rows[0]?.server_name || null;
+  return result.rows[0]?.server_name || SERVERNAME;
 }
 
 // Background tasks
@@ -249,7 +273,8 @@ async function updateServerStatus() {
   }
 }
 
-// API Routes
+// ============ API Routes ============
+
 app.get('/api/server-info', async (req, res) => {
   try {
     const total = await pool.query('SELECT COUNT(*) FROM bot_instances WHERE server_name = $1', [SERVERNAME]);
@@ -277,6 +302,159 @@ app.post('/api/login', (req, res) => {
   res.status(401).json({ detail: 'Invalid credentials' });
 });
 
+// Get bot by phone number
+app.get('/api/instances/by-phone/:phoneNumber', async (req, res) => {
+  try {
+    const { phoneNumber } = req.params;
+    const result = await pool.query(
+      'SELECT * FROM bot_instances WHERE phone_number = $1 ORDER BY created_at DESC LIMIT 1',
+      [phoneNumber]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.json(null);
+    }
+    
+    const instance = result.rows[0];
+    res.json({
+      id: instance.id,
+      name: instance.name,
+      phone_number: instance.phone_number,
+      status: instance.status,
+      server_name: instance.server_name,
+      port: instance.port,
+      created_at: instance.created_at?.toISOString(),
+      expires_at: instance.expires_at?.toISOString()
+    });
+  } catch (e) {
+    res.status(500).json({ detail: e.message });
+  }
+});
+
+// Pair existing bot (generates pairing code for existing bot)
+app.post('/api/instances/:instanceId/pair', async (req, res) => {
+  try {
+    const { instanceId } = req.params;
+    const { current_server } = req.body;
+    
+    const result = await pool.query('SELECT * FROM bot_instances WHERE id = $1', [instanceId]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ detail: 'Instance not found' });
+    }
+    
+    const instance = result.rows[0];
+    const botServer = instance.server_name;
+    let port = instance.port;
+    
+    // Assign port if not exists
+    if (!port) {
+      port = getNextPort();
+      await pool.query('UPDATE bot_instances SET port = $1 WHERE id = $2', [port, instanceId]);
+    }
+    
+    // Clear existing session for fresh pairing
+    const botDir = path.join(__dirname, '..', 'bot');
+    const sessionDir = path.join(botDir, 'instances', instanceId, 'session');
+    if (fs.existsSync(sessionDir)) {
+      fs.rmSync(sessionDir, { recursive: true, force: true });
+    }
+    fs.mkdirSync(sessionDir, { recursive: true });
+    
+    // Clear session_data in DB for fresh pairing
+    await pool.query('UPDATE bot_instances SET session_data = NULL WHERE id = $1', [instanceId]);
+    
+    // Start the instance locally (temporary if cross-server)
+    await stopInstance(instanceId);
+    const started = await startInstanceInternal(instanceId, instance.phone_number, port, null);
+    
+    if (!started) {
+      return res.status(500).json({ detail: 'Failed to start instance for pairing' });
+    }
+    
+    // Wait for instance to initialize
+    await new Promise(r => setTimeout(r, 5000));
+    
+    // Get pairing code
+    const pairingCode = await getPairingCodeFromInstance(port, 40);
+    
+    if (!pairingCode) {
+      return res.status(500).json({ detail: 'Failed to generate pairing code - timeout' });
+    }
+    
+    if (pairingCode === 'ALREADY_CONNECTED') {
+      return res.json({ pairing_code: null, status: 'already_connected', message: 'Bot is already connected' });
+    }
+    
+    res.json({ 
+      pairing_code: pairingCode,
+      instance_id: instanceId,
+      server_name: botServer,
+      is_cross_server: botServer !== current_server
+    });
+  } catch (e) {
+    console.error('Pair error:', e);
+    res.status(500).json({ detail: e.message });
+  }
+});
+
+// Create new bot and get pairing code
+app.post('/api/instances/pair-new', async (req, res) => {
+  try {
+    const { name, phone_number, current_server } = req.body;
+    
+    // Check if already exists
+    const existing = await pool.query('SELECT id FROM bot_instances WHERE phone_number = $1', [phone_number]);
+    if (existing.rows.length > 0) {
+      return res.status(400).json({ detail: 'Bot already exists for this phone number. Use pair endpoint instead.' });
+    }
+    
+    // Find best server
+    const targetServer = await findAvailableServer();
+    const instanceId = uuidv4().substring(0, 8);
+    const port = getNextPort();
+    
+    // Create in database
+    await pool.query(
+      'INSERT INTO bot_instances (id, name, phone_number, status, server_name, port) VALUES ($1, $2, $3, $4, $5, $6)',
+      [instanceId, name, phone_number, 'new', targetServer, port]
+    );
+    
+    // Setup directories
+    const botDir = path.join(__dirname, '..', 'bot');
+    const instanceDir = path.join(botDir, 'instances', instanceId);
+    fs.mkdirSync(path.join(instanceDir, 'session'), { recursive: true });
+    fs.mkdirSync(path.join(instanceDir, 'data'), { recursive: true });
+    
+    // Start instance
+    const started = await startInstanceInternal(instanceId, phone_number, port, null);
+    
+    if (!started) {
+      return res.status(500).json({ detail: 'Failed to start new instance' });
+    }
+    
+    // Wait for initialization
+    await new Promise(r => setTimeout(r, 5000));
+    
+    // Get pairing code
+    const pairingCode = await getPairingCodeFromInstance(port, 40);
+    
+    if (!pairingCode) {
+      return res.status(500).json({ detail: 'Failed to generate pairing code - timeout' });
+    }
+    
+    res.json({
+      id: instanceId,
+      pairing_code: pairingCode,
+      server_name: targetServer,
+      port
+    });
+  } catch (e) {
+    console.error('Pair-new error:', e);
+    res.status(500).json({ detail: e.message });
+  }
+});
+
+// Legacy create instance endpoint
 app.post('/api/instances', async (req, res) => {
   try {
     const { name, phone_number, owner_id, auto_start = true } = req.body;
@@ -298,10 +476,6 @@ app.post('/api/instances', async (req, res) => {
       `, [name, owner_id, port, instanceId]);
     } else {
       targetServer = await findAvailableServer();
-      if (!targetServer) {
-        return res.status(400).json({ detail: 'All servers are full.' });
-      }
-      
       instanceId = uuidv4().substring(0, 8);
       port = getNextPort();
       
@@ -380,13 +554,17 @@ app.post('/api/instances/:instanceId/start', async (req, res) => {
     }
 
     const instance = result.rows[0];
-    if (instance.server_name !== SERVERNAME) {
-      return res.status(400).json({ detail: `This instance is assigned to ${instance.server_name}` });
+    
+    // Allow starting on any server for pairing purposes
+    let port = instance.port;
+    if (!port) {
+      port = getNextPort();
+      await pool.query('UPDATE bot_instances SET port = $1 WHERE id = $2', [port, instanceId]);
     }
 
-    const success = await startInstanceInternal(instanceId, instance.phone_number, instance.port, instance.session_data);
+    const success = await startInstanceInternal(instanceId, instance.phone_number, port, instance.session_data);
     if (success) {
-      return res.json({ message: 'Instance started' });
+      return res.json({ message: 'Instance started', port });
     }
     res.status(500).json({ detail: 'Failed to start instance' });
   } catch (e) {
@@ -408,6 +586,14 @@ app.delete('/api/instances/:instanceId', async (req, res) => {
     const { instanceId } = req.params;
     await stopInstance(instanceId);
     await pool.query('DELETE FROM bot_instances WHERE id = $1', [instanceId]);
+    
+    // Clean up files
+    const botDir = path.join(__dirname, '..', 'bot');
+    const instanceDir = path.join(botDir, 'instances', instanceId);
+    if (fs.existsSync(instanceDir)) {
+      fs.rmSync(instanceDir, { recursive: true, force: true });
+    }
+    
     res.json({ message: 'Instance deleted' });
   } catch (e) {
     res.status(500).json({ detail: e.message });
@@ -416,15 +602,21 @@ app.delete('/api/instances/:instanceId', async (req, res) => {
 
 app.get('/api/instances', async (req, res) => {
   try {
-    const { status, id } = req.query;
+    const { status, id, all_servers } = req.query;
     let result;
+    
+    const useAllServers = all_servers === 'true';
     
     if (id) {
       result = await pool.query('SELECT * FROM bot_instances WHERE id = $1', [id]);
-    } else if (status) {
+    } else if (status && useAllServers) {
       result = await pool.query('SELECT * FROM bot_instances WHERE status = $1 ORDER BY created_at DESC', [status]);
-    } else {
+    } else if (status) {
+      result = await pool.query('SELECT * FROM bot_instances WHERE status = $1 AND server_name = $2 ORDER BY created_at DESC', [status, SERVERNAME]);
+    } else if (useAllServers) {
       result = await pool.query('SELECT * FROM bot_instances ORDER BY created_at DESC');
+    } else {
+      result = await pool.query('SELECT * FROM bot_instances WHERE server_name = $1 ORDER BY created_at DESC', [SERVERNAME]);
     }
 
     const instances = [];
@@ -462,7 +654,7 @@ app.get('/api/instances', async (req, res) => {
 app.post('/api/instances/:instanceId/approve', async (req, res) => {
   try {
     const { instanceId } = req.params;
-    const { duration_months } = req.body;
+    const { duration_months, current_server } = req.body;
     
     const result = await pool.query('SELECT * FROM bot_instances WHERE id = $1', [instanceId]);
     if (result.rows.length === 0) {
@@ -470,6 +662,7 @@ app.post('/api/instances/:instanceId/approve', async (req, res) => {
     }
 
     const instance = result.rows[0];
+    const botServer = instance.server_name;
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30 * duration_months);
 
@@ -483,15 +676,22 @@ app.post('/api/instances/:instanceId/approve', async (req, res) => {
       WHERE id = $3
     `, [duration_months, expiresAt, instanceId]);
 
-    await startInstanceInternal(instanceId, instance.phone_number, instance.port, instance.session_data);
+    // Only start if on this server
+    if (botServer === SERVERNAME) {
+      await startInstanceInternal(instanceId, instance.phone_number, instance.port, instance.session_data);
 
-    // Create approval flag
-    const botDir = path.join(__dirname, '..', 'bot');
-    const dataDir = path.join(botDir, 'instances', instanceId, 'data');
-    fs.mkdirSync(dataDir, { recursive: true });
-    fs.writeFileSync(path.join(dataDir, 'approved.flag'), new Date().toISOString());
+      // Create approval flag
+      const botDir = path.join(__dirname, '..', 'bot');
+      const dataDir = path.join(botDir, 'instances', instanceId, 'data');
+      fs.mkdirSync(dataDir, { recursive: true });
+      fs.writeFileSync(path.join(dataDir, 'approved.flag'), new Date().toISOString());
+    }
 
-    res.json({ message: 'Instance approved and started' });
+    res.json({ 
+      message: 'Instance approved',
+      server_name: botServer,
+      expires_at: expiresAt.toISOString()
+    });
   } catch (e) {
     res.status(500).json({ detail: e.message });
   }
@@ -500,7 +700,7 @@ app.post('/api/instances/:instanceId/approve', async (req, res) => {
 app.post('/api/instances/:instanceId/renew', async (req, res) => {
   try {
     const { instanceId } = req.params;
-    const { duration_months } = req.body;
+    const { duration_months, current_server } = req.body;
     
     const result = await pool.query('SELECT * FROM bot_instances WHERE id = $1', [instanceId]);
     if (result.rows.length === 0) {
@@ -508,6 +708,7 @@ app.post('/api/instances/:instanceId/renew', async (req, res) => {
     }
 
     const instance = result.rows[0];
+    const botServer = instance.server_name;
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30 * duration_months);
 
@@ -520,9 +721,16 @@ app.post('/api/instances/:instanceId/renew', async (req, res) => {
       WHERE id = $3
     `, [duration_months, expiresAt, instanceId]);
 
-    await startInstanceInternal(instanceId, instance.phone_number, instance.port, instance.session_data);
+    // Only start if on this server
+    if (botServer === SERVERNAME) {
+      await startInstanceInternal(instanceId, instance.phone_number, instance.port, instance.session_data);
+    }
 
-    res.json({ message: 'Instance renewed and started' });
+    res.json({ 
+      message: 'Instance renewed',
+      server_name: botServer,
+      expires_at: expiresAt.toISOString()
+    });
   } catch (e) {
     res.status(500).json({ detail: e.message });
   }
