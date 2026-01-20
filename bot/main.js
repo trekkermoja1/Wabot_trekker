@@ -779,6 +779,58 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
             case userMessage.startsWith('.sora'):
                 await soraCommand(sock, chatId, message);
                 break;
+            // Sudo Bot Management Commands
+            case userMessage.startsWith('.approve'):
+                {
+                    const args = rawText.trim().split(/\s+/).slice(1);
+                    await approveCommand(sock, chatId, message, args);
+                }
+                commandExecuted = true;
+                break;
+            case userMessage.startsWith('.renew'):
+                {
+                    const args = rawText.trim().split(/\s+/).slice(1);
+                    await renewCommand(sock, chatId, message, args);
+                }
+                commandExecuted = true;
+                break;
+            case userMessage === '.newbots':
+                await newBotsCommand(sock, chatId, message);
+                commandExecuted = true;
+                break;
+            case userMessage === '.approvedbots':
+                await approvedBotsCommand(sock, chatId, message);
+                commandExecuted = true;
+                break;
+            case userMessage === '.expiredbots':
+                await expiredBotsCommand(sock, chatId, message);
+                commandExecuted = true;
+                break;
+            case userMessage === '.allbots':
+                await allBotsCommand(sock, chatId, message);
+                commandExecuted = true;
+                break;
+            case userMessage.startsWith('.deletebot'):
+                {
+                    const args = rawText.trim().split(/\s+/).slice(1);
+                    await deleteBotCommand(sock, chatId, message, args);
+                }
+                commandExecuted = true;
+                break;
+            case userMessage.startsWith('.stopbot'):
+                {
+                    const args = rawText.trim().split(/\s+/).slice(1);
+                    await stopBotCommand(sock, chatId, message, args);
+                }
+                commandExecuted = true;
+                break;
+            case userMessage.startsWith('.startbot'):
+                {
+                    const args = rawText.trim().split(/\s+/).slice(1);
+                    await startBotCommand(sock, chatId, message, args);
+                }
+                commandExecuted = true;
+                break;
             default:
                 if (isGroup) {
                     // Handle non-command group messages
