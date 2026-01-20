@@ -4,7 +4,7 @@
   "description": "WhatsApp Bot",
   "main": "index.js",
   "scripts": {
-    "start": "pip install -r backend/requirements.txt && (cd frontend && [ -d node_modules ] || npm install) && (cd frontend && npm run build) && (mkdir -p backend/static && cp -r frontend/build/* backend/static/ || true) && (cd bot && [ -d node_modules ] || npm install) && python backend/server.py",
+    "start": "pip install -r backend/requirements.txt && (cd frontend && [ -d node_modules ] || yarn install --legacy-peer-deps) && (cd frontend && yarn build) && (mkdir -p backend/static && cp -r frontend/build/* backend/static/ || true) && (cd bot && [ -d node_modules ] || yarn install) && (cd backend && python server.py)",
     "deploy:universal": "npm install && npm run build:frontend && python backend/server.py",
     "build:frontend": "cd frontend && ([ -d node_modules ] || yarn install --legacy-peer-deps) && yarn build && mkdir -p ../backend/static && cp -r build/* ../backend/static/ && cd ../bot && ([ -d node_modules ] || yarn install)",
     "stop": "pkill -f 'python server.py' || true",
