@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node backend/server.js",
-    "build:full": "(cd frontend && yarn build) && (mkdir -p backend/static && cp -r frontend/build/* backend/static/ || true)",
+    "build": "(cd frontend && yarn install && yarn build) && (mkdir -p backend/static && cp -r frontend/build/* backend/static/ || true) && (cd bot && yarn install) && (cd backend && yarn install)",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
