@@ -92,7 +92,7 @@ MONGO_URL=mongodb://localhost:27017
 
 ### Frontend (.env)
 ```
-REACT_APP_BACKEND_URL=https://import-assistant-2.preview.emergentagent.com
+REACT_APP_BACKEND_URL=https://botmanager-8.preview.emergentagent.com
 ```
 
 ## How to Use
