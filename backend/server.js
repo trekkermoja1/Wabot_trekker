@@ -543,7 +543,7 @@ app.post('/api/instances/:instanceId/sync-session', async (req, res) => {
 
 // Serve static files
 app.use(express.static('static'));
-app.get('*', (req, res) => {
+app.use((req, res, next) => {
   const indexPath = path.join(__dirname, 'static', 'index.html');
   if (fs.existsSync(indexPath)) {
     res.sendFile(indexPath);
