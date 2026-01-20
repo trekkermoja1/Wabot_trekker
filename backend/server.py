@@ -132,8 +132,19 @@ async def init_database():
                     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
                     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
                     approved_at TIMESTAMP,
-                    expires_at TIMESTAMP
+                    expires_at TIMESTAMP,
+                    session_data JSONB
                 )
+            """)
+            
+            # Add session_data column if it doesn't exist (for existing tables)
+            await conn.execute("""
+                DO $$ 
+                BEGIN 
+                    ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS session_data JSONB;
+                EXCEPTION 
+                    WHEN duplicate_column THEN NULL;
+                END $$;
             """)
             
             # Upsert current server into manager
