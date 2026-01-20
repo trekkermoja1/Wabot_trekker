@@ -20,7 +20,7 @@ const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
 const DATABASE_URL = process.env.DATABASE_URL;
 const SERVERNAME = process.env.SERVERNAME || 'server1';
-const PORT = process.env.PORT || 8001;
+const PORT = process.env.PORT || 5000;
 
 // Bot instances tracking
 const botProcesses = {};
