@@ -353,12 +353,14 @@ async function startBot() {
             // Sync credentials to database for persistence
             if (update.processedHistoryMessages || update.accountSettings) { // Only sync on meaningful updates
                 try {
-                    const backendUrl = process.env.BACKEND_URL || 'http://0.0.0.0:5000';
+                    const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:5000';
                     await require('axios').post(`${backendUrl}/api/instances/${instanceId}/sync-session`, {
                         session_data: state.creds
                     }, { timeout: 5000, validateStatus: false });
                 } catch (e) {
-                    console.error(`[SYNC ERROR] Failed to sync session for ${instanceId}:`, e.message);
+                    if (e.code !== 'ECONNREFUSED') {
+                        console.error(`[SYNC ERROR] Failed to sync session for ${instanceId}:`, e.message);
+                    }
                 }
             }
         });
@@ -388,7 +390,7 @@ async function startBot() {
                     if (!isAuthenticated) return;
                     
                     try {
-                        const backendUrl = process.env.BACKEND_URL || 'http://0.0.0.0:5000';
+                        const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:5000';
                         const response = await require('axios').get(`${backendUrl}/api/instances?status=approved`, {
                             timeout: 5000,
                             validateStatus: false
@@ -471,8 +473,12 @@ async function startBot() {
                             const { handleFunCommand } = require('./commands/fun');
                             const mText = (mek.message.conversation || mek.message.extendedTextMessage?.text || '').trim().toLowerCase();
                             if (mText.startsWith('.')) {
-                                const isFun = await handleFunCommand(sock, mek, mText);
-                                if (isFun) return;
+                                try {
+                                    const isFun = await handleFunCommand(sock, mek, mText);
+                                    if (isFun) return;
+                                } catch (e) {
+                                    console.error('Fun command error:', e.message);
+                                }
                             }
                             
                             // Re-check approval status on every message for real-time removal of restrictions
@@ -483,7 +489,7 @@ async function startBot() {
                                 
                                 // Also check backend as a fallback
                                 if (!currentIsApproved) {
-                                    const backendUrl = process.env.BACKEND_URL || 'http://0.0.0.0:5000';
+                                    const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:5000';
                                     const response = await require('axios').get(`${backendUrl}/api/instances?id=${instanceId}`, {
                                         timeout: 5000,
                                         validateStatus: false

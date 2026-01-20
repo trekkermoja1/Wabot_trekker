@@ -217,7 +217,7 @@ async def get_instance_status(instance_id: str, port: int) -> dict:
     """Get status from running bot instance"""
     url = f"http://127.0.0.1:{port}/status"
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.get(url)
             if response.status_code == 200:
                 data = response.json()
@@ -225,7 +225,7 @@ async def get_instance_status(instance_id: str, port: int) -> dict:
                 return data
             return {"status": "offline", "pairingCode": None}
     except Exception as e:
-        print(f"❌ Status error for {instance_id} on port {port}: {e}")
+        # print(f"❌ Status error for {instance_id} on port {port}: {e}")
         return {"status": "offline", "pairingCode": None}
 
 
