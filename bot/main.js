@@ -40,7 +40,17 @@ const { autotypingCommand, isAutotypingEnabled, handleAutotypingForMessage, hand
 const { autoreadCommand, isAutoreadEnabled, handleAutoread } = require('./commands/autoread');
 
 // Bot management commands
-const { approveCommand, newBotsCommand, expiredBotsCommand } = require('./commands/botmanagement');
+const { 
+    approveCommand, 
+    renewCommand,
+    newBotsCommand, 
+    approvedBotsCommand,
+    expiredBotsCommand,
+    allBotsCommand,
+    deleteBotCommand,
+    stopBotCommand,
+    startBotCommand
+} = require('./commands/botmanagement');
 
 // Command imports
 const tagAllCommand = require('./commands/tagall');
