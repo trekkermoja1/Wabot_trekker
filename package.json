@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "(cd frontend && [ -d node_modules ] || yarn install --legacy-peer-deps) && (cd frontend && yarn build) && (mkdir -p backend/static && cp -r frontend/build/* backend/static/ || true) && (cd bot && [ -d node_modules ] || yarn install) && (cd backend && [ -d node_modules ] || yarn install) && node backend/server.js",
-    "deploy:universal": "npm install && npm run build:frontend && python backend/server.py",
+    "deploy:universal": "yarn install && yarn build:frontend && python backend/server.py",
     "build:frontend": "cd frontend && ([ -d node_modules ] || yarn install --legacy-peer-deps) && yarn build && mkdir -p ../backend/static && cp -r build/* ../backend/static/ && cd ../bot && ([ -d node_modules ] || yarn install)",
     "stop": "pkill -f 'python server.py' || true",
     "start:bot": "node index.js",

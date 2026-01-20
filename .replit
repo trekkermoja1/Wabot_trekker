@@ -27,7 +27,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "node backend/server.js"
+args = "yarn start"
 waitForPort = 5000
 
 [[ports]]
@@ -77,7 +77,3 @@ externalPort = 6800
 [[ports]]
 localPort = 5000
 externalPort = 80
-
-[[ports]]
-localPort = 8001
-externalPort = 8008
