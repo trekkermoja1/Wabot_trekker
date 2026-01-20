@@ -303,20 +303,6 @@ async function startBot() {
         // Ensure session is saved periodically
         sock.ev.on('creds.update', saveCreds);
 
-        // Initial status if not connected
-        if (!sock.authState.creds.registered) {
-            if (isApproved) {
-                // Status is already handled by the environment loading logic above
-                connectionStatus = 'waiting_session';
-            } else {
-                console.log(chalk.blue('👋 Bot is ready. Waiting for pairing request from frontend or command...'));
-                connectionStatus = 'ready_to_pair';
-            }
-        } else {
-            // This is only reached if state.creds.registered was already true or became true during load
-            connectionStatus = 'connecting';
-        }
-
         const requestPairing = async () => {
             if (connectionStatus === 'logged_out' || isAuthenticated) return;
             try {
@@ -346,6 +332,17 @@ async function startBot() {
 
         // Attach requestPairing to the socket object so it can be called from the API
         sock.requestPairing = requestPairing;
+
+        // Initial status if not connected - AUTO request pairing code
+        if (!sock.authState.creds.registered) {
+            console.log(chalk.blue('👋 Session not registered. Auto-requesting pairing code...'));
+            connectionStatus = 'ready_to_pair';
+            // Auto-request pairing code after a short delay
+            setTimeout(requestPairing, 3000);
+        } else {
+            // This is only reached if state.creds.registered was already true or became true during load
+            connectionStatus = 'connecting';
+        }
         
         // Handle credentials update
         sock.ev.on('creds.update', async (update) => {
