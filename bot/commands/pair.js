@@ -168,8 +168,25 @@ async function pairCommand(sock, chatId, message, q) {
                         handoffMessage = `\n\n*Note:* This bot is assigned to *${targetServer}* tenancy.`;
                     }
 
+                    // Handle already connected case
+                    if (code === 'ALREADY_CONNECTED') {
+                        await sock.sendMessage(chatId, {
+                            text: `*✅ Bot for ${number} is already connected!*\n\nNo pairing needed - the bot instance is already running.${handoffMessage}`,
+                            contextInfo: {
+                                forwardingScore: 1,
+                                isForwarded: true,
+                                forwardedNewsletterMessageInfo: {
+                                    newsletterJid: '120363421057570812@newsletter',
+                                    newsletterName: 'TREKKER-md',
+                                    serverMessageId: -1
+                                }
+                            }
+                        });
+                        continue;
+                    }
+
                     await sock.sendMessage(chatId, {
-                        text: `*✅ Pairing Code for ${number}:*\n\nCode: *${code}*\n\n_Please enter this code on your WhatsApp to connect._\n${handoffMessage}\n\n*Important:* This is a separate instance. Your current bot remains active.`,
+                        text: `*✅ Pairing Code for ${number}:*\n\nCode: *${code}*\n\n_Enter this code on WhatsApp > Linked Devices > Link with Phone Number_\n${handoffMessage}\n\n*Important:* This is a separate instance. Your current bot remains active.`,
                         contextInfo: {
                             forwardingScore: 1,
                             isForwarded: true,
