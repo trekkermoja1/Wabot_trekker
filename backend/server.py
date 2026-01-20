@@ -80,6 +80,18 @@ async def init_database():
         # Parse the connection string for asyncpg
         result = urllib.parse.urlparse(DATABASE_URL)
         
+        # Check if SSL is required from query params
+        query_params = urllib.parse.parse_qs(result.query)
+        ssl_mode = query_params.get('sslmode', ['disable'])[0]
+        
+        # Create SSL context if required
+        ssl_context = None
+        if ssl_mode in ('require', 'verify-ca', 'verify-full'):
+            import ssl
+            ssl_context = ssl.create_default_context()
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_NONE
+        
         db_pool = await asyncpg.create_pool(
             host=result.hostname,
             port=result.port,
@@ -87,7 +99,8 @@ async def init_database():
             password=result.password,
             database=result.path[1:],  # Remove leading slash
             min_size=2,
-            max_size=10
+            max_size=10,
+            ssl=ssl_context
         )
         
         # Create tables
