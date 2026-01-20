@@ -110,6 +110,7 @@ async function pairCommand(sock, chatId, message, q) {
                 const instanceId = createResp.data.id;
                 const targetServer = createResp.data.server_name;
                 const currentServer = process.env.SERVERNAME || 'server1';
+                const portResp = createResp.data.port;
 
                 // Drop current session files if it already exists locally to ensure clean pairing
                 const fs = require('fs');
@@ -124,24 +125,40 @@ async function pairCommand(sock, chatId, message, q) {
                     }
                 }
 
-                // 2. Generate Pairing Code (Sequential Step 2)
+                // 2. Start the instance first (it was created with auto_start: false)
+                console.log(`Starting instance ${instanceId} on port ${portResp}...`);
+                try {
+                    await axios.post(`${backendUrl}/api/instances/${instanceId}/start`);
+                    console.log(`Instance ${instanceId} start command sent`);
+                } catch (startErr) {
+                    console.log(`Start request note: ${startErr.message}`);
+                }
+
+                // Wait for the instance to initialize
+                await sleep(5000);
+
+                // 3. Generate Pairing Code (Sequential Step 3)
                 // Use the local instance for pairing instead of external service to ensure it matches the instance created
-                const portResp = createResp.data.port;
                 let code = null;
                 
                 // Wait for the local instance to be ready and provide a code
                 let attempts = 0;
-                while (!code && attempts < 20) {
+                while (!code && attempts < 30) {
                     try {
-                        const statusResp = await axios.get(`http://localhost:${portResp}/pairing-code`);
+                        const statusResp = await axios.get(`http://127.0.0.1:${portResp}/pairing-code`, { timeout: 5000 });
                         if (statusResp.data && statusResp.data.pairingCode) {
                             code = statusResp.data.pairingCode;
                             break;
                         }
+                        // If status shows connected/authenticated, no pairing needed
+                        if (statusResp.data && statusResp.data.isAuthenticated) {
+                            code = 'ALREADY_CONNECTED';
+                            break;
+                        }
                     } catch (e) {
-                        console.log(`Polling local port ${portResp} attempt ${attempts}: ${e.message}`);
+                        console.log(`Polling port ${portResp} attempt ${attempts + 1}/30: ${e.message}`);
                     }
-                    await sleep(2000); // Increased sleep to 2s
+                    await sleep(2000);
                     attempts++;
                 }
 
