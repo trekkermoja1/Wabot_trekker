@@ -302,7 +302,7 @@ function App() {
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-gray-900 bg-white"
                 required
               />
             </div>
@@ -313,7 +313,7 @@ function App() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-gray-900 bg-white"
                 required
               />
             </div>
@@ -523,7 +523,7 @@ function App() {
                   type="text"
                   value={newBotData.name}
                   onChange={(e) => setNewBotData({...newBotData, name: e.target.value})}
-                  className="w-full px-4 py-2 border rounded-lg"
+                  className="w-full px-4 py-2 border rounded-lg text-gray-900 bg-white"
                   placeholder="e.g. My Awesome Bot"
                   required
                 />
@@ -534,7 +534,7 @@ function App() {
                   type="text"
                   value={newBotData.phone_number}
                   onChange={(e) => setNewBotData({...newBotData, phone_number: e.target.value})}
-                  className="w-full px-4 py-2 border rounded-lg"
+                  className="w-full px-4 py-2 border rounded-lg text-gray-900 bg-white"
                   placeholder="e.g. 254704897825"
                   required
                 />
@@ -572,7 +572,7 @@ function App() {
                 <select
                   value={selectedDuration}
                   onChange={(e) => setSelectedDuration(parseInt(e.target.value))}
-                  className="w-full px-4 py-2 border rounded-lg"
+                  className="w-full px-4 py-2 border rounded-lg text-gray-900 bg-white"
                 >
                   <option value={1}>1 Month</option>
                   <option value={3}>3 Months</option>
@@ -612,7 +612,7 @@ function App() {
                 <select
                   value={selectedDuration}
                   onChange={(e) => setSelectedDuration(parseInt(e.target.value))}
-                  className="w-full px-4 py-2 border rounded-lg"
+                  className="w-full px-4 py-2 border rounded-lg text-gray-900 bg-white"
                 >
                   <option value={1}>1 Month</option>
                   <option value={3}>3 Months</option>
