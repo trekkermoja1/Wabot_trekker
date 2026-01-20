@@ -523,7 +523,7 @@
   dependencies:
     "@types/node" "*"
 
-"@whiskeysockets/baileys@7.0.0-rc.9":
+"@whiskeysockets/baileys@^7.0.0-rc.9":
   version "7.0.0-rc.9"
   resolved "https://registry.npmjs.org/@whiskeysockets/baileys/-/baileys-7.0.0-rc.9.tgz"
   integrity sha512-YFm5gKXfDP9byCXCW3OPHKXLzrAKzolzgVUlRosHHgwbnf2YOO3XknkMm6J7+F0ns8OA0uuSBhgkRHTDtqkacw==
