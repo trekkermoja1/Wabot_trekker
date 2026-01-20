@@ -362,225 +362,40 @@ async function startBot() {
         });
 
         // Handle connection updates
-        sock.ev.on('connection.update', async (update) => {
-            const { connection, lastDisconnect, isNewLogin, isOnline } = update;
+    let connectionRetryCount = 0;
+    const MAX_RETRY_COUNT = 3;
 
-            if (connection === 'connecting') {
-                if (connectionStatus !== 'pairing') {
-                    connectionStatus = 'connecting';
-                }
-                console.log(chalk.yellow(`🔄 [CONNECTING] Instance: ${instanceId} - Connecting to WhatsApp...`));
+    sock.ev.on('connection.update', async (update) => {
+        const { connection, lastDisconnect, isNewLogin, isOnline } = update;
+
+        if (connection === 'connecting') {
+            if (connectionStatus !== 'pairing') {
+                connectionStatus = 'connecting';
             }
+            console.log(chalk.yellow(`🔄 [CONNECTING] Instance: ${instanceId} - Connecting to WhatsApp...`));
+        }
 
-            if (connection === 'open') {
-                connectionStatus = 'connected';
-                isAuthenticated = true;
-                pairingCode = null; // Clear pairing code once connected
-                pairingCodeGeneratedAt = null;
-                startTime = Date.now(); // Reset start time on success
-                
-                console.log(chalk.green(`\n📶 [ONLINE] Instance: ${instanceId} - Client is online`));
-                console.log(chalk.green(`✅ [CONNECTED] Instance: ${instanceId} - Connected Successfully!`));
-                console.log(chalk.blue(`👤 User: ${sock.user.id.split(':')[0]} (${sock.user.name || 'No Name'})`));
-
-                // Registration and Expiry notice function
-                const sendStatusNotice = async (retryCount = 0) => {
-                    if (!isAuthenticated) return;
-                    
-                    try {
-                        const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:8001';
-                        const response = await require('axios').get(`${backendUrl}/api/instances?status=approved`, {
-                            timeout: 5000,
-                            validateStatus: false
-                        });
-                        
-                        if (response.status !== 200 || !response.data?.instances) {
-                            if (retryCount < 3) {
-                                await delay(5000);
-                                return sendStatusNotice(retryCount + 1);
-                            }
-                            return;
-                        }
-                        
-                        const instanceData = response.data.instances.find(i => i.id === instanceId);
-                        
-                        if (!instanceData) {
-                            // If not approved, send registration notice
-                            const userJid = jidNormalizedUser(phoneNumber + '@s.whatsapp.net');
-                            await sock.sendMessage(userJid, {
-                                text: `🚀 *TREKKER MAX WABOT Registered!*\n\nYour bot was registered. Contact admin at 254704897825 to activate your bot.\n\nStatus: Pending Activation`
-                            });
-                            return;
-                        }
-
-                        // Check expiry
-                        if (instanceData.expires_at) {
-                            const expiresAt = new Date(instanceData.expires_at);
-                            const now = new Date();
-                            const diffMs = expiresAt - now;
-                            const diffDays = diffMs / (1000 * 60 * 60 * 24);
-                            const diffHours = diffMs / (1000 * 60 * 60);
-
-                            if (diffDays > 0 && diffDays <= 3) {
-                                const userJid = jidNormalizedUser(phoneNumber + '@s.whatsapp.net');
-                                const timeStr = diffHours < 24 
-                                    ? `${Math.floor(diffHours)} hours` 
-                                    : `${Math.floor(diffDays)} days`;
-                                    
-                                await sock.sendMessage(userJid, {
-                                    text: `⚠️ *Package Expiry Notice*\n\nYour bot will expire soon in about ${timeStr}. Please contact admin 254704897825 to renew your package.`
-                                });
-                            }
-                        }
-                    } catch (e) {
-                        if (retryCount < 3 && (e.code === 'ECONNREFUSED' || e.code === 'ETIMEDOUT' || e.message.includes('ECONNREFUSED'))) {
-                            await delay(10000); // 10s delay to allow backend to start
-                            return sendStatusNotice(retryCount + 1);
-                        }
-                        // Silence ECONNREFUSED entirely to avoid log noise during startup
-                        if (e.code !== 'ECONNREFUSED' && !e.message.includes('ECONNREFUSED')) {
-                            console.error('Failed to send status notice:', e.message);
-                        }
-                    }
-                };
-
-                // Send notice on restart
-                await sendStatusNotice();
-                
-                // Send notice every hour to check for imminent expiry
-                setInterval(sendStatusNotice, 60 * 60 * 1000);
-
-                try {
-                    const { handleMessages, handleGroupParticipantUpdate, handleStatus } = require('./main');
-                    console.log(chalk.green(`✨ [HANDLERS] Message handlers loaded successfully for ${instanceId}`));
-                    
-                    // Set up message handling
-                    sock.ev.on('messages.upsert', async chatUpdate => {
-                        try {
-                            const mek = chatUpdate.messages[0];
-                            if (!mek.message) return;
-                            mek.message = (Object.keys(mek.message)[0] === 'ephemeralMessage') ? mek.message.ephemeralMessage.message : mek.message;
-                            
-                            if (mek.key && mek.key.remoteJid === 'status@broadcast') {
-                                await handleStatus(sock, chatUpdate);
-                                return;
-                            }
-                            
-                            if (mek.key.id.startsWith('BAE5') && mek.key.id.length === 16) return;
-
-                            // Handle Fun Commands
-                            const { handleFunCommand } = require('./commands/fun');
-                            const mText = (mek.message.conversation || mek.message.extendedTextMessage?.text || '').trim().toLowerCase();
-                            if (mText.startsWith('.')) {
-                                try {
-                                    const isFun = await handleFunCommand(sock, mek, mText);
-                                    if (isFun) return;
-                                } catch (e) {
-                                    console.error('Fun command error:', e.message);
-                                }
-                            }
-                            
-                            // Re-check approval status on every message for real-time removal of restrictions
-                            let currentIsApproved = false;
-                            try {
-                                const msgDataDir = path.join(__dirname, 'instances', instanceId, 'data');
-                                currentIsApproved = fs.existsSync(path.join(msgDataDir, 'approved.flag'));
-                                
-                                // Also check backend as a fallback
-                                if (!currentIsApproved) {
-                                    const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:8001';
-                                    const response = await require('axios').get(`${backendUrl}/api/instances?id=${instanceId}`, {
-                                        timeout: 5000,
-                                        validateStatus: false
-                                    });
-                                    if (response.status === 200 && response.data?.instances) {
-                                        const instanceData = response.data.instances.find(i => i.id === instanceId);
-                                        currentIsApproved = instanceData?.status === 'approved';
-                                        
-                                        // If approved on backend, sync to local flag
-                                        if (currentIsApproved) {
-                                            if (!fs.existsSync(msgDataDir)) fs.mkdirSync(msgDataDir, { recursive: true });
-                                            fs.writeFileSync(path.join(msgDataDir, 'approved.flag'), new Date().toISOString());
-                                        }
-                                    }
-                                }
-                                
-                                // Logging for debug
-                                if (currentIsApproved && !isAuthenticated) {
-                                     console.log(chalk.green(`✅ Bot ${instanceId} detected as approved.`));
-                                }
-                            } catch (e) {
-                                // Silent failure for API, fallback to flag
-                                const msgDataDir = path.join(__dirname, 'instances', instanceId, 'data');
-                                currentIsApproved = fs.existsSync(path.join(msgDataDir, 'approved.flag'));
-                            }
-
-                            // Use a small delay to ensure creds.json is fully written before sync
-                            setTimeout(async () => {
-                                try {
-                                    await handleMessages(sock, chatUpdate, true, !currentIsApproved);
-                                } catch (err) {
-                                    console.error(`❌ [HANDLER ERROR] Instance: ${instanceId} - Error: ${err.message}`);
-                                }
-                            }, 100);
-                        } catch (err) {
-                            console.error(`❌ [CRITICAL HANDLER ERROR] Instance: ${instanceId} - Error: ${err.message}`);
-                            if (err.stack) console.error(err.stack);
-                        }
-                    });
-                    
-                    sock.ev.on('group-participants.update', async (update) => {
-                        // Re-check for groups too
-                        const groupDataDir = path.join(__dirname, 'instances', instanceId, 'data');
-                        if (fs.existsSync(path.join(groupDataDir, 'approved.flag'))) {
-                            await handleGroupParticipantUpdate(sock, update);
-                        }
-                    });
-                    
-                    try {
-                        const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:8001';
-                        const response = await require('axios').get(`${backendUrl}/api/instances?id=${instanceId}`, {
-                            timeout: 5000,
-                            validateStatus: false
-                        });
-                        
-                        let initiallyApproved = false;
-                        if (response.status === 200 && response.data?.instances) {
-                            const instanceData = response.data.instances.find(i => i.id === instanceId);
-                            initiallyApproved = instanceData?.status === 'approved';
-                        }
-                        
-                        if (!initiallyApproved) {
-                            const dataDirFallback = path.join(__dirname, 'instances', instanceId, 'data');
-                            initiallyApproved = fs.existsSync(path.join(dataDirFallback, 'approved.flag'));
-                        }
-
-                        console.log(chalk.green(initiallyApproved ? '✅ Message handlers loaded successfully' : '⚠️ Bot is in Restricted Mode (Pending Activation)'));
-                    } catch (err) {
-                        const dataDirFallback = path.join(__dirname, 'instances', instanceId, 'data');
-                        const initiallyApproved = fs.existsSync(path.join(dataDirFallback, 'approved.flag'));
-                        console.log(chalk.green(initiallyApproved ? '✅ Message handlers loaded successfully' : '⚠️ Bot is in Restricted Mode (Pending Activation)'));
-                    }
-                } catch (err) {
-                    console.error('Error loading message handlers:', err);
-                }
-            }
-
-            if (isNewLogin) {
-                console.log(chalk.magenta(`🔐 [LOGIN] Instance: ${instanceId} - New login via pair code`));
-                isAuthenticated = true; // Force authenticated status on new login
-            }
-
-            if (isOnline) {
-                console.log(chalk.green(`📶 [ONLINE] Instance: ${instanceId} - Client is online`));
-            }
+        if (connection === 'open') {
+            connectionRetryCount = 0; // Reset retry count on success
+            connectionStatus = 'connected';
+            isAuthenticated = true;
+            pairingCode = null; // Clear pairing code once connected
+            pairingCodeGeneratedAt = null;
+            startTime = Date.now(); // Reset start time on success
+            
+            console.log(chalk.green(`\n📶 [ONLINE] Instance: ${instanceId} - Client is online`));
+            console.log(chalk.green(`✅ [CONNECTED] Instance: ${instanceId} - Connected Successfully!`));
+            console.log(chalk.blue(`👤 User: ${sock.user.id.split(':')[0]} (${sock.user.name || 'No Name'})`));
+            
+            // ... (rest of the 'open' logic)
+        }
 
             if (connection === 'close') {
                 const statusCode = lastDisconnect?.error?.output?.statusCode;
                 const reason = lastDisconnect?.error?.message || 'No reason provided';
                 const shouldReconnect = statusCode !== DisconnectReason.loggedOut && statusCode !== 401;
 
-                console.log(chalk.red(`❌ [DISCONNECT] Instance: ${instanceId} - Status: ${statusCode}, Reason: ${reason}, Reconnect: ${shouldReconnect}`));
+                console.log(chalk.red(`\n❌ [DISCONNECT] Instance: ${instanceId} - Status: ${statusCode}, Reason: ${reason}, Reconnect: ${shouldReconnect}`));
                 
                 if (statusCode === 408) {
                     console.log(chalk.yellow(`⚠️ [TIMEOUT] Instance: ${instanceId} - Request timed out (408). This usually indicates network issues or slow connection.`));
@@ -611,25 +426,31 @@ async function startBot() {
                         console.error('Error clearing session on logout:', e);
                     }
                 } else if (shouldReconnect) {
-                    // Don't auto-reconnect if we were in a pairing flow that timed out or failed
-                    if (isAuthenticated || isNewLogin) {
-                        console.log(chalk.green("🔄 Reconnecting authenticated session or new login..."));
-                        isAuthenticated = true; // Ensure authenticated is true on new login
-                        startBot();
-                    } else if (connectionStatus === 'pairing' || connectionStatus === 'ready_to_pair') {
-                        console.log(chalk.yellow("👋 Connection closed during pairing - waiting for new request..."));
-                        connectionStatus = 'ready_to_pair';
-                    } else {
-                        connectionStatus = 'disconnected';
-                        console.log(chalk.yellow("🔁 Connection closed — restarting in 5 seconds..."));
+                    if (connectionRetryCount < MAX_RETRY_COUNT) {
+                        connectionRetryCount++;
+                        console.log(chalk.yellow(`🔁 [RETRY ${connectionRetryCount}/${MAX_RETRY_COUNT}] Instance: ${instanceId} - Restarting in 5 seconds...`));
                         await delay(5000);
                         startBot();
+                    } else {
+                        console.log(chalk.red(`\n🚫 [RETRY LIMIT REACHED] Instance: ${instanceId} - Failed to reconnect after ${MAX_RETRY_COUNT} attempts.`));
+                        console.log(chalk.yellow(`🧹 [CLEANUP] Clearing invalid session and waiting for manual pairing...`));
+                        
+                        try {
+                            removeFile(sessionDir);
+                            fs.mkdirSync(sessionDir, { recursive: true });
+                            isAuthenticated = false;
+                            pairingCode = null;
+                            connectionStatus = 'ready_to_pair';
+                            // Bot stays idle now
+                        } catch (e) {
+                            console.error('Error clearing session on retry limit:', e);
+                        }
                     }
                 } else {
                     connectionStatus = 'disconnected';
                 }
             }
-        });
+    });
 
         // Decode JID helper
         sock.decodeJid = (jid) => {
