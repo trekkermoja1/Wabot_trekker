@@ -539,7 +539,7 @@ async function startBot() {
                     });
                     
                     try {
-                        const backendUrl = process.env.BACKEND_URL || 'http://0.0.0.0:5000';
+                        const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:8001';
                         const response = await require('axios').get(`${backendUrl}/api/instances?id=${instanceId}`, {
                             timeout: 5000,
                             validateStatus: false
