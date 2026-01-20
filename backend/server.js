@@ -754,9 +754,18 @@ app.post('/api/instances/:instanceId/approve', async (req, res) => {
   }
 });
 
-// Error handling for unknown routes
-app.use((req, res) => {
-  res.status(404).json({ detail: 'Not found' });
+// Server static files from the React app
+app.use(express.static(path.join(__dirname, 'static')));
+
+// The "catchall" handler: for any request that doesn't
+// match one above, send back React's index.html file.
+app.get(/^(?!\/api).*/, (req, res) => {
+    const indexPath = path.join(__dirname, 'static', 'index.html');
+    if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+    } else {
+        res.status(404).send('Frontend not found. Please run build script.');
+    }
 });
 
 // Start initialization and server
