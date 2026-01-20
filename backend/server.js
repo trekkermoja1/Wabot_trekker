@@ -26,7 +26,7 @@ let portCounter = 4000;
 // Database pool
 const pool = new Pool({
   connectionString: DATABASE_URL,
-  ssl: DATABASE_URL?.includes('sslmode=require') ? { rejectUnauthorized: false } : false
+  ssl: { rejectUnauthorized: false }
 });
 
 // Initialize database
