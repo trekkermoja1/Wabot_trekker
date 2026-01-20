@@ -1,4 +1,4 @@
-modules = ["nodejs-20", "python-3.11", "web"]
+modules = ["nodejs-20", "web"]
 [agent]
 expertMode = true
 
@@ -27,7 +27,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "yarn start"
+args = "node backend/server.js"
 waitForPort = 5000
 
 [[ports]]
