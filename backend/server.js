@@ -578,6 +578,34 @@ app.post('/api/instances', async (req, res) => {
   }
 });
 
+app.post('/api/instances/:instanceId/regenerate-code', async (req, res) => {
+  try {
+    const { instanceId } = req.params;
+    const result = await executeQuery('SELECT port FROM bot_instances WHERE id = $1', [instanceId]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ detail: 'Instance not found' });
+    }
+
+    const port = result.rows[0].port;
+    if (!port) {
+       return res.status(400).json({ detail: 'Instance has no assigned port' });
+    }
+
+    const response = await fetch(`http://127.0.0.1:${port}/regenerate-code`, {
+      method: 'POST',
+      signal: AbortSignal.timeout(10000)
+    });
+
+    if (response.ok) {
+      return res.json(await response.json());
+    }
+    res.status(500).json({ detail: 'Failed to trigger regeneration on instance' });
+  } catch (e) {
+    res.status(500).json({ detail: e.message });
+  }
+});
+
 app.get('/api/instances/:instanceId/pairing-code', async (req, res) => {
   try {
     const { instanceId } = req.params;

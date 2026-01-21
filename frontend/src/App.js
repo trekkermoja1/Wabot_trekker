@@ -236,31 +236,40 @@ function App() {
     setPairingCode('');
     setShowPairingModal(true);
     
-    // First, try to start the bot if it's not running
+    // Explicitly request a fresh regeneration first
     try {
-      await fetch(`${API_URL}/api/instances/${botId}/start`, { method: 'POST' });
-    } catch (e) {}
+      await fetch(`${API_URL}/api/instances/${botId}/regenerate-code`, { method: 'POST' });
+    } catch (e) {
+      console.error('Error triggering regeneration:', e);
+    }
 
     let attempts = 0;
-    const maxAttempts = 20;
+    const maxAttempts = 30;
 
     const poll = async () => {
       try {
         const response = await fetch(`${API_URL}/api/instances/${botId}/pairing-code`);
         const data = await response.json();
-        if (data.pairing_code) {
-          setPairingCode(data.pairing_code);
+        if (data.pairingCode) {
+          setPairingCode(data.pairingCode);
           setFetchingPairingCode(false);
         } else if (attempts < maxAttempts) {
           attempts++;
-          setTimeout(poll, 1000);
+          setTimeout(poll, 2000);
         } else {
           setPairingCode('TIMEOUT');
           setFetchingPairingCode(false);
         }
       } catch (error) {
-        setPairingCode('ERROR');
-        setFetchingPairingCode(false);
+        console.error('Polling error:', error);
+        // Don't stop on first error, retry
+        if (attempts < maxAttempts) {
+           attempts++;
+           setTimeout(poll, 2000);
+        } else {
+           setPairingCode('ERROR');
+           setFetchingPairingCode(false);
+        }
       }
     };
 
