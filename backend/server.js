@@ -202,6 +202,14 @@ async function getPairingCodeFromInstance(port, maxAttempts = 30) {
   return null;
 }
 
+// Helper to identify and revive Buffers in JSON
+function bufferReviver(key, value) {
+  if (value && typeof value === 'object' && value.type === 'Buffer' && Array.isArray(value.data)) {
+    return Buffer.from(value.data);
+  }
+  return value;
+}
+
 async function startInstanceInternal(instanceId, phoneNumber, port, sessionData = null) {
   const botDir = path.join(__dirname, '..', 'bot');
   
@@ -220,11 +228,14 @@ async function startInstanceInternal(instanceId, phoneNumber, port, sessionData 
       
       let credsToSave = sessionData;
       if (typeof sessionData === 'string') {
-        credsToSave = JSON.parse(sessionData);
+        credsToSave = JSON.parse(sessionData, bufferReviver);
       }
       if (credsToSave.creds) {
         credsToSave = credsToSave.creds;
       }
+      
+      // Ensure it's saved as stringified JSON with Buffers handled by standard JSON.stringify 
+      // which will keep the {type: 'Buffer', data: [...]} format that bot/instance.js can revive
       fs.writeFileSync(credsPath, JSON.stringify(credsToSave, null, 2));
       console.log(`💾 Restored session for ${instanceId}`);
     }

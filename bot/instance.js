@@ -228,37 +228,40 @@ async function startBot() {
     console.log(chalk.blue(`📱 Using phone number: ${cleanPhone}`));
     
     try {
-        const { version, isLatest } = await fetchLatestBaileysVersion();
-        console.log(chalk.gray(`📦 Using Baileys version: ${version.join('.')}, isLatest: ${isLatest}`));
-        
-        // Session validation check
-        const credsFile = path.join(sessionDir, 'creds.json');
-        if (fs.existsSync(credsFile)) {
-            try {
-                const content = fs.readFileSync(credsFile, 'utf-8');
-                const parsed = JSON.parse(content);
-                
-                // Validate key lengths
-                const checkKey = (key) => {
-                    if (key && key.type === 'Buffer' && Array.isArray(key.data)) {
-                        if (key.data.length > 1000) return false; // Clearly corrupted/bloated
-                    }
-                    return true;
-                };
-
-                if (!checkKey(parsed.noiseKey?.private) || !checkKey(parsed.signedIdentityKey?.private)) {
-                    console.error(chalk.red(`❌ [CRITICAL] Session corrupted (Invalid key length). Connection aborted.`));
-                    connectionStatus = 'corrupted';
-                    return; // Stop initialization completely
+    const { version, isLatest } = await fetchLatestBaileysVersion();
+    console.log(chalk.gray(`📦 Using Baileys version: ${version.join('.')}, isLatest: ${isLatest}`));
+    
+    // Session validation check
+    const credsFile = path.join(sessionDir, 'creds.json');
+    if (fs.existsSync(credsFile)) {
+        try {
+            const content = fs.readFileSync(credsFile, 'utf-8');
+            const parsed = JSON.parse(content, BufferJSON.reviver);
+            
+            // Validate key lengths
+            const checkKey = (key) => {
+                if (key instanceof Uint8Array || Buffer.isBuffer(key)) {
+                    if (key.length > 1000) return false; 
                 }
-            } catch (e) {
-                console.error(chalk.red(`❌ [VALIDATION ERROR] Session JSON invalid: ${e.message}`));
-                connectionStatus = 'corrupted';
-                return; // Stop initialization completely
-            }
-        }
+                return true;
+            };
 
-        const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
+            if (!checkKey(parsed.noiseKey?.private) || !checkKey(parsed.signedIdentityKey?.private)) {
+                console.error(chalk.red(`❌ [CRITICAL] Session corrupted (Invalid key length). Connection aborted.`));
+                connectionStatus = 'corrupted';
+                return; 
+            }
+            
+            // Re-write to ensure it's correct for useMultiFileAuthState if it was plain JSON
+            fs.writeFileSync(credsFile, JSON.stringify(parsed, BufferJSON.replacer, 2));
+        } catch (e) {
+            console.error(chalk.red(`❌ [VALIDATION ERROR] Session JSON invalid: ${e.message}`));
+            connectionStatus = 'corrupted';
+            return; 
+        }
+    }
+
+    const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
         
         // If registered, it means Baileys loaded the creds.json written by the backend
         if (state.creds && state.creds.registered) {
@@ -348,7 +351,7 @@ async function startBot() {
                 try {
                     const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:8001';
                     await require('axios').post(`${backendUrl}/api/instances/${instanceId}/sync-session`, {
-                        session_data: state.creds
+                        session_data: JSON.stringify(state.creds, BufferJSON.replacer)
                     }, { timeout: 5000, validateStatus: false });
                 } catch (e) {
                     if (e.code !== 'ECONNREFUSED') {
