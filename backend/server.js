@@ -434,6 +434,13 @@ app.post('/api/instances/:instanceId/pair', async (req, res) => {
     // Wait for instance to initialize
     await new Promise(r => setTimeout(r, 5000));
     
+    // Force trigger pairing code generation by calling /pairing-code on the instance
+    try {
+        await fetch(`http://127.0.0.1:${port}/pairing-code`);
+    } catch (e) {
+        console.error('Error triggering pairing code:', e.message);
+    }
+    
     // Get pairing code
     const pairingCode = await getPairingCodeFromInstance(port, 40);
     

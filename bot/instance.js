@@ -149,20 +149,14 @@ const server = http.createServer(async (req, res) => {
     } else if (pathname === '/pairing-code' || pathname === '/pairing-code/') {
         console.log(chalk.blue(`📱 Pairing code request for ${instanceId}. Status: ${connectionStatus}`));
         
-        // Trigger pairing if requested and not already paired/pairing
-        if (!isAuthenticated && connectionStatus !== 'pairing' && connectionStatus !== 'connected') {
+        // Always trigger new pairing if not authenticated
+        if (!isAuthenticated) {
             if (botSocket && botSocket.requestPairing) {
-                console.log(chalk.blue('🔑 Automatically triggering requestPairing() on code request.'));
+                console.log(chalk.blue('🔑 Triggering requestPairing() to ensure fresh code.'));
                 botSocket.requestPairing();
             } else {
                 console.log(chalk.yellow('⚠️ Socket not ready for pairing, will retry on next poll.'));
             }
-        } else if (connectionStatus === 'logged_out') {
-            console.log(chalk.blue('👋 Logged out state detected, restarting bot for new pairing...'));
-            // Clear existing session and restart
-            removeFile(sessionDir);
-            fs.mkdirSync(sessionDir, { recursive: true });
-            startBot();
         }
 
         res.writeHead(200);
