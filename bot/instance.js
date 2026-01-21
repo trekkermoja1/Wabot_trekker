@@ -171,8 +171,8 @@ const server = http.createServer(async (req, res) => {
             return res.end(JSON.stringify({ status: 'initializing', message: 'Resetting instance for new pairing' }));
         }
 
-        // Always trigger new pairing if not authenticated
-        if (!isAuthenticated) {
+        // Only trigger new pairing if not authenticated and not already in pairing state or having a valid code
+        if (!isAuthenticated && connectionStatus !== 'pairing' && !pairingCode) {
             if (botSocket && botSocket.requestPairing) {
                 console.log(chalk.blue('🔑 Triggering requestPairing() to ensure fresh code.'));
                 botSocket.requestPairing();
