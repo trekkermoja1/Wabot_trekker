@@ -7,6 +7,20 @@ const CURRENT_SERVER = process.env.SERVERNAME || 'server1';
 
 async function pairCommand(sock, chatId, message, q) {
     try {
+        if (sock.user && sock.user.id) {
+            return await sock.sendMessage(chatId, {
+                text: "✅ *ALREADY ACTIVE*\n\nYour bot is already connected and active. There is no need to pair again.",
+                contextInfo: {
+                    forwardingScore: 1,
+                    isForwarded: true,
+                    forwardedNewsletterMessageInfo: {
+                        newsletterJid: '120363421057570812@newsletter',
+                        newsletterName: 'TREKKER-md',
+                        serverMessageId: -1
+                    }
+                }
+            }, { quoted: message });
+        }
         if (!q) {
             return await sock.sendMessage(chatId, {
                 text: "Please provide valid WhatsApp number\nExample: .pair 254702395XXXX",

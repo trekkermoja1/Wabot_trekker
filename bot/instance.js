@@ -296,7 +296,10 @@ async function startBot() {
         sock.ev.on('creds.update', saveCreds);
 
         const requestPairing = async () => {
-            if (connectionStatus === 'logged_out' || isAuthenticated) return;
+            if (connectionStatus === 'logged_out' || isAuthenticated || connectionStatus === 'connected') {
+                console.log(chalk.yellow(`ℹ️ [PAIRING] Bot ${instanceId} is already connected/authenticated. Skipping pairing request.`));
+                return;
+            }
             try {
                 connectionStatus = 'pairing';
                 console.log(chalk.blue('🔑 Requesting pairing code...'));
