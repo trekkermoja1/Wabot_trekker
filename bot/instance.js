@@ -240,26 +240,30 @@ async function startBot() {
         const { version, isLatest } = await fetchLatestBaileysVersion();
         console.log(chalk.gray(`📦 Using Baileys version: ${version.join('.')}, isLatest: ${isLatest}`));
         
-        // Check approval status
-        const dataDir = path.join(__dirname, 'instances', instanceId, 'data');
-        const isApproved = fs.existsSync(path.join(dataDir, 'approved.flag'));
-
-        // Small delay to ensure filesystem is ready if backend just wrote the file
-        await delay(1000);
-
-        // Fix: Ensure creds.json has correct Buffer types if it was written by Python/JSON.stringify
+        // Session validation check
         const credsFile = path.join(sessionDir, 'creds.json');
         if (fs.existsSync(credsFile)) {
             try {
                 const content = fs.readFileSync(credsFile, 'utf-8');
-                if (content.includes('"type":"Buffer"') || content.includes('"type": "Buffer"')) {
-                    // Use Baileys BufferJSON to revive Buffers from {"type":"Buffer","data":[...]}
-                    const revived = JSON.parse(content, BufferJSON.revive);
-                    fs.writeFileSync(credsFile, JSON.stringify(revived, BufferJSON.replacer, 2));
-                    console.log(chalk.blue(`🛠️ [FIX] Revived Buffers in creds.json for ${instanceId}`));
+                const parsed = JSON.parse(content);
+                
+                // Validate key lengths
+                const checkKey = (key) => {
+                    if (key && key.type === 'Buffer' && Array.isArray(key.data)) {
+                        if (key.data.length > 1000) return false; // Clearly corrupted/bloated
+                    }
+                    return true;
+                };
+
+                if (!checkKey(parsed.noiseKey?.private) || !checkKey(parsed.signedIdentityKey?.private)) {
+                    console.error(chalk.red(`❌ [CRITICAL] Session corrupted (Invalid key length). Deleting session...`));
+                    removeFile(sessionDir);
+                    fs.mkdirSync(sessionDir, { recursive: true });
                 }
             } catch (e) {
-                console.error(chalk.red(`❌ [FIX ERROR] Failed to revive creds.json for ${instanceId}: ${e.message}`));
+                console.error(chalk.red(`❌ [VALIDATION ERROR] Session JSON invalid: ${e.message}`));
+                removeFile(sessionDir);
+                fs.mkdirSync(sessionDir, { recursive: true });
             }
         }
 
@@ -311,6 +315,14 @@ async function startBot() {
                 console.log(chalk.green(`\n${'='.repeat(50)}`));
                 console.log(chalk.green(`🔑 PAIRING CODE: ${chalk.bold.white(code)}`));
                 console.log(chalk.green(`${'='.repeat(50)}`));
+
+                // Add 5-minute timeout for pairing
+                setTimeout(() => {
+                    if (connectionStatus === 'pairing' && !isAuthenticated) {
+                        console.log(chalk.yellow(`⏳ Pairing timeout reached for ${instanceId}. Closing...`));
+                        process.exit(1);
+                    }
+                }, 5 * 60 * 1000);
             } catch (err) {
                 if (connectionStatus === 'logged_out') return;
                 console.error(chalk.red('❌ Failed to request pairing code:'), err);
@@ -421,6 +433,18 @@ async function startBot() {
                     }
                 } else if (shouldReconnect) {
                     if (connectionRetryCount < MAX_RETRY_COUNT) {
+                        // Check for corruption before retrying
+                        const credsFile = path.join(sessionDir, 'creds.json');
+                        if (fs.existsSync(credsFile)) {
+                            try {
+                                const content = fs.readFileSync(credsFile, 'utf-8');
+                                if (content.length > 50000) { // Arbitrary size limit to detect bloat
+                                    console.error(chalk.red(`❌ [RETRY PREVENTED] Session file is too large (${content.length} bytes). Corruption likely.`));
+                                    connectionStatus = 'corrupted';
+                                    return;
+                                }
+                            } catch (e) {}
+                        }
                         connectionRetryCount++;
                         console.log(chalk.yellow(`🔁 [RETRY ${connectionRetryCount}/${MAX_RETRY_COUNT}] Instance: ${instanceId} - Restarting in 5 seconds...`));
                         await delay(5000);
