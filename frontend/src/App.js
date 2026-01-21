@@ -250,8 +250,12 @@ function App() {
       try {
         const response = await fetch(`${API_URL}/api/instances/${botId}/pairing-code`);
         const data = await response.json();
-        if (data.pairingCode) {
-          setPairingCode(data.pairingCode);
+        
+        // Match the backend/bot instance property name (pairingCode vs pairing_code)
+        const code = data.pairingCode || data.pairing_code;
+        
+        if (code) {
+          setPairingCode(code);
           setFetchingPairingCode(false);
         } else if (attempts < maxAttempts) {
           attempts++;

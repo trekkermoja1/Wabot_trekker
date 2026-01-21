@@ -183,10 +183,16 @@ const server = http.createServer(async (req, res) => {
         const checkReady = setInterval(() => {
             if (botSocket && botSocket.requestPairing) {
                 clearInterval(checkReady);
-                botSocket.requestPairing();
+                botSocket.requestPairing().catch(e => {
+                    console.error('Error triggering requestPairing:', e.message);
+                });
             }
-            if (attempts++ > 20) clearInterval(checkReady);
-        }, 1000);
+            if (attempts++ > 40) { // Increased wait time
+                clearInterval(checkReady);
+                console.log(chalk.red('❌ Timed out waiting for botSocket to be ready for pairing'));
+                connectionStatus = 'error';
+            }
+        }, 500); // Check more frequently
 
         res.writeHead(200);
         res.end(JSON.stringify({ success: true, message: 'Resetting for fresh pairing' }));
