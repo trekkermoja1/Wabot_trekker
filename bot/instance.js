@@ -178,6 +178,16 @@ const server = http.createServer(async (req, res) => {
         connectionStatus = 'initializing';
         startBot();
         
+        // Wait for connection to be ready before calling requestPairing
+        let attempts = 0;
+        const checkReady = setInterval(() => {
+            if (botSocket && botSocket.requestPairing) {
+                clearInterval(checkReady);
+                botSocket.requestPairing();
+            }
+            if (attempts++ > 20) clearInterval(checkReady);
+        }, 1000);
+
         res.writeHead(200);
         res.end(JSON.stringify({ success: true, message: 'Resetting for fresh pairing' }));
     } else if (pathname === '/stop') {
