@@ -476,7 +476,19 @@ async function startBot() {
             } else return jid;
         };
 
-        sock.public = true;
+        sock.ev.on('messages.upsert', async (chatUpdate) => {
+            try {
+                const main = require('./main');
+                if (typeof main === 'function') {
+                    await main(sock, chatUpdate);
+                } else if (main.handleMessages) {
+                    await main.handleMessages(sock, chatUpdate);
+                }
+            } catch (e) {
+                console.error(chalk.red(`[ERROR] Message Handler Execution Failed: ${e.message}`));
+            }
+        });
+        console.log(chalk.green(`✅ [LOADED] Message Handler for ${instanceId} loaded successfully`));
 
         return sock;
     } catch (err) {

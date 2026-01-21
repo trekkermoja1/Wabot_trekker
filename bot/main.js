@@ -932,6 +932,7 @@ async function handleGroupParticipantUpdate(sock, update) {
 }
 
 // Instead, export the handlers along with handleMessages
+console.log('✅ [MAIN] Bot Message Handlers initialized');
 module.exports = {
     handleMessages,
     handleGroupParticipantUpdate,
