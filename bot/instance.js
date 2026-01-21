@@ -256,14 +256,14 @@ async function startBot() {
                 };
 
                 if (!checkKey(parsed.noiseKey?.private) || !checkKey(parsed.signedIdentityKey?.private)) {
-                    console.error(chalk.red(`❌ [CRITICAL] Session corrupted (Invalid key length). Deleting session...`));
-                    removeFile(sessionDir);
-                    fs.mkdirSync(sessionDir, { recursive: true });
+                    console.error(chalk.red(`❌ [CRITICAL] Session corrupted (Invalid key length). Connection aborted.`));
+                    connectionStatus = 'corrupted';
+                    return; // Stop initialization completely
                 }
             } catch (e) {
                 console.error(chalk.red(`❌ [VALIDATION ERROR] Session JSON invalid: ${e.message}`));
-                removeFile(sessionDir);
-                fs.mkdirSync(sessionDir, { recursive: true });
+                connectionStatus = 'corrupted';
+                return; // Stop initialization completely
             }
         }
 
