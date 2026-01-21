@@ -161,24 +161,28 @@ const server = http.createServer(async (req, res) => {
         // Always reset everything for a fresh pairing on explicit request
         console.log(chalk.yellow(`🔄 Resetting instance ${instanceId} for fresh pairing...`));
         
-        // Close existing socket
+        // 1. Close existing socket and stop all activity
         if (botSocket) {
-            try { botSocket.end(); } catch (e) {}
+            try { 
+                botSocket.ev.removeAllListeners('connection.update');
+                botSocket.ev.removeAllListeners('creds.update');
+                botSocket.end(); 
+            } catch (e) {}
             botSocket = null;
         }
 
-        // Wipe session and state
+        // 2. Wipe session and state completely
         removeFile(sessionDir);
         fs.mkdirSync(sessionDir, { recursive: true });
         pairingCode = null;
         pairingCodeGeneratedAt = null;
         isAuthenticated = false;
-        
-        // Re-initialize bot
         connectionStatus = 'initializing';
+        
+        // 3. Re-initialize bot with a fresh connection
         startBot();
         
-        // Wait for connection to be ready before calling requestPairing
+        // 4. Wait for connection to be ready before calling requestPairing
         let attempts = 0;
         const checkReady = setInterval(() => {
             if (botSocket && botSocket.requestPairing) {
@@ -187,12 +191,12 @@ const server = http.createServer(async (req, res) => {
                     console.error('Error triggering requestPairing:', e.message);
                 });
             }
-            if (attempts++ > 40) { // Increased wait time
+            if (attempts++ > 40) {
                 clearInterval(checkReady);
                 console.log(chalk.red('❌ Timed out waiting for botSocket to be ready for pairing'));
                 connectionStatus = 'error';
             }
-        }, 500); // Check more frequently
+        }, 500);
 
         res.writeHead(200);
         res.end(JSON.stringify({ success: true, message: 'Resetting for fresh pairing' }));
