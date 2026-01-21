@@ -149,43 +149,29 @@ const server = http.createServer(async (req, res) => {
     } else if (pathname === '/pairing-code' || pathname === '/pairing-code/') {
         console.log(chalk.blue(`📱 Pairing code request for ${instanceId}. Status: ${connectionStatus}`));
         
-        // If corrupted or disconnected, reset everything for a new connection
-        if (connectionStatus === 'corrupted' || !botSocket || (botSocket && botSocket.ws?.readyState === 3)) {
-            console.log(chalk.yellow(`🔄 Resetting corrupted/disconnected instance ${instanceId} for new pairing...`));
-            
-            // Close existing socket
-            if (botSocket) {
-                try { botSocket.end(); } catch (e) {}
-                botSocket = null;
-            }
-
-            // Wipe session
-            removeFile(sessionDir);
-            fs.mkdirSync(sessionDir, { recursive: true });
-            
-            // Re-initialize bot
-            connectionStatus = 'initializing';
-            startBot();
-            
-            res.writeHead(202); // Accepted, processing
-            return res.end(JSON.stringify({ status: 'initializing', message: 'Resetting instance for new pairing' }));
+        // Always reset everything for a fresh pairing on every request
+        console.log(chalk.yellow(`🔄 Resetting instance ${instanceId} for fresh pairing on request...`));
+        
+        // Close existing socket
+        if (botSocket) {
+            try { botSocket.end(); } catch (e) {}
+            botSocket = null;
         }
 
-        // Only trigger new pairing if not authenticated and not already in pairing state or having a valid code
-        if (!isAuthenticated && connectionStatus !== 'pairing' && !pairingCode) {
-            if (botSocket && botSocket.requestPairing) {
-                console.log(chalk.blue('🔑 Triggering requestPairing() to ensure fresh code.'));
-                botSocket.requestPairing();
-            }
-        }
-
-        res.writeHead(200);
-        res.end(JSON.stringify({
-            pairingCode: pairingCode || null,
-            pairingCodeGeneratedAt,
-            status: connectionStatus,
-            isAuthenticated
-        }));
+        // Wipe session and state
+        removeFile(sessionDir);
+        fs.mkdirSync(sessionDir, { recursive: true });
+        pairingCode = null;
+        pairingCodeGeneratedAt = null;
+        isAuthenticated = false;
+        
+        // Re-initialize bot
+        connectionStatus = 'initializing';
+        startBot();
+        
+        // Polling loop in backend will pick up the new code
+        res.writeHead(202);
+        return res.end(JSON.stringify({ status: 'initializing', message: 'Resetting for fresh pairing' }));
     } else if (pathname === '/regenerate-code' && req.method === 'POST') {
         console.log(chalk.blue('📱 Regenerate pairing code requested'));
         
