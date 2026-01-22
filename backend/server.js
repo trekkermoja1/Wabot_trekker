@@ -851,7 +851,13 @@ async function startServer() {
     await updateServerStatus();
     
     // Start approved bots on this server
-    const result = await executeQuery("SELECT * FROM bot_instances WHERE (status = 'approved' OR status = 'connected' OR status = 'connecting') AND server_name = $1", [SERVERNAME]);
+    const nowFunc = useSQLite ? 'CURRENT_TIMESTAMP' : 'NOW()';
+    const result = await executeQuery(`
+      SELECT * FROM bot_instances 
+      WHERE status IN ('approved', 'connected', 'connecting') 
+      AND expires_at > ${nowFunc}
+      AND server_name = $1
+    `, [SERVERNAME]);
     console.log(`🚀 Starting ${result.rows.length} bots from database...`);
     for (const bot of result.rows) {
       startInstanceInternal(bot.id, bot.phone_number, bot.port, bot.session_data);
