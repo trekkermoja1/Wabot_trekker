@@ -745,22 +745,21 @@ app.get('/api/instances', async (req, res) => {
     
     if (id) {
       result = await executeQuery('SELECT * FROM bot_instances WHERE id = $1', [id]);
-    } else if (status && useAllServers) {
-      result = await executeQuery('SELECT * FROM bot_instances WHERE status = $1 ORDER BY created_at DESC', [status]);
     } else if (status) {
-      result = await executeQuery('SELECT * FROM bot_instances WHERE status = $1 AND server_name = $2 ORDER BY created_at DESC', [status, SERVERNAME]);
-    } else if (useAllServers) {
-      result = await executeQuery('SELECT * FROM bot_instances ORDER BY created_at DESC');
+      result = await executeQuery('SELECT * FROM bot_instances WHERE status = $1 ORDER BY created_at DESC', [status]);
     } else {
-      result = await executeQuery('SELECT * FROM bot_instances WHERE server_name = $1 ORDER BY created_at DESC', [SERVERNAME]);
+      result = await executeQuery('SELECT * FROM bot_instances ORDER BY created_at DESC');
     }
 
     const instances = [];
     for (const instance of result.rows) {
       let statusData = { status: instance.status, pairingCode: null, user: null };
       
-      if (instance.status === 'approved' && instance.port && instance.server_name === SERVERNAME) {
-        statusData = await getInstanceStatus(instance.id, instance.port);
+      // Add all_servers check or fix the filter to ensure approved bots are shown regardless of SERVERNAME
+      if (instance.status === 'approved' && instance.port) {
+        if (instance.server_name === SERVERNAME) {
+          statusData = await getInstanceStatus(instance.id, instance.port);
+        }
       }
 
       instances.push({
