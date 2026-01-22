@@ -113,17 +113,6 @@ async function initDatabase() {
       await executeQuery(sql);
     }
 
-    if (!useSQLite) {
-      await executeQuery(`
-        DO $$ 
-        BEGIN 
-          ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS session_data JSONB;
-        EXCEPTION 
-          WHEN duplicate_column THEN NULL;
-        END $$;
-      `);
-    }
-
     if (useSQLite) {
       await executeQuery(`
         INSERT OR REPLACE INTO server_manager (server_name, last_heartbeat)
