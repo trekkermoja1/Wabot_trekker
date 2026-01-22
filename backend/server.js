@@ -746,7 +746,11 @@ app.get('/api/instances', async (req, res) => {
     if (id) {
       result = await executeQuery('SELECT * FROM bot_instances WHERE id = $1', [id]);
     } else if (status) {
-      result = await executeQuery('SELECT * FROM bot_instances WHERE status = $1 ORDER BY created_at DESC', [status]);
+      if (status === 'approved') {
+        result = await executeQuery("SELECT * FROM bot_instances WHERE status IN ('approved', 'connected', 'connecting', 'disconnected') ORDER BY created_at DESC");
+      } else {
+        result = await executeQuery('SELECT * FROM bot_instances WHERE status = $1 ORDER BY created_at DESC', [status]);
+      }
     } else {
       result = await executeQuery('SELECT * FROM bot_instances ORDER BY created_at DESC');
     }
