@@ -660,17 +660,29 @@ app.get('/api/instances/:instanceId/pairing-code', async (req, res) => {
 app.post('/api/instances/:instanceId/sync-session', async (req, res) => {
   try {
     const { instanceId } = req.params;
-    const { session_data } = req.body;
+    const { session_data, status, last_error } = req.body;
     
-    if (!session_data) {
-      return res.status(400).json({ detail: 'No session data provided' });
+    const updateNow = useSQLite ? 'CURRENT_TIMESTAMP' : 'NOW()';
+    let query = 'UPDATE bot_instances SET updated_at = ' + updateNow;
+    const params = [];
+    let paramIdx = 1;
+
+    if (session_data) {
+      query += `, session_data = $${paramIdx++}`;
+      params.push(session_data);
     }
 
-    const updateNow = useSQLite ? 'CURRENT_TIMESTAMP' : 'NOW()';
-    await executeQuery(
-      `UPDATE bot_instances SET session_data = $1, updated_at = ${updateNow} WHERE id = $2`,
-      [session_data, instanceId]
-    );
+    if (status) {
+      query += `, status = $${paramIdx++}`;
+      params.push(status);
+    }
+
+    query += ` WHERE id = $${paramIdx}`;
+    params.push(instanceId);
+
+    if (params.length > 1) {
+      await executeQuery(query, params);
+    }
 
     res.json({ success: true });
   } catch (e) {

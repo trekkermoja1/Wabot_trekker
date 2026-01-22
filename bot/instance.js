@@ -370,6 +370,28 @@ async function startBot() {
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, isNewLogin, isOnline } = update;
 
+        // Sync status to database on every update
+        try {
+            const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:5000';
+            const axios = require('axios');
+            let dbStatus = connectionStatus;
+            
+            // Map internal status to database status if needed
+            if (connection === 'open') dbStatus = 'connected';
+            else if (connection === 'connecting') dbStatus = 'connecting';
+            else if (connection === 'close') dbStatus = 'disconnected';
+
+            await axios.post(`${backendUrl}/api/instances/${instanceId}/sync-session`, {
+                status: dbStatus,
+                last_error: lastDisconnect?.error?.message || null,
+                session_data: JSON.stringify(state.creds, BufferJSON.replacer)
+            }, { timeout: 5000, validateStatus: false });
+        } catch (e) {
+            if (e.code !== 'ECONNREFUSED') {
+                console.error(`[STATUS SYNC ERROR] ${instanceId}:`, e.message);
+            }
+        }
+
         if (connection === 'connecting') {
             if (connectionStatus !== 'pairing') {
                 connectionStatus = 'connecting';
