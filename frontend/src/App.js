@@ -95,13 +95,10 @@ function App() {
       });
       
       if (response.ok) {
-        const data = await response.json();
         setShowCreateModal(false);
         setNewBotData({ name: '', phone_number: '' });
         fetchBots();
         fetchServerInfo();
-        
-        // Don't auto-open pairing modal, let user click "Pair Code"
         alert('Bot created successfully!');
       } else {
         const error = await response.json();
@@ -236,7 +233,6 @@ function App() {
     setPairingCode('');
     setShowPairingModal(true);
     
-    // Explicitly request a fresh regeneration first
     try {
       await fetch(`${API_URL}/api/instances/${botId}/regenerate-code`, { method: 'POST' });
     } catch (e) {
@@ -250,8 +246,6 @@ function App() {
       try {
         const response = await fetch(`${API_URL}/api/instances/${botId}/pairing-code`);
         const data = await response.json();
-        
-        // Match the backend/bot instance property name (pairingCode vs pairing_code)
         const code = data.pairingCode || data.pairing_code;
         
         if (code) {
@@ -266,7 +260,6 @@ function App() {
         }
       } catch (error) {
         console.error('Polling error:', error);
-        // Don't stop on first error, retry
         if (attempts < maxAttempts) {
            attempts++;
            setTimeout(poll, 2000);
@@ -290,12 +283,9 @@ function App() {
     const now = new Date();
     const expiry = new Date(expiresAt);
     const diff = expiry - now;
-    
     if (diff <= 0) return 'Expired';
-    
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
     const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-    
     return `${days}d ${hours}h remaining`;
   };
 
@@ -307,7 +297,6 @@ function App() {
             <h1 className="text-3xl font-bold text-emerald-600 mb-2">TREKKER MAX WABOT</h1>
             <p className="text-gray-600">Multi-Instance Bot Platform</p>
           </div>
-          
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Username</label>
@@ -319,7 +308,6 @@ function App() {
                 required
               />
             </div>
-            
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
               <input
@@ -330,7 +318,6 @@ function App() {
                 required
               />
             </div>
-            
             <button
               type="submit"
               disabled={loading}
@@ -346,7 +333,6 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <header className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex justify-between items-center">
@@ -359,7 +345,6 @@ function App() {
                 </p>
               )}
             </div>
-            
             <div className="flex gap-3">
               <button
                 onClick={() => setShowCreateModal(true)}
@@ -378,7 +363,6 @@ function App() {
         </div>
       </header>
 
-      {/* Tabs */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
         <div className="bg-white rounded-lg shadow p-1 flex gap-1">
           <button
@@ -402,9 +386,7 @@ function App() {
         </div>
       </div>
 
-      {/* Bot Lists */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 pb-8">
-        {/* New Bots */}
         {activeTab === 'new' && (
           <div className="space-y-4">
             {newBots.length === 0 ? (
@@ -423,7 +405,6 @@ function App() {
                         Pending Approval
                       </span>
                     </div>
-                    
                     <div className="flex gap-2">
                       <button onClick={() => handleStartBot(bot.id)} className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-medium transition">Start</button>
                       <button onClick={() => handleStopBot(bot.id)} className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg font-medium transition">Stop</button>
@@ -438,7 +419,6 @@ function App() {
           </div>
         )}
 
-        {/* Approved Bots */}
         {activeTab === 'approved' && (
           <div className="space-y-4">
             {approvedBots.length === 0 ? (
@@ -462,7 +442,6 @@ function App() {
                         Active
                       </span>
                     </div>
-                    
                     <div className="flex gap-2">
                       <button onClick={() => handleStartBot(bot.id)} className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-medium transition">Start</button>
                       <button onClick={() => handleStopBot(bot.id)} className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg font-medium transition">Stop</button>
@@ -476,7 +455,6 @@ function App() {
           </div>
         )}
 
-        {/* Expired Bots */}
         {activeTab === 'expired' && (
           <div className="space-y-4">
             {expiredBots.length === 0 ? (
@@ -498,23 +476,9 @@ function App() {
                         Expired - Payment Required
                       </span>
                     </div>
-                    
                     <div className="flex gap-2">
-                      <button
-                        onClick={() => {
-                          setSelectedBot(bot);
-                          setShowRenewModal(true);
-                        }}
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-medium transition"
-                      >
-                        Renew
-                      </button>
-                      <button
-                        onClick={() => handleDeleteBot(bot.id)}
-                        className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition"
-                      >
-                        Delete
-                      </button>
+                      <button onClick={() => { setSelectedBot(bot); setShowRenewModal(true); }} className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-medium transition">Renew</button>
+                      <button onClick={() => handleDeleteBot(bot.id)} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition">Delete</button>
                     </div>
                   </div>
                 </div>
@@ -524,7 +488,6 @@ function App() {
         )}
       </div>
 
-      {/* Create Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl max-w-md w-full p-6">
@@ -553,27 +516,14 @@ function App() {
                 />
               </div>
               <div className="flex gap-3 mt-6">
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="flex-1 bg-emerald-600 text-white py-2 rounded-lg font-medium"
-                >
-                  {loading ? 'Creating...' : 'Create'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                  className="flex-1 bg-gray-200 text-gray-800 py-2 rounded-lg font-medium"
-                >
-                  Cancel
-                </button>
+                <button type="submit" disabled={loading} className="flex-1 bg-emerald-600 text-white py-2 rounded-lg font-medium">{loading ? 'Creating...' : 'Create'}</button>
+                <button type="button" onClick={() => setShowCreateModal(false)} className="flex-1 bg-gray-200 text-gray-800 py-2 rounded-lg font-medium">Cancel</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* Approve Modal */}
       {showApproveModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl max-w-md w-full p-6">
@@ -594,26 +544,14 @@ function App() {
                 </select>
               </div>
               <div className="flex gap-3 mt-6">
-                <button
-                  onClick={handleApproveBot}
-                  disabled={loading}
-                  className="flex-1 bg-emerald-600 text-white py-2 rounded-lg font-medium"
-                >
-                  {loading ? 'Processing...' : 'Approve Now'}
-                </button>
-                <button
-                  onClick={() => setShowApproveModal(false)}
-                  className="flex-1 bg-gray-200 text-gray-800 py-2 rounded-lg font-medium"
-                >
-                  Cancel
-                </button>
+                <button onClick={handleApproveBot} disabled={loading} className="flex-1 bg-emerald-600 text-white py-2 rounded-lg font-medium">{loading ? 'Processing...' : 'Approve Now'}</button>
+                <button onClick={() => setShowApproveModal(false)} className="flex-1 bg-gray-200 text-gray-800 py-2 rounded-lg font-medium">Cancel</button>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Renew Modal */}
       {showRenewModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl max-w-md w-full p-6">
@@ -634,34 +572,19 @@ function App() {
                 </select>
               </div>
               <div className="flex gap-3 mt-6">
-                <button
-                  onClick={handleRenewBot}
-                  disabled={loading}
-                  className="flex-1 bg-emerald-600 text-white py-2 rounded-lg font-medium"
-                >
-                  {loading ? 'Renewing...' : 'Renew Now'}
-                </button>
-                <button
-                  onClick={() => setShowRenewModal(false)}
-                  className="flex-1 bg-gray-200 text-gray-800 py-2 rounded-lg font-medium"
-                >
-                  Cancel
-                </button>
+                <button onClick={handleRenewBot} disabled={loading} className="flex-1 bg-emerald-600 text-white py-2 rounded-lg font-medium">{loading ? 'Renewing...' : 'Renew Now'}</button>
+                <button onClick={() => setShowRenewModal(false)} className="flex-1 bg-gray-200 text-gray-800 py-2 rounded-lg font-medium">Cancel</button>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Pairing Modal */}
       {showPairingModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl max-w-md w-full p-8 text-center">
             <h2 className="text-2xl font-bold mb-4">WhatsApp Pairing Code</h2>
-            <p className="text-gray-600 mb-6">
-              Enter this code on your phone in Linked Devices > Link with Phone Number
-            </p>
-            
+            <p className="text-gray-600 mb-6">Enter this code on your phone in Linked Devices > Link with Phone Number</p>
             <div className="bg-gray-100 rounded-xl p-6 mb-6">
               {fetchingPairingCode ? (
                 <div className="flex flex-col items-center">
@@ -673,18 +596,10 @@ function App() {
               ) : pairingCode === 'ERROR' ? (
                 <p className="text-xl font-bold text-red-500">Error generating code. Is the bot running?</p>
               ) : (
-                <p className="text-4xl font-mono font-bold tracking-widest text-gray-800">
-                  {pairingCode}
-                </p>
+                <p className="text-4xl font-mono font-bold tracking-widest text-gray-800">{pairingCode}</p>
               )}
             </div>
-            
-            <button
-              onClick={() => setShowPairingModal(false)}
-              className="w-full bg-emerald-600 text-white py-3 rounded-lg font-bold"
-            >
-              Close
-            </button>
+            <button onClick={() => setShowPairingModal(false)} className="w-full bg-emerald-600 text-white py-3 rounded-lg font-bold">Close</button>
           </div>
         </div>
       )}

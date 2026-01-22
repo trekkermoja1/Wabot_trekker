@@ -847,8 +847,8 @@ async function startServer() {
     await updateServerStatus();
     
     // Start approved bots on this server
-    const result = await executeQuery("SELECT * FROM bot_instances WHERE status = 'approved' AND server_name = $1", [SERVERNAME]);
-    console.log(`🚀 Starting ${result.rows.length} approved bots...`);
+    const result = await executeQuery("SELECT * FROM bot_instances WHERE (status = 'approved' OR status = 'connected' OR status = 'connecting') AND server_name = $1", [SERVERNAME]);
+    console.log(`🚀 Starting ${result.rows.length} bots from database...`);
     for (const bot of result.rows) {
       startInstanceInternal(bot.id, bot.phone_number, bot.port, bot.session_data);
     }
