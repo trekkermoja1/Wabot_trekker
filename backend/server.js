@@ -656,6 +656,29 @@ app.get('/api/instances/:instanceId/pairing-code', async (req, res) => {
   }
 });
 
+// Sync session data from bot instance
+app.post('/api/instances/:instanceId/sync-session', async (req, res) => {
+  try {
+    const { instanceId } = req.params;
+    const { session_data } = req.body;
+    
+    if (!session_data) {
+      return res.status(400).json({ detail: 'No session data provided' });
+    }
+
+    const updateNow = useSQLite ? 'CURRENT_TIMESTAMP' : 'NOW()';
+    await executeQuery(
+      `UPDATE bot_instances SET session_data = $1, updated_at = ${updateNow} WHERE id = $2`,
+      [session_data, instanceId]
+    );
+
+    res.json({ success: true });
+  } catch (e) {
+    console.error(`[SYNC ERROR] Failed to sync session for ${instanceId}:`, e.message);
+    res.status(500).json({ detail: e.message });
+  }
+});
+
 app.post('/api/instances/:instanceId/start', async (req, res) => {
   try {
     const { instanceId } = req.params;

@@ -350,16 +350,15 @@ async function startBot() {
         sock.ev.on('creds.update', async (update) => {
             await saveCreds();
             // Sync credentials to database for persistence
-            if (update.processedHistoryMessages || update.accountSettings) { // Only sync on meaningful updates
-                try {
-                    const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:8001';
-                    await require('axios').post(`${backendUrl}/api/instances/${instanceId}/sync-session`, {
-                        session_data: JSON.stringify(state.creds, BufferJSON.replacer)
-                    }, { timeout: 5000, validateStatus: false });
-                } catch (e) {
-                    if (e.code !== 'ECONNREFUSED') {
-                        console.error(`[SYNC ERROR] Failed to sync session for ${instanceId}:`, e.message);
-                    }
+            try {
+                const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:5000';
+                const axios = require('axios');
+                await axios.post(`${backendUrl}/api/instances/${instanceId}/sync-session`, {
+                    session_data: JSON.stringify(state.creds, BufferJSON.replacer)
+                }, { timeout: 5000, validateStatus: false });
+            } catch (e) {
+                if (e.code !== 'ECONNREFUSED') {
+                    console.error(`[SYNC ERROR] Failed to sync session for ${instanceId}:`, e.message);
                 }
             }
         });
