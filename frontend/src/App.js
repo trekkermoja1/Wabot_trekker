@@ -441,9 +441,13 @@ function App() {
                       <span className={`inline-block mt-3 px-3 py-1 rounded-full text-sm font-medium ${
                         bot.status === 'connected' ? 'bg-emerald-100 text-emerald-800' : 
                         bot.status === 'connecting' ? 'bg-blue-100 text-blue-800' :
+                        bot.status === 'unauthorized' || bot.status === 'offline' ? 'bg-red-100 text-red-800' :
                         'bg-gray-100 text-gray-800'
                       }`}>
-                        {bot.status === 'connected' ? 'Online' : bot.status === 'connecting' ? 'Connecting' : bot.status.charAt(0).toUpperCase() + bot.status.slice(1)}
+                        {bot.status === 'connected' ? 'Online' : 
+                         bot.status === 'connecting' ? 'Connecting' : 
+                         bot.status === 'unauthorized' ? 'Unauthorized (401)' :
+                         bot.status.charAt(0).toUpperCase() + bot.status.slice(1)}
                       </span>
                     </div>
                     <div className="flex gap-2">

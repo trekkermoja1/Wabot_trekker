@@ -421,6 +421,18 @@ async function startBot() {
 
                 console.log(chalk.red(`\n❌ [DISCONNECT] Instance: ${instanceId} - Status: ${statusCode}, Reason: ${reason}, Reconnect: ${shouldReconnect}`));
                 
+                // Sync status immediately on 401
+                if (statusCode === 401 || statusCode === DisconnectReason.loggedOut) {
+                    try {
+                        const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:5000';
+                        const axios = require('axios');
+                        await axios.post(`${backendUrl}/api/instances/${instanceId}/sync-session`, {
+                            status: 'unauthorized',
+                            last_error: reason
+                        }, { timeout: 5000, validateStatus: false });
+                    } catch (e) {}
+                }
+                
                 if (statusCode === 408) {
                     console.log(chalk.yellow(`⚠️ [TIMEOUT] Instance: ${instanceId} - Request timed out (408). This usually indicates network issues or slow connection.`));
                 }

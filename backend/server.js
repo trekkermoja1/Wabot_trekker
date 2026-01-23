@@ -663,8 +663,10 @@ app.post('/api/instances/:instanceId/sync-session', async (req, res) => {
     }
 
     if (status) {
+      // If status is disconnected or unauthorized, ensure it's reflected correctly
+      const finalStatus = (status === 'unauthorized' || status === 'disconnected') ? 'offline' : status;
       query += `, status = $${paramIdx++}`;
-      params.push(status);
+      params.push(finalStatus);
     }
 
     query += ` WHERE id = $${paramIdx}`;
