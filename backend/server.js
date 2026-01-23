@@ -414,9 +414,11 @@ app.post('/api/instances/:instanceId/pair', async (req, res) => {
       await executeQuery('UPDATE bot_instances SET port = $1 WHERE id = $2', [port, instanceId]);
     }
     
-    // Only update start_status to 'new' if it's currently null or empty. 
-    // If it's already 'approved', 'expired', or 'new', we keep it.
+    // Maintain existing start_status if it exists, otherwise set to 'new'
     if (!instance.start_status) {
+      await executeQuery("UPDATE bot_instances SET start_status = 'new' WHERE id = $1", [instanceId]);
+    } else if (instance.start_status !== 'approved' && instance.start_status !== 'expired') {
+      // If it's anything else (like 'new' or null), ensure it's 'new'
       await executeQuery("UPDATE bot_instances SET start_status = 'new' WHERE id = $1", [instanceId]);
     }
     

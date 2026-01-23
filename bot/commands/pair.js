@@ -119,10 +119,10 @@ async function pairCommand(sock, chatId, message, q) {
                     const botStartStatus = existingBot.start_status; // approval status
                     const botId = existingBot.id;
 
-                    // Don't start pair for bots with start status flagged online (meaning active and connected)
-                    if (botStatus === 'connected' && botStartStatus === 'approved') {
+                    // Don't start pair for bots with status 'connected'
+                    if (botStatus === 'connected') {
                         await sock.sendMessage(chatId, {
-                            text: `✅ *ALREADY ACTIVE*\n\nThe bot ${number} is already connected and approved. No need to pair.`,
+                            text: `✅ *ALREADY ACTIVE*\n\nThe bot ${number} is already connected. No need to pair.`,
                             contextInfo: {
                                 forwardingScore: 1,
                                 isForwarded: true,
@@ -136,8 +136,9 @@ async function pairCommand(sock, chatId, message, q) {
                         continue;
                     }
 
+                    // Proceed with pairing for 'connecting' or 'offline' bots
                     await sock.sendMessage(chatId, {
-                        text: `📋 Found existing bot:\n\nID: \`${botId}\`\nStart Status: ${botStartStatus}\nConn Status: ${botStatus}\nServer: ${botServer}\n\nGenerating pairing code...`,
+                        text: `📋 Found existing bot (Status: ${botStatus}). Generating pairing code...`,
                         contextInfo: {
                             forwardingScore: 1,
                             isForwarded: true,
