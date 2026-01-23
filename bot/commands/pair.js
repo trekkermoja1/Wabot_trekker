@@ -115,11 +115,29 @@ async function pairCommand(sock, chatId, message, q) {
                 if (existingBot && existingBot.id) {
                     // Bot exists in database
                     const botServer = existingBot.server_name;
-                    const botStatus = existingBot.status;
+                    const botStatus = existingBot.status; // connectivity status
+                    const botStartStatus = existingBot.start_status; // approval status
                     const botId = existingBot.id;
 
+                    // Don't start pair for bots with start status flagged online (meaning active and connected)
+                    if (botStatus === 'connected' && botStartStatus === 'approved') {
+                        await sock.sendMessage(chatId, {
+                            text: `✅ *ALREADY ACTIVE*\n\nThe bot ${number} is already connected and approved. No need to pair.`,
+                            contextInfo: {
+                                forwardingScore: 1,
+                                isForwarded: true,
+                                forwardedNewsletterMessageInfo: {
+                                    newsletterJid: '120363421057570812@newsletter',
+                                    newsletterName: 'TREKKER-md',
+                                    serverMessageId: -1
+                                }
+                            }
+                        });
+                        continue;
+                    }
+
                     await sock.sendMessage(chatId, {
-                        text: `📋 Found existing bot:\n\nID: \`${botId}\`\nStatus: ${botStatus}\nServer: ${botServer}\n\nGenerating pairing code...`,
+                        text: `📋 Found existing bot:\n\nID: \`${botId}\`\nStart Status: ${botStartStatus}\nConn Status: ${botStatus}\nServer: ${botServer}\n\nGenerating pairing code...`,
                         contextInfo: {
                             forwardingScore: 1,
                             isForwarded: true,
@@ -140,7 +158,7 @@ async function pairCommand(sock, chatId, message, q) {
                         const code = pairResp.data.pairing_code;
                         let serverNote = '';
                         if (botServer !== CURRENT_SERVER) {
-                            serverNote = `\n\n⚠️ *Note:* This bot belongs to *${botServer}*. Session will be synced to database.`;
+                            serverNote = `\n\n⚠️ *Note:* This bot belongs to *${botServer}*. Session will be synced to database and status updated.`;
                         }
 
                         await sock.sendMessage(chatId, {

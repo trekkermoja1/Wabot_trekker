@@ -382,6 +382,7 @@ app.get('/api/instances/by-phone/:phoneNumber', async (req, res) => {
       name: instance.name,
       phone_number: instance.phone_number,
       status: instance.status,
+      start_status: instance.start_status,
       server_name: instance.server_name,
       port: instance.port,
       created_at: instance.created_at,
