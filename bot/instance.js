@@ -437,6 +437,19 @@ async function startBot() {
                     console.log(chalk.yellow(`⚠️ [TIMEOUT] Instance: ${instanceId} - Request timed out (408). This usually indicates network issues or slow connection.`));
                 }
 
+                if (statusCode === 440) {
+                    console.log(chalk.yellow(`⚠️ [STATUS 440] Instance: ${instanceId} - Session expired or conflict (440). Syncing session and retrying...`));
+                    try {
+                        const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:5000';
+                        const axios = require('axios');
+                        await axios.post(`${backendUrl}/api/instances/${instanceId}/sync-session`, {
+                            status: 'disconnected',
+                            last_error: 'Session expired (440)',
+                            session_data: JSON.stringify(state.creds, BufferJSON.replacer)
+                        }, { timeout: 5000, validateStatus: false });
+                    } catch (e) {}
+                }
+
                 if (lastDisconnect?.error) {
                     try {
                         console.log(chalk.gray(`[DEBUG] Full Error for ${instanceId}: ${JSON.stringify(lastDisconnect.error, null, 2)}`));
