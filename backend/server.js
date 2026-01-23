@@ -38,7 +38,7 @@ let useSQLite = false;
 if (DATABASE_URL) {
   dbPool = new Pool({
     connectionString: DATABASE_URL,
-    ssl: { rejectUnauthorized: false }
+    ssl: { rejectUnauthorized: false, sslrootcert: 'system' }
   });
   console.log('Attempting to use PostgreSQL database...');
 } else {
@@ -96,6 +96,7 @@ async function initDatabase() {
         name VARCHAR(255) NOT NULL,
         phone_number VARCHAR(50) NOT NULL,
         status VARCHAR(20) NOT NULL DEFAULT 'new',
+        start_status VARCHAR(20) NOT NULL DEFAULT 'new',
         server_name VARCHAR(50) NOT NULL,
         owner_id VARCHAR(100),
         port INTEGER,
@@ -295,8 +296,8 @@ async function checkExpiredBots() {
     const nowFunc = useSQLite ? 'CURRENT_TIMESTAMP' : 'NOW()';
     const result = await executeQuery(`
       UPDATE bot_instances
-      SET status = 'expired', updated_at = ${nowFunc}
-      WHERE status = 'approved' 
+      SET start_status = 'expired', updated_at = ${nowFunc}
+      WHERE start_status = 'approved' 
       AND expires_at <= ${nowFunc}
       AND server_name = $1
       RETURNING id
@@ -317,7 +318,7 @@ async function updateServerStatus() {
   try {
     const countResult = await executeQuery(`
       SELECT COUNT(*) as count FROM bot_instances 
-      WHERE server_name = $1 AND status = 'approved'
+      WHERE server_name = $1 AND start_status = 'approved'
     `, [SERVERNAME]);
     
     const count = parseInt(countResult.rows[0].count);
@@ -338,9 +339,9 @@ async function updateServerStatus() {
 app.get('/api/server-info', async (req, res) => {
   try {
     const total = await executeQuery('SELECT COUNT(*) as count FROM bot_instances WHERE server_name = $1', [SERVERNAME]);
-    const newBots = await executeQuery("SELECT COUNT(*) as count FROM bot_instances WHERE server_name = $1 AND status = 'new'", [SERVERNAME]);
-    const approved = await executeQuery("SELECT COUNT(*) as count FROM bot_instances WHERE server_name = $1 AND status = 'approved'", [SERVERNAME]);
-    const expired = await executeQuery("SELECT COUNT(*) as count FROM bot_instances WHERE server_name = $1 AND status = 'expired'", [SERVERNAME]);
+    const newBots = await executeQuery("SELECT COUNT(*) as count FROM bot_instances WHERE server_name = $1 AND start_status = 'new'", [SERVERNAME]);
+    const approved = await executeQuery("SELECT COUNT(*) as count FROM bot_instances WHERE server_name = $1 AND start_status = 'approved'", [SERVERNAME]);
+    const expired = await executeQuery("SELECT COUNT(*) as count FROM bot_instances WHERE server_name = $1 AND start_status = 'expired'", [SERVERNAME]);
     
     res.json({
       server_name: SERVERNAME,
@@ -485,8 +486,8 @@ app.post('/api/instances/pair-new', async (req, res) => {
     
     // Create in database
     await executeQuery(
-      'INSERT INTO bot_instances (id, name, phone_number, status, server_name, port) VALUES ($1, $2, $3, $4, $5, $6)',
-      [instanceId, name, phone_number, 'new', targetServer, port]
+      'INSERT INTO bot_instances (id, name, phone_number, status, start_status, server_name, port) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+      [instanceId, name, phone_number, 'new', 'new', targetServer, port]
     );
     
     // Setup directories
@@ -544,7 +545,7 @@ app.post('/api/instances', async (req, res) => {
       const updateNow = useSQLite ? 'CURRENT_TIMESTAMP' : 'NOW()';
       await executeQuery(`
         UPDATE bot_instances 
-        SET name = $1, owner_id = $2, port = $3, status = 'new', updated_at = ${updateNow} 
+        SET name = $1, owner_id = $2, port = $3, status = 'new', start_status = 'new', updated_at = ${updateNow} 
         WHERE id = $4
       `, [name, owner_id, port, instanceId]);
     } else {
@@ -553,8 +554,8 @@ app.post('/api/instances', async (req, res) => {
       port = getNextPort();
       
       await executeQuery(
-        'INSERT INTO bot_instances (id, name, phone_number, status, server_name, owner_id, port) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-        [instanceId, name, phone_number, 'new', targetServer, owner_id, port]
+        'INSERT INTO bot_instances (id, name, phone_number, status, start_status, server_name, owner_id, port) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+        [instanceId, name, phone_number, 'new', 'new', targetServer, owner_id, port]
       );
     }
 
@@ -738,16 +739,18 @@ app.delete('/api/instances/:instanceId', async (req, res) => {
 
 app.get('/api/instances', async (req, res) => {
   try {
-    const { status, id, all_servers } = req.query;
+    const { status, start_status, id, all_servers } = req.query;
     let result;
     
     const useAllServers = all_servers === 'true';
     
     if (id) {
       result = await executeQuery('SELECT * FROM bot_instances WHERE id = $1', [id]);
+    } else if (start_status) {
+      result = await executeQuery('SELECT * FROM bot_instances WHERE start_status = $1 ORDER BY created_at DESC', [start_status]);
     } else if (status) {
       if (status === 'approved') {
-        result = await executeQuery("SELECT * FROM bot_instances WHERE status IN ('approved', 'connected', 'connecting', 'disconnected') ORDER BY created_at DESC");
+        result = await executeQuery("SELECT * FROM bot_instances WHERE start_status = 'approved' ORDER BY created_at DESC");
       } else {
         result = await executeQuery('SELECT * FROM bot_instances WHERE status = $1 ORDER BY created_at DESC', [status]);
       }
@@ -759,8 +762,7 @@ app.get('/api/instances', async (req, res) => {
     for (const instance of result.rows) {
       let statusData = { status: instance.status, pairingCode: null, user: null };
       
-      // Add all_servers check or fix the filter to ensure approved bots are shown regardless of SERVERNAME
-      if (instance.status === 'approved' && instance.port) {
+      if (instance.start_status === 'approved' && instance.port) {
         if (instance.server_name === SERVERNAME) {
           statusData = await getInstanceStatus(instance.id, instance.port);
         }
@@ -771,6 +773,7 @@ app.get('/api/instances', async (req, res) => {
         name: instance.name,
         phone_number: instance.phone_number,
         status: statusData.status || instance.status,
+        start_status: instance.start_status,
         server_name: instance.server_name,
         owner_id: instance.owner_id,
         port: instance.port,
@@ -808,7 +811,7 @@ app.post('/api/instances/:instanceId/approve', async (req, res) => {
     const nowFunc = useSQLite ? 'CURRENT_TIMESTAMP' : 'NOW()';
     await executeQuery(`
       UPDATE bot_instances 
-      SET status = 'approved', 
+      SET start_status = 'approved', 
           duration_months = $1,
           approved_at = ${nowFunc},
           expires_at = $2,
@@ -851,7 +854,7 @@ async function startServer() {
     await updateServerStatus();
     
     // Start approved bots on this server
-    const result = await executeQuery("SELECT * FROM bot_instances WHERE status = 'approved' AND server_name = $1", [SERVERNAME]);
+    const result = await executeQuery("SELECT * FROM bot_instances WHERE start_status = 'approved' AND server_name = $1", [SERVERNAME]);
     console.log(`🚀 Starting ${result.rows.length} bots from database...`);
     for (const bot of result.rows) {
       startInstanceInternal(bot.id, bot.phone_number, bot.port, bot.session_data);

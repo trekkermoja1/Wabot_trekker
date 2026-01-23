@@ -45,9 +45,9 @@ function App() {
   const fetchBots = async () => {
     try {
       const [newRes, approvedRes, expiredRes] = await Promise.all([
-        fetch(`${API_URL}/api/instances?status=new`),
-        fetch(`${API_URL}/api/instances?status=approved`),
-        fetch(`${API_URL}/api/instances?status=expired`)
+        fetch(`${API_URL}/api/instances?start_status=new`),
+        fetch(`${API_URL}/api/instances?start_status=approved`),
+        fetch(`${API_URL}/api/instances?start_status=expired`)
       ]);
       
       const newData = await newRes.json();
