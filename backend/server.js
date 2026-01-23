@@ -414,6 +414,12 @@ app.post('/api/instances/:instanceId/pair', async (req, res) => {
       await executeQuery('UPDATE bot_instances SET port = $1 WHERE id = $2', [port, instanceId]);
     }
     
+    // Only update start_status to 'new' if it's currently null or empty. 
+    // If it's already 'approved', 'expired', or 'new', we keep it.
+    if (!instance.start_status) {
+      await executeQuery("UPDATE bot_instances SET start_status = 'new' WHERE id = $1", [instanceId]);
+    }
+    
     // Clear existing session for fresh pairing
     const botDir = path.join(__dirname, '..', 'bot');
     const sessionDir = path.join(botDir, 'instances', instanceId, 'session');
@@ -475,7 +481,7 @@ app.post('/api/instances/pair-new', async (req, res) => {
     const { name, phone_number, current_server } = req.body;
     
     // Check if already exists
-    const existing = await executeQuery('SELECT id FROM bot_instances WHERE phone_number = $1', [phone_number]);
+    const existing = await executeQuery('SELECT id, start_status FROM bot_instances WHERE phone_number = $1', [phone_number]);
     if (existing.rows.length > 0) {
       return res.status(400).json({ detail: 'Bot already exists for this phone number. Use pair endpoint instead.' });
     }
