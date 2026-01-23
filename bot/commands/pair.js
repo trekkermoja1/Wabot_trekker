@@ -2,7 +2,7 @@ const axios = require('axios');
 const { sleep } = require('../lib/myfunc');
 const settings = require('../settings');
 
-const BACKEND_URL = settings.backendApiUrl || 'http://127.0.0.1:8001';
+const BACKEND_URL = settings.backendApiUrl || 'http://0.0.0.0:5000';
 const CURRENT_SERVER = process.env.SERVERNAME || 'server1';
 
 async function pairCommand(sock, chatId, message, q) {
