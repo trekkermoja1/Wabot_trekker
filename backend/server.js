@@ -441,12 +441,6 @@ app.post('/api/instances/:instanceId/pair', async (req, res) => {
       return res.status(500).json({ detail: 'Failed to start instance for pairing' });
     }
     
-    // Clear existing session directory to ensure fresh pairing
-    const sessionDir = path.join(__dirname, '../bot/instances', instanceId, 'session');
-    if (fs.existsSync(sessionDir)) {
-        fs.rmSync(sessionDir, { recursive: true, force: true });
-    }
-    
     // Always call regenerate-code on the instance to ensure it generates a fresh code
     try {
         await fetch(`http://127.0.0.1:${port}/regenerate-code`, {
