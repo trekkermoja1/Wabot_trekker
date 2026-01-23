@@ -147,7 +147,16 @@ const server = http.createServer(async (req, res) => {
             apiPort
         }));
     } else if (pathname === '/pairing-code' || pathname === '/pairing-code/') {
-        // Polling endpoint: Just return current status without resetting
+        // Trigger pairing if not already paired and not authenticated
+        if (!pairingCode && !isAuthenticated && connectionStatus === 'ready_to_pair') {
+            console.log(chalk.blue(`[API] Pairing code requested for ${instanceId}, triggering generation...`));
+            if (botSocket && botSocket.requestPairing) {
+                botSocket.requestPairing().catch(e => {
+                    console.error('Error triggering requestPairing:', e.message);
+                });
+            }
+        }
+        
         res.writeHead(200);
         res.end(JSON.stringify({
             pairingCode: pairingCode || null,

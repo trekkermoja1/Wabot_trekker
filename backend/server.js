@@ -441,18 +441,33 @@ app.post('/api/instances/:instanceId/pair', async (req, res) => {
       return res.status(500).json({ detail: 'Failed to start instance for pairing' });
     }
     
-    // Wait for instance to initialize
-    await new Promise(r => setTimeout(r, 5000));
+    // Wait for instance to initialize and be ready for pairing
+    await new Promise(r => setTimeout(r, 8000));
     
     // Force trigger pairing code generation by calling /pairing-code on the instance
-    try {
-        await fetch(`http://127.0.0.1:${port}/pairing-code`);
-    } catch (e) {
-        console.error('Error triggering pairing code:', e.message);
+    // We do this multiple times if needed to ensure the instance is up
+    let triggered = false;
+    for (let i = 0; i < 5; i++) {
+        try {
+            const triggerResp = await fetch(`http://127.0.0.1:${port}/pairing-code`, {
+                signal: AbortSignal.timeout(5000)
+            });
+            if (triggerResp.ok) {
+                triggered = true;
+                break;
+            }
+        } catch (e) {
+            console.log(`Trigger attempt ${i + 1} failed: ${e.message}`);
+            await new Promise(r => setTimeout(r, 2000));
+        }
     }
     
-    // Get pairing code
-    const pairingCode = await getPairingCodeFromInstance(port, 40);
+    if (!triggered) {
+        console.warn(`[PAIRING] Warning: Could not confirm pairing trigger for ${instanceId}`);
+    }
+    
+    // Get pairing code with increased attempts
+    const pairingCode = await getPairingCodeFromInstance(port, 60);
     
     if (!pairingCode) {
       console.log(chalk.red(`❌ [PAIRING] Failed to generate pairing code for ${instanceId} after 40 attempts`));
