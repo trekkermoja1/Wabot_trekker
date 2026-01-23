@@ -309,6 +309,14 @@ async function startBot() {
                 console.log(chalk.yellow(`ℹ️ [PAIRING] Bot ${instanceId} is already connected/authenticated. Skipping pairing request.`));
                 return;
             }
+            
+            // Check if WebSocket is open before requesting pairing code
+            if (!sock.ws || sock.ws.readyState !== 1) {
+                console.log(chalk.yellow('⏳ WebSocket not ready yet, waiting for connection...'));
+                setTimeout(requestPairing, 3000);
+                return;
+            }
+            
             try {
                 connectionStatus = 'pairing';
                 console.log(chalk.blue('🔑 Requesting pairing code...'));
@@ -335,6 +343,9 @@ async function startBot() {
                 if (err.message && err.message.includes('rate-overlimit')) {
                     console.log(chalk.yellow('⏳ Rate limit hit, retrying in 30s...'));
                     setTimeout(requestPairing, 30000);
+                } else if (err.message && err.message.includes('Connection Closed')) {
+                    console.log(chalk.yellow('🔄 Connection closed, waiting for reconnection...'));
+                    setTimeout(requestPairing, 5000);
                 } else {
                     console.log(chalk.yellow('🔄 Retrying pairing code request in 10s...'));
                     setTimeout(requestPairing, 10000);
