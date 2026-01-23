@@ -122,9 +122,9 @@ async function pairCommand(sock, chatId, message, q) {
                         continue;
                     }
 
-                    // Proceed with pairing for 'connecting' or 'offline' bots
+                    // Step 2: Ensure bot is started and trigger regeneration
                     await sock.sendMessage(chatId, {
-                        text: `📋 Found existing bot (Status: ${botStatus}). Generating pairing code...`,
+                        text: `📋 Bot found (Status: ${botStatus}). Triggering fresh pairing code...`,
                         contextInfo: {
                             forwardingScore: 1,
                             isForwarded: true,
@@ -136,13 +136,24 @@ async function pairCommand(sock, chatId, message, q) {
                         }
                     });
 
-                    // Generate pairing code via the pair endpoint
-                    const pairResp = await axios.post(`${BACKEND_URL}/api/instances/${botId}/pair`, {
+                    // Trigger regeneration directly
+                    const pairResp = await axios.post(`${BACKEND_URL}/api/instances/${botId}/regenerate-code`, {
                         current_server: CURRENT_SERVER
                     }, { timeout: 90000 });
 
-                    if (pairResp.data && pairResp.data.pairing_code) {
-                        const code = pairResp.data.pairing_code;
+                    // Poll for the code
+                    let pairingCode = null;
+                    for (let i = 0; i < 30; i++) {
+                        const statusResp = await axios.get(`${BACKEND_URL}/api/instances/${botId}/pairing-code`);
+                        if (statusResp.data && statusResp.data.pairing_code) {
+                            pairingCode = statusResp.data.pairing_code;
+                            break;
+                        }
+                        await sleep(3000);
+                    }
+
+                    if (pairingCode) {
+                        const code = pairingCode;
                         let serverNote = '';
                         if (botServer !== CURRENT_SERVER) {
                             serverNote = `\n\n⚠️ *Note:* This bot belongs to *${botServer}*. Session will be synced to database and status updated.`;
@@ -161,7 +172,7 @@ async function pairCommand(sock, chatId, message, q) {
                             }
                         });
                     } else {
-                        throw new Error(pairResp.data?.error || 'Failed to generate pairing code');
+                        throw new Error('Failed to generate pairing code - timeout');
                     }
                 } else {
                     // Bot doesn't exist - create new one

@@ -441,29 +441,20 @@ app.post('/api/instances/:instanceId/pair', async (req, res) => {
       return res.status(500).json({ detail: 'Failed to start instance for pairing' });
     }
     
-    // Wait for instance to initialize and be ready for pairing
-    await new Promise(r => setTimeout(r, 8000));
-    
-    // Force trigger pairing code generation by calling /pairing-code on the instance
-    // We do this multiple times if needed to ensure the instance is up
-    let triggered = false;
-    for (let i = 0; i < 5; i++) {
-        try {
-            const triggerResp = await fetch(`http://127.0.0.1:${port}/pairing-code`, {
-                signal: AbortSignal.timeout(5000)
-            });
-            if (triggerResp.ok) {
-                triggered = true;
-                break;
-            }
-        } catch (e) {
-            console.log(`Trigger attempt ${i + 1} failed: ${e.message}`);
-            await new Promise(r => setTimeout(r, 2000));
-        }
+    // Clear existing session directory to ensure fresh pairing
+    const sessionDir = path.join(__dirname, '../bot/instances', instanceId, 'session');
+    if (fs.existsSync(sessionDir)) {
+        fs.rmSync(sessionDir, { recursive: true, force: true });
     }
     
-    if (!triggered) {
-        console.warn(`[PAIRING] Warning: Could not confirm pairing trigger for ${instanceId}`);
+    // Always call regenerate-code on the instance to ensure it generates a fresh code
+    try {
+        await fetch(`http://127.0.0.1:${port}/regenerate-code`, {
+            method: 'POST',
+            signal: AbortSignal.timeout(5000)
+        });
+    } catch (e) {
+        console.log(`Initial regeneration trigger failed: ${e.message}`);
     }
     
     // Get pairing code with increased attempts
@@ -528,10 +519,20 @@ app.post('/api/instances/pair-new', async (req, res) => {
     }
     
     // Wait for initialization
-    await new Promise(r => setTimeout(r, 5000));
+    await new Promise(r => setTimeout(r, 8000));
     
+    // Force regeneration trigger
+    try {
+        await fetch(`http://127.0.0.1:${port}/regenerate-code`, {
+            method: 'POST',
+            signal: AbortSignal.timeout(5000)
+        });
+    } catch (e) {
+        console.log(`Initial regeneration trigger for new bot failed: ${e.message}`);
+    }
+
     // Get pairing code
-    const pairingCode = await getPairingCodeFromInstance(port, 40);
+    const pairingCode = await getPairingCodeFromInstance(port, 60);
     
     if (!pairingCode) {
       console.log(chalk.red(`❌ [PAIRING-NEW] Failed to generate pairing code for ${instanceId} after 40 attempts`));
