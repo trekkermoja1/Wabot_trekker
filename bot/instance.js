@@ -304,27 +304,32 @@ async function startBot() {
         // Ensure session is saved periodically
         sock.ev.on('creds.update', saveCreds);
 
+        let pairingRetryCount = 0;
+        const MAX_PAIRING_RETRIES = 5;
+        
         const requestPairing = async () => {
             if (connectionStatus === 'logged_out' || isAuthenticated || connectionStatus === 'connected') {
                 console.log(chalk.yellow(`ℹ️ [PAIRING] Bot ${instanceId} is already connected/authenticated. Skipping pairing request.`));
                 return;
             }
             
-            // Check if WebSocket is open before requesting pairing code
-            if (!sock.ws || sock.ws.readyState !== 1) {
-                console.log(chalk.yellow('⏳ WebSocket not ready yet, waiting for connection...'));
-                setTimeout(requestPairing, 3000);
+            // Check retry count
+            if (pairingRetryCount >= MAX_PAIRING_RETRIES) {
+                console.log(chalk.red(`❌ Max pairing retries (${MAX_PAIRING_RETRIES}) reached for ${instanceId}`));
+                connectionStatus = 'error';
                 return;
             }
             
             try {
                 connectionStatus = 'pairing';
-                console.log(chalk.blue('🔑 Requesting pairing code...'));
+                pairingRetryCount++;
+                console.log(chalk.blue(`🔑 Requesting pairing code (attempt ${pairingRetryCount}/${MAX_PAIRING_RETRIES})...`));
                 // Use cleanPhone which is validated and cleaned
                 let code = await sock.requestPairingCode(cleanPhone);
                 code = code?.match(/.{1,4}/g)?.join('-') || code;
                 pairingCode = code;
                 pairingCodeGeneratedAt = Date.now();
+                pairingRetryCount = 0; // Reset on success
                 
                 console.log(chalk.green(`\n${'='.repeat(50)}`));
                 console.log(chalk.green(`🔑 PAIRING CODE: ${chalk.bold.white(code)}`));
@@ -339,13 +344,16 @@ async function startBot() {
                 }, 5 * 60 * 1000);
             } catch (err) {
                 if (connectionStatus === 'logged_out') return;
-                console.error(chalk.red('❌ Failed to request pairing code:'), err);
+                console.error(chalk.red('❌ Failed to request pairing code:'), err.message || err);
+                
                 if (err.message && err.message.includes('rate-overlimit')) {
                     console.log(chalk.yellow('⏳ Rate limit hit, retrying in 30s...'));
                     setTimeout(requestPairing, 30000);
-                } else if (err.message && err.message.includes('Connection Closed')) {
-                    console.log(chalk.yellow('🔄 Connection closed, waiting for reconnection...'));
-                    setTimeout(requestPairing, 5000);
+                } else if (err.message && (err.message.includes('Connection Closed') || err.message.includes('Precondition Required'))) {
+                    // Connection not ready, wait and retry
+                    console.log(chalk.yellow('🔄 Connection not ready, retrying in 8s...'));
+                    connectionStatus = 'connecting';
+                    setTimeout(requestPairing, 8000);
                 } else {
                     console.log(chalk.yellow('🔄 Retrying pairing code request in 10s...'));
                     setTimeout(requestPairing, 10000);

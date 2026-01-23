@@ -141,9 +141,9 @@ async function pairCommand(sock, chatId, message, q) {
                         current_server: CURRENT_SERVER
                     }, { timeout: 90000 });
 
-                    // Poll for the code
+                    // Poll for the code - wait up to 2 minutes (40 attempts x 3 seconds)
                     let pairingCode = null;
-                    for (let i = 0; i < 30; i++) {
+                    for (let i = 0; i < 40; i++) {
                         const statusResp = await axios.get(`${BACKEND_URL}/api/instances/${botId}/pairing-code`);
                         if (statusResp.data && statusResp.data.pairing_code) {
                             pairingCode = statusResp.data.pairing_code;
