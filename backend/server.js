@@ -164,22 +164,30 @@ async function getInstanceStatus(instanceId, port) {
       timeout: 5000 
     });
     return response.data;
-  } catch (e) {}
+  } catch (e) {
+    // Try 127.0.0.1 as fallback
+    try {
+      const response = await axios.get(`http://127.0.0.1:${port}/status`, { timeout: 2000 });
+      return response.data;
+    } catch (e2) {}
+  }
   return { status: 'offline', pairingCode: null };
 }
 
 async function getPairingCodeFromInstance(port, maxAttempts = 30) {
   for (let i = 0; i < maxAttempts; i++) {
     try {
-      const response = await axios.get(`http://localhost:${port}/pairing-code`, {
-        timeout: 5000
-      });
-      const data = response.data;
-      if (data.pairingCode) {
-        return data.pairingCode;
-      }
-      if (data.isAuthenticated) {
-        return 'ALREADY_CONNECTED';
+      // Try both localhost and 127.0.0.1
+      const hosts = ['localhost', '127.0.0.1'];
+      for (const host of hosts) {
+        try {
+          const response = await axios.get(`http://${host}:${port}/pairing-code`, {
+            timeout: 5000
+          });
+          const data = response.data;
+          if (data.pairingCode) return data.pairingCode;
+          if (data.isAuthenticated) return 'ALREADY_CONNECTED';
+        } catch (e) {}
       }
     } catch (e) {
       console.log(`Polling port ${port} attempt ${i + 1}/${maxAttempts}: ${e.message}`);
@@ -610,9 +618,13 @@ app.post('/api/instances/:instanceId/regenerate-code', async (req, res) => {
     }
 
     try {
-      const response = await axios.post(`http://localhost:${port}/regenerate-code`, {}, {
-        timeout: 15000
-      });
+      // Try localhost first, then 127.0.0.1
+      let response;
+      try {
+        response = await axios.post(`http://localhost:${port}/regenerate-code`, {}, { timeout: 15000 });
+      } catch (e) {
+        response = await axios.post(`http://127.0.0.1:${port}/regenerate-code`, {}, { timeout: 15000 });
+      }
       return res.json(response.data);
     } catch (axiosError) {
       console.error(`Error connecting to bot instance on port ${port}:`, axiosError.message);
@@ -646,9 +658,13 @@ app.get('/api/instances/:instanceId/pairing-code', async (req, res) => {
     }
 
     try {
-      const response = await axios.get(`http://localhost:${port}/pairing-code`, {
-        timeout: 20000
-      });
+      // Try localhost first, then 127.0.0.1
+      let response;
+      try {
+        response = await axios.get(`http://localhost:${port}/pairing-code`, { timeout: 20000 });
+      } catch (e) {
+        response = await axios.get(`http://127.0.0.1:${port}/pairing-code`, { timeout: 20000 });
+      }
       const data = response.data;
       res.json({ pairing_code: data.pairingCode, status: data.status });
     } catch (axiosError) {
