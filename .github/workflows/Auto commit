@@ -1,33 +1,98 @@
-name: TREKKER MD BOT
+name: Auto Commit to All Repositories
 
 on:
   schedule:
-    # Trigger redeploy
-    - cron: '0 0 * * *'     # midnight
-    - cron: '45 2 * * *'
-    - cron: '30 5 * * *'
-    - cron: '15 8 * * *'
-    - cron: '0 11 * * *'
-    - cron: '45 13 * * *'
-    - cron: '30 16 * * *'
-    - cron: '15 19 * * *'
-    - cron: '0 22 * * *'
-  workflow_dispatch:
+    # Runs every 3 hours
+    - cron: '0 */3 * * *'
+  workflow_dispatch: # Allows manual triggering
 
 jobs:
-  trigger:
+  auto-commit:
     runs-on: ubuntu-latest
+    
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
+      - name: Checkout current repository
+        uses: actions/checkout@v4
         with:
+          token: ${{ secrets.Trekker }}
           fetch-depth: 0
-
-      - name: Commit and push trigger
+      
+      - name: Set up Git
         run: |
-          echo "Triggered at $(date -u) — $RANDOM" > .trekker-kit.txt
-          git config --global user.name "GitHub Actions Bot"
-          git config --global user.email "actions@github.com"
-          git add .trekker-kit.txt
-          git commit -m "trekker: md deploy"
-          git push
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+      
+      - name: Get all repositories
+        id: get-repos
+        run: |
+          # Get authenticated user
+          USER=$(curl -s -H "Authorization: token ${{ secrets.Trekker }}" \
+            https://api.github.com/user | jq -r '.login')
+          
+          # Get all repositories for the user
+          REPOS=$(curl -s -H "Authorization: token ${{ secrets.Trekker }}" \
+            "https://api.github.com/user/repos?per_page=100&affiliation=owner" | \
+            jq -r '.[].full_name')
+          
+          echo "repositories<<EOF" >> $GITHUB_OUTPUT
+          echo "$REPOS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "username=$USER" >> $GITHUB_OUTPUT
+      
+      - name: Commit to all repositories
+        env:
+          PAT_TOKEN: ${{ secrets.Trekker }}
+          REPOS: ${{ steps.get-repos.outputs.repositories }}
+        run: |
+          TIMESTAMP=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          COMMIT_MESSAGE="Auto-commit: Activity logged at $TIMESTAMP (commits viewed within 3hrs)"
+          
+          # Create temporary directory
+          mkdir -p /tmp/repos
+          cd /tmp/repos
+          
+          # Process each repository
+          echo "$REPOS" | while read -r repo; do
+            if [ -z "$repo" ]; then
+              continue
+            fi
+            
+            echo "Processing repository: $repo"
+            
+            # Clone repository
+            git clone "https://${PAT_TOKEN}@github.com/${repo}.git" "${repo##*/}" 2>/dev/null || {
+              echo "Failed to clone $repo"
+              continue
+            }
+            
+            cd "${repo##*/}"
+            
+            # Create or update activity log file
+            echo "$TIMESTAMP - Automated activity commit" >> .github-activity.log
+            
+            # Add and commit changes
+            git add .github-activity.log
+            git commit -m "$COMMIT_MESSAGE" 2>/dev/null || {
+              echo "No changes to commit for $repo"
+              cd ..
+              continue
+            }
+            
+            # Push changes
+            git push origin main 2>/dev/null || git push origin master 2>/dev/null || {
+              echo "Failed to push to $repo"
+              cd ..
+              continue
+            }
+            
+            echo "Successfully committed to $repo"
+            cd ..
+            
+            # Clean up
+            rm -rf "${repo##*/}"
+          done
+      
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -rf /tmp/repos
