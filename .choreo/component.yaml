@@ -13,7 +13,7 @@ endpoints:
     type: REST
     service:
       basePath: /dist/public
-      port: 8080
+      port: 5000
       networkVisibilities:
         - Public
       schemaFilePath: openapi.yaml
@@ -24,7 +24,7 @@ endpoints:
     type: WS
     service:
       basePath: /
-      port: 8080
+      port: 5000
       networkVisibilities:
         - Public
       schemaFilePath: openapi.yaml
