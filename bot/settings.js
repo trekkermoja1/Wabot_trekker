@@ -13,7 +13,8 @@ const settings = {
   version: "1.0.0",
   updateZipUrl: "",
   // Backend API for bot management
-  backendApiUrl: process.env.BACKEND_API_URL || 'http://127.0.0.1:5000',
+  backendApiUrl: process.env.BACKEND_API_URL || 
+                (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : 'http://127.0.0.1:5000'),
 };
 
 module.exports = settings;
