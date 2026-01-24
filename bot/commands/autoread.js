@@ -13,7 +13,7 @@ const configPath = path.join(__dirname, '..', 'data', 'autoread.json');
 // Initialize configuration file if it doesn't exist
 function initConfig() {
     if (!fs.existsSync(configPath)) {
-        fs.writeFileSync(configPath, JSON.stringify({ enabled: false }, null, 2));
+        fs.writeFileSync(configPath, JSON.stringify({ enabled: true }, null, 2));
     }
     return JSON.parse(fs.readFileSync(configPath));
 }
