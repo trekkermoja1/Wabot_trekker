@@ -496,18 +496,6 @@ async function startBot() {
             }
         }
     });
-                            pairingCode = null;
-                            connectionStatus = 'ready_to_pair';
-                            // Bot stays idle now
-                        } catch (e) {
-                            console.error('Error clearing session on retry limit:', e);
-                        }
-                    }
-                } else {
-                    connectionStatus = 'disconnected';
-                }
-            }
-    });
 
         // Decode JID helper
         sock.decodeJid = (jid) => {
