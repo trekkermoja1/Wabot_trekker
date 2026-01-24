@@ -60,7 +60,7 @@ jobs:
             echo "Processing repository: $repo"
             
             # Clone repository
-            git clone "https://${PAT_TOKEN}@github.com/${repo}.git" "${repo##*/}" 2>/dev/null || {
+            git clone "https://${Trekker}@github.com/${repo}.git" "${repo##*/}" 2>/dev/null || {
               echo "Failed to clone $repo"
               continue
             }
