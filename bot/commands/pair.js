@@ -163,12 +163,14 @@ async function pairCommand(sock, chatId, message, q) {
 
                 // Step 2: Poll for the pairing code (matches frontend logic)
                 let pairingCode = null;
-                const maxAttempts = 30;
+                const maxAttempts = 40;
                 
                 for (let i = 0; i < maxAttempts; i++) {
                     try {
-                        const statusResp = await axios.get(`${BACKEND_URL}/api/instances/${botId}/pairing-code`);
-                        const code = statusResp.data.pairingCode || statusResp.data.pairing_code;
+                        const statusResp = await axios.get(`${BACKEND_URL}/api/instances/${botId}/pairing-code`, {
+                            timeout: 15000
+                        });
+                        const code = statusResp.data.pairing_code || statusResp.data.pairingCode;
                         
                         if (code) {
                             pairingCode = code;
@@ -177,7 +179,7 @@ async function pairCommand(sock, chatId, message, q) {
                     } catch (e) {
                         console.log(`Polling attempt ${i + 1} failed: ${e.message}`);
                     }
-                    await sleep(2000);
+                    await sleep(3000);
                 }
 
                 if (pairingCode) {

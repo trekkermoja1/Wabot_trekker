@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const axios = require('axios');
 const { Pool } = require('pg');
 const sqlite3 = require('sqlite3').verbose();
 const { v4: uuidv4 } = require('uuid');
@@ -159,12 +160,10 @@ function getNextPort() {
 
 async function getInstanceStatus(instanceId, port) {
   try {
-    const response = await fetch(`http://127.0.0.1:${port}/status`, { 
-      signal: AbortSignal.timeout(5000) 
+    const response = await axios.get(`http://127.0.0.1:${port}/status`, { 
+      timeout: 5000 
     });
-    if (response.ok) {
-      return await response.json();
-    }
+    return response.data;
   } catch (e) {}
   return { status: 'offline', pairingCode: null };
 }
@@ -172,17 +171,15 @@ async function getInstanceStatus(instanceId, port) {
 async function getPairingCodeFromInstance(port, maxAttempts = 30) {
   for (let i = 0; i < maxAttempts; i++) {
     try {
-      const response = await fetch(`http://127.0.0.1:${port}/pairing-code`, {
-        signal: AbortSignal.timeout(5000)
+      const response = await axios.get(`http://127.0.0.1:${port}/pairing-code`, {
+        timeout: 5000
       });
-      if (response.ok) {
-        const data = await response.json();
-        if (data.pairingCode) {
-          return data.pairingCode;
-        }
-        if (data.isAuthenticated) {
-          return 'ALREADY_CONNECTED';
-        }
+      const data = response.data;
+      if (data.pairingCode) {
+        return data.pairingCode;
+      }
+      if (data.isAuthenticated) {
+        return 'ALREADY_CONNECTED';
       }
     } catch (e) {
       console.log(`Polling port ${port} attempt ${i + 1}/${maxAttempts}: ${e.message}`);
@@ -612,15 +609,15 @@ app.post('/api/instances/:instanceId/regenerate-code', async (req, res) => {
        return res.status(400).json({ detail: 'Instance has no assigned port' });
     }
 
-    const response = await fetch(`http://127.0.0.1:${port}/regenerate-code`, {
-      method: 'POST',
-      signal: AbortSignal.timeout(10000)
-    });
-
-    if (response.ok) {
-      return res.json(await response.json());
+    try {
+      const response = await axios.post(`http://127.0.0.1:${port}/regenerate-code`, {}, {
+        timeout: 15000
+      });
+      return res.json(response.data);
+    } catch (axiosError) {
+      console.error(`Error connecting to bot instance on port ${port}:`, axiosError.message);
+      return res.status(500).json({ detail: `Bot instance communication failed: ${axiosError.message}` });
     }
-    res.status(500).json({ detail: 'Failed to trigger regeneration on instance' });
   } catch (e) {
     res.status(500).json({ detail: e.message });
   }
@@ -649,17 +646,14 @@ app.get('/api/instances/:instanceId/pairing-code', async (req, res) => {
     }
 
     try {
-      const response = await fetch(`http://127.0.0.1:${port}/pairing-code`, {
-        signal: AbortSignal.timeout(20000)
+      const response = await axios.get(`http://127.0.0.1:${port}/pairing-code`, {
+        timeout: 20000
       });
-      if (response.ok) {
-        const data = await response.json();
-        return res.json({ pairing_code: data.pairingCode, status: data.status });
-      }
-    } catch (e) {}
-
-    const statusData = await getInstanceStatus(instanceId, port);
-    res.json({ pairing_code: statusData.pairingCode, status: statusData.status });
+      const data = response.data;
+      res.json({ pairing_code: data.pairingCode, status: data.status });
+    } catch (axiosError) {
+      res.status(500).json({ detail: `Bot instance communication failed: ${axiosError.message}` });
+    }
   } catch (e) {
     res.status(500).json({ detail: e.message });
   }
