@@ -94,18 +94,15 @@ async function pairCommand(sock, chatId, message, q) {
             });
 
             try {
-                // Step 1: Check if bot already exists in database (any status, any server)
+                // Step 1: Check if bot already exists in database
                 const checkResp = await axios.get(`${BACKEND_URL}/api/instances/by-phone/${number}`);
                 const existingBot = checkResp.data;
 
+                let botId;
                 if (existingBot && existingBot.id) {
-                    // Bot exists in database
-                    const botServer = existingBot.server_name;
-                    const botStatus = existingBot.status; // connectivity status
-                    const botStartStatus = existingBot.start_status; // approval status
-                    const botId = existingBot.id;
+                    botId = existingBot.id;
+                    const botStatus = existingBot.status;
 
-                    // Don't start pair for bots with status 'connected'
                     if (botStatus === 'connected') {
                         await sock.sendMessage(chatId, {
                             text: `✅ *ALREADY ACTIVE*\n\nThe bot ${number} is already connected. No need to pair.`,
@@ -122,9 +119,8 @@ async function pairCommand(sock, chatId, message, q) {
                         continue;
                     }
 
-                    // Step 2: Ensure bot is started and trigger regeneration
                     await sock.sendMessage(chatId, {
-                        text: `📋 Bot found (Status: ${botStatus}). Triggering fresh pairing code...`,
+                        text: `📋 Bot found. Clearing old sessions and triggering fresh pairing code...`,
                         contextInfo: {
                             forwardingScore: 1,
                             isForwarded: true,
@@ -136,48 +132,12 @@ async function pairCommand(sock, chatId, message, q) {
                         }
                     });
 
-                    // Trigger regeneration directly
-                    const pairResp = await axios.post(`${BACKEND_URL}/api/instances/${botId}/regenerate-code`, {
-                        current_server: CURRENT_SERVER
-                    }, { timeout: 90000 });
-
-                    // Poll for the code - wait up to 2 minutes (40 attempts x 3 seconds)
-                    let pairingCode = null;
-                    for (let i = 0; i < 40; i++) {
-                        const statusResp = await axios.get(`${BACKEND_URL}/api/instances/${botId}/pairing-code`);
-                        if (statusResp.data && statusResp.data.pairing_code) {
-                            pairingCode = statusResp.data.pairing_code;
-                            break;
-                        }
-                        await sleep(3000);
-                    }
-
-                    if (pairingCode) {
-                        const code = pairingCode;
-                        let serverNote = '';
-                        if (botServer !== CURRENT_SERVER) {
-                            serverNote = `\n\n⚠️ *Note:* This bot belongs to *${botServer}*. Session will be synced to database and status updated.`;
-                        }
-
-                        await sock.sendMessage(chatId, {
-                            text: `*✅ Pairing Code for ${number}:*\n\nCode: *${code}*\n\n_Enter this code on WhatsApp > Linked Devices > Link with Phone Number_${serverNote}`,
-                            contextInfo: {
-                                forwardingScore: 1,
-                                isForwarded: true,
-                                forwardedNewsletterMessageInfo: {
-                                    newsletterJid: '120363421057570812@newsletter',
-                                    newsletterName: 'TREKKER-md',
-                                    serverMessageId: -1
-                                }
-                            }
-                        });
-                    } else {
-                        throw new Error('Failed to generate pairing code - timeout');
-                    }
+                    // Trigger regeneration (clears old sessions on bot side)
+                    await axios.post(`${BACKEND_URL}/api/instances/${botId}/regenerate-code`);
                 } else {
                     // Bot doesn't exist - create new one
                     await sock.sendMessage(chatId, {
-                        text: `📝 No existing bot found. Creating new instance for ${number}...`,
+                        text: `📝 Creating new instance for ${number}...`,
                         contextInfo: {
                             forwardingScore: 1,
                             isForwarded: true,
@@ -189,32 +149,52 @@ async function pairCommand(sock, chatId, message, q) {
                         }
                     });
 
-                    // Create new instance and get pairing code
                     const createResp = await axios.post(`${BACKEND_URL}/api/instances/pair-new`, {
                         name: `WhatsApp Bot: ${number}`,
                         phone_number: number,
                         current_server: CURRENT_SERVER
-                    }, { timeout: 90000 });
-
-                    if (createResp.data && createResp.data.pairing_code) {
-                        const code = createResp.data.pairing_code;
-                        const botId = createResp.data.id;
-
-                        await sock.sendMessage(chatId, {
-                            text: `*✅ Pairing Code for ${number}:*\n\nCode: *${code}*\nBot ID: \`${botId}\`\n\n_Enter this code on WhatsApp > Linked Devices > Link with Phone Number_\n\n*Note:* This bot needs approval after pairing. Contact admin.`,
-                            contextInfo: {
-                                forwardingScore: 1,
-                                isForwarded: true,
-                                forwardedNewsletterMessageInfo: {
-                                    newsletterJid: '120363421057570812@newsletter',
-                                    newsletterName: 'TREKKER-md',
-                                    serverMessageId: -1
-                                }
-                            }
-                        });
-                    } else {
-                        throw new Error(createResp.data?.error || 'Failed to create bot instance');
+                    });
+                    
+                    if (!createResp.data || !createResp.data.id) {
+                        throw new Error('Failed to create bot instance');
                     }
+                    botId = createResp.data.id;
+                }
+
+                // Step 2: Poll for the pairing code (matches frontend logic)
+                let pairingCode = null;
+                const maxAttempts = 30;
+                
+                for (let i = 0; i < maxAttempts; i++) {
+                    try {
+                        const statusResp = await axios.get(`${BACKEND_URL}/api/instances/${botId}/pairing-code`);
+                        const code = statusResp.data.pairingCode || statusResp.data.pairing_code;
+                        
+                        if (code) {
+                            pairingCode = code;
+                            break;
+                        }
+                    } catch (e) {
+                        console.log(`Polling attempt ${i + 1} failed: ${e.message}`);
+                    }
+                    await sleep(2000);
+                }
+
+                if (pairingCode) {
+                    await sock.sendMessage(chatId, {
+                        text: `*✅ Pairing Code for ${number}:*\n\nCode: *${pairingCode}*\n\n_Enter this code on WhatsApp > Linked Devices > Link with Phone Number_`,
+                        contextInfo: {
+                            forwardingScore: 1,
+                            isForwarded: true,
+                            forwardedNewsletterMessageInfo: {
+                                newsletterJid: '120363421057570812@newsletter',
+                                newsletterName: 'TREKKER-md',
+                                serverMessageId: -1
+                            }
+                        }
+                    });
+                } else {
+                    throw new Error('Pairing code generation timed out. Please try again.');
                 }
             } catch (apiError) {
                 console.error('Pairing process error:', apiError);
