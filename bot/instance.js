@@ -396,9 +396,12 @@ async function startBot() {
     const MAX_RETRY_COUNT = 3;
 
         sock.ev.on('connection.update', async (update) => {
-        const { connection, lastDisconnect, isNewLogin, isOnline } = update;
+        const { connection, lastDisconnect, isNewLogin, isOnline, qr } = update;
         const statusCode = lastDisconnect?.error?.output?.statusCode;
         const reason = lastDisconnect?.error?.message || 'No reason provided';
+
+        // Log all connection updates for debugging
+        console.log(chalk.gray(`📡 [CONNECTION UPDATE] Instance: ${instanceId} - connection: ${connection}, isNewLogin: ${isNewLogin}, isOnline: ${isOnline}`));
 
         // Map internal status to database status
         let dbStatus = connectionStatus;
@@ -434,8 +437,16 @@ async function startBot() {
             syncStatus();
         }
 
+        // Handle new login - this fires when pairing code is accepted
+        if (isNewLogin) {
+            console.log(chalk.green(`🔐 [NEW LOGIN] Instance: ${instanceId} - Pairing code accepted! Waiting for connection to open...`));
+            connectionStatus = 'authenticating';
+            pairingCode = null; // Clear pairing code as it's been used
+        }
+
         if (connection === 'connecting') {
-            if (connectionStatus !== 'pairing') {
+            // Keep pairing status if we're in the middle of pairing, otherwise set to connecting
+            if (connectionStatus !== 'pairing' && connectionStatus !== 'authenticating') {
                 connectionStatus = 'connecting';
             }
             console.log(chalk.yellow(`🔄 [CONNECTING] Instance: ${instanceId} - Connecting to WhatsApp...`));
