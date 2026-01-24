@@ -2,7 +2,40 @@ const axios = require('axios');
 const { sleep } = require('../lib/myfunc');
 const settings = require('../settings');
 
-const BACKEND_URL = settings.backendApiUrl || 'http://127.0.0.1:5000';
+// Helper to try multiple backend URLs
+async function axiosRequest(method, path, data = null, options = {}) {
+    const fallbacks = [
+        settings.backendApiUrl,
+        'http://127.0.0.1:5000',
+        'http://0.0.0.0:5000',
+        'http://localhost:5000'
+    ].filter(Boolean);
+    
+    // Unique list
+    const urls = [...new Set(fallbacks)];
+    let lastError;
+
+    for (const baseUrl of urls) {
+        try {
+            const config = {
+                method,
+                url: `${baseUrl}${path}`,
+                data,
+                ...options
+            };
+            return await axios(config);
+        } catch (e) {
+            lastError = e;
+            // Only retry on connection errors
+            if (e.code === 'ECONNREFUSED' || e.code === 'ENOTFOUND') {
+                continue;
+            }
+            throw e;
+        }
+    }
+    throw lastError;
+}
+
 const CURRENT_SERVER = process.env.SERVERNAME || 'server1';
 
 async function pairCommand(sock, chatId, message, q) {
@@ -95,7 +128,7 @@ async function pairCommand(sock, chatId, message, q) {
 
             try {
                 // Step 1: Check if bot already exists in database
-                const checkResp = await axios.get(`${BACKEND_URL}/api/instances/by-phone/${number}`);
+                const checkResp = await axiosRequest('GET', `/api/instances/by-phone/${number}`);
                 const existingBot = checkResp.data;
 
                 let botId;
@@ -133,7 +166,7 @@ async function pairCommand(sock, chatId, message, q) {
                     });
 
                     // Trigger regeneration (clears old sessions on bot side)
-                    await axios.post(`${BACKEND_URL}/api/instances/${botId}/regenerate-code`);
+                    await axiosRequest('POST', `/api/instances/${botId}/regenerate-code`);
                 } else {
                     // Bot doesn't exist - create new one
                     await sock.sendMessage(chatId, {
@@ -149,7 +182,7 @@ async function pairCommand(sock, chatId, message, q) {
                         }
                     });
 
-                    const createResp = await axios.post(`${BACKEND_URL}/api/instances/pair-new`, {
+                    const createResp = await axiosRequest('POST', '/api/instances/pair-new', {
                         name: `WhatsApp Bot: ${number}`,
                         phone_number: number,
                         current_server: CURRENT_SERVER
@@ -167,7 +200,7 @@ async function pairCommand(sock, chatId, message, q) {
                 
                 for (let i = 0; i < maxAttempts; i++) {
                     try {
-                        const statusResp = await axios.get(`${BACKEND_URL}/api/instances/${botId}/pairing-code`, {
+                        const statusResp = await axiosRequest('GET', `/api/instances/${botId}/pairing-code`, null, {
                             timeout: 15000
                         });
                         const code = statusResp.data.pairing_code || statusResp.data.pairingCode;
