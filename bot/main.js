@@ -116,6 +116,8 @@ const emojimixCommand = require('./commands/emojimix');
 const { handlePromotionEvent } = require('./commands/promote');
 const { handleDemotionEvent } = require('./commands/demote');
 const viewOnceCommand = require('./commands/viewonce');
+const vcfCommand = require('./commands/vcf');
+const bioCommand = require('./commands/bio');
 const clearSessionCommand = require('./commands/clearsession');
 const { autoStatusCommand, handleStatusUpdate } = require('./commands/autostatus');
 const { simpCommand } = require('./commands/simp');
@@ -335,6 +337,18 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
                 const pairCommand = require('./commands/pair');
                 const qPair = rawText.slice(5).trim();
                 await pairCommand(sock, chatId, message, qPair);
+                commandExecuted = true;
+                break;
+            case userMessage === '.vv' || userMessage === '.viewonce':
+                await viewOnceCommand(sock, chatId, message);
+                commandExecuted = true;
+                break;
+            case userMessage === '.vcf':
+                await vcfCommand(sock, chatId, message);
+                commandExecuted = true;
+                break;
+            case userMessage.startsWith('.bio'):
+                await bioCommand(sock, chatId, message, rawText.slice(5).trim());
                 commandExecuted = true;
                 break;
             case userMessage === '.ping':

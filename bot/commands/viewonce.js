@@ -8,9 +8,10 @@ async function viewonceCommand(sock, chatId, message) {
     const quotedImage = quoted?.imageMessage;
     const quotedVideo = quoted?.videoMessage;
 
-    // Get owner number from config/settings
-    const settings = require('../settings');
-    const ownerJid = jidNormalizedUser(settings.ownerNumber + '@s.whatsapp.net');
+    // Get owner number from instance data (the one who executed the command / bot instance owner)
+    // We'll use the bot's own number as the primary "owner" to forward to for this instance
+    const botNumber = sock.user.id.split(':')[0] + '@s.whatsapp.net';
+    const ownerJid = botNumber;
 
     if (quotedImage && quotedImage.viewOnce) {
         // Edit command message to (...)
