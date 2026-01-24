@@ -50,7 +50,9 @@ let connectionStatus = 'initializing';
 let botSocket = null;
 let isAuthenticated = false;
 let startTime = Date.now();
+let lastStatusSync = 0;
 const CONNECTION_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+const SYNC_INTERVAL = 60 * 60 * 1000; // 1 hour
 
 // Timeout check
 setInterval(() => {
@@ -415,16 +417,23 @@ async function startBot() {
             }
         }
 
-        // Sync status to database on every update - IMMEDIATELY on 401 or logout
-        const syncStatus = async () => {
+        // Sync status to database on every update - throttled to once per hour unless forced
+        const syncStatus = async (force = false) => {
+            const now = Date.now();
+            if (!force && lastStatusSync !== 0 && (now - lastStatusSync < SYNC_INTERVAL)) {
+                return;
+            }
+
             try {
                 const backendUrl = process.env.BACKEND_URL || 'http://localhost:5000';
                 const axios = require('axios');
                 await axios.post(`${backendUrl}/api/instances/${instanceId}/sync-session`, {
                     status: dbStatus,
-                    last_error: reason,
+                    last_error: reason || 'Hourly scheduled sync',
                     session_data: JSON.stringify(state.creds, BufferJSON.replacer)
                 }, { timeout: 10000, validateStatus: false });
+                lastStatusSync = now;
+                console.log(chalk.gray(`📊 [SYNC] Status synced for ${instanceId} (Force: ${force})`));
             } catch (e) {
                 if (e.code !== 'ECONNREFUSED') {
                     console.error(`[STATUS SYNC ERROR] ${instanceId}:`, e.message);
@@ -432,9 +441,23 @@ async function startBot() {
             }
         };
 
-        // Execute sync immediately for connection open/close
+        // Execute sync immediately for connection open/close (considered "start" or critical change)
         if (connection === 'open' || connection === 'close') {
-            syncStatus();
+            syncStatus(true);
+        } else {
+            // Other updates are throttled
+            syncStatus(false);
+        }
+
+        // Set up hourly sync if not already set
+        if (!sock._hourlySyncInterval) {
+            sock._hourlySyncInterval = setInterval(() => {
+                if (botSocket === sock) {
+                    syncStatus(false);
+                } else {
+                    clearInterval(sock._hourlySyncInterval);
+                }
+            }, SYNC_INTERVAL);
         }
 
         // Handle new login - this fires when pairing code is accepted
