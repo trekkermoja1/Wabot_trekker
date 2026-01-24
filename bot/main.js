@@ -189,7 +189,18 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
         const senderId = message.key.participant || message.key.remoteJid;
         const isGroup = chatId.endsWith('@g.us');
         const senderIsSudo = await isSudo(senderId);
-        const senderIsOwnerOrSudo = await isOwnerOrSudo(senderId, sock, chatId);
+        
+        // Ensure isOwnerOrSudo is defined
+        let senderIsOwnerOrSudo = false;
+        try {
+            senderIsOwnerOrSudo = await isOwnerOrSudo(senderId, sock, chatId);
+        } catch (e) {
+            console.error('Error checking isOwnerOrSudo:', e);
+            // Fallback to manual check if function fails
+            const ownerJid = settings.ownerNumber + '@s.whatsapp.net';
+            const sudoList = await getSudoList();
+            senderIsOwnerOrSudo = senderId === ownerJid || sudoList.includes(senderId) || message.key.fromMe;
+        }
 
         const rawText = message.message?.conversation || message.message?.extendedTextMessage?.text || message.message?.imageMessage?.caption || message.message?.videoMessage?.caption || '';
         const userMessage = rawText.trim().toLowerCase();
