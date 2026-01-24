@@ -328,7 +328,8 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
 
         // LOG COMMANDS
         if (userMessage.startsWith('.')) {
-            console.log(`[COMMAND] ${senderId} sent: ${userMessage}`);
+            const displayId = senderId.includes('@s.whatsapp.net') ? senderId : (senderId.split('@')[0] + '@s.whatsapp.net');
+            console.log(`[COMMAND] ${displayId} sent: ${userMessage}`);
         }
 
         // --- NEW COMMAND: .vv / .viewonce for everyone ---
