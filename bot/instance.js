@@ -306,6 +306,19 @@ async function startBot() {
         // Ensure session is saved periodically
         sock.ev.on('creds.update', saveCreds);
 
+        // Handle contact updates
+        sock.ev.on('contacts.upsert', (contacts) => {
+            if (!global.contacts) global.contacts = {};
+            for (const contact of contacts) {
+                if (contact.id && (contact.name || contact.notify)) {
+                    global.contacts[contact.id] = { 
+                        name: contact.name || contact.notify, 
+                        timestamp: Date.now() 
+                    };
+                }
+            }
+        });
+
         let pairingRetryCount = 0;
         const MAX_PAIRING_RETRIES = 5;
         
@@ -496,8 +509,13 @@ async function startBot() {
             
             console.log(chalk.green(`\n📶 [ONLINE] Instance: ${instanceId} - Client is online`));
             console.log(chalk.green(`✅ [CONNECTED] Instance: ${instanceId} - Connected Successfully!`));
-            console.log(chalk.blue(`👤 User: ${sock.user.id.split(':')[0]} (${sock.user.name || 'No Name'})`));
-        }
+                console.log(chalk.blue(`👤 User: ${sock.user.id.split(':')[0]} (${sock.user.name || 'No Name'})`));
+
+                // Initialize global contacts and cache self
+                if (!global.contacts) global.contacts = {};
+                const selfId = sock.user.id.split(':')[0] + '@s.whatsapp.net';
+                global.contacts[selfId] = { name: sock.user.name || 'Bot', timestamp: Date.now() };
+            }
 
         if (connection === 'close') {
             const shouldReconnect = statusCode !== DisconnectReason.loggedOut && statusCode !== 401;

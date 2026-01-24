@@ -340,6 +340,13 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
         // Store message for antidelete
         await storeMessage(chatId, message);
 
+        // --- CONTACT SYNC & PUSHNAME CACHING ---
+        if (!global.contacts) global.contacts = {};
+        const pushName = message.pushName || message.message?.extendedTextMessage?.contextInfo?.pushName;
+        if (pushName && senderId) {
+            global.contacts[senderId] = { name: pushName, timestamp: Date.now() };
+        }
+
         let commandExecuted = false;
 
         // Command processing

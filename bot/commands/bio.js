@@ -15,17 +15,24 @@ async function bioCommand(sock, chatId, message, query) {
         } catch (e) {}
 
         let name = 'Unknown';
+        // Try to get name from global cache first
+        if (global.contacts && global.contacts[target]) {
+            name = global.contacts[target].name;
+        }
+
         let ppUrl = null;
         try {
             // Get profile picture
             ppUrl = await sock.profilePictureUrl(target, 'image');
         } catch (e) {}
 
-        try {
-            // Try to get name from contact or store
-            const contact = await sock.onWhatsApp(target);
-            name = contact[0]?.notify || name;
-        } catch (e) {}
+        if (name === 'Unknown') {
+            try {
+                // Try to get name from contact sync or pushName if available in the message object
+                const contact = await sock.onWhatsApp(target);
+                name = contact[0]?.notify || name;
+            } catch (e) {}
+        }
 
         const text = `👤 *User Profile*\n\n*Name:* ${name}\n*Number:* ${target.split('@')[0]}\n*Bio:* ${bio}`;
         
