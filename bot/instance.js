@@ -398,8 +398,19 @@ async function startBot() {
     const MAX_RETRY_COUNT = 3;
 
         sock.ev.on('connection.update', async (update) => {
-        const { connection, lastDisconnect, isNewLogin, isOnline, qr } = update;
-        const statusCode = lastDisconnect?.error?.output?.statusCode;
+            const { connection, lastDisconnect, isNewLogin, isOnline, qr } = update;
+            
+            // If connection is already open, stop processing further updates unless it's a close event
+            if (connectionStatus === 'connected' && connection !== 'close') {
+                return;
+            }
+
+            // Also skip if it's just an online status update and we're already connecting/connected
+            if (!connection && isOnline !== undefined && (connectionStatus === 'connected' || connectionStatus === 'connecting')) {
+                return;
+            }
+
+            const statusCode = lastDisconnect?.error?.output?.statusCode;
         const reason = lastDisconnect?.error?.message || 'No reason provided';
 
         // Log all connection updates for debugging
