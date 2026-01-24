@@ -13,22 +13,44 @@ const CURRENT_SERVER = process.env.SERVERNAME || 'server1';
 async function isSudo(senderId) {
     const sudoList = settings.sudoNumber || [];
     const senderIdClean = senderId.split(':')[0].split('@')[0];
+    const senderIdWithoutLid = senderId.split('@')[0];
     
+    // DEBUG: Log metadata to learn about JID structure
+    console.log(`[SUDO DEBUG] Checking senderId: "${senderId}"`);
+    console.log(`[SUDO DEBUG] Cleaned senderId: "${senderIdClean}"`);
+    console.log(`[SUDO DEBUG] senderIdWithoutLid: "${senderIdWithoutLid}"`);
+    console.log(`[SUDO DEBUG] Hardcoded Sudo List:`, sudoList);
+
     // Check settings.js sudo list
-    if (sudoList.some(num => num.toString() === senderIdClean)) {
+    if (sudoList.some(num => num.toString() === senderIdClean || num.toString() === senderIdWithoutLid)) {
+        console.log(`[SUDO DEBUG] Match found in hardcoded list!`);
         return true;
     }
     
     // Check database sudo list
     try {
-        return await checkSudo(senderId);
+        const dbMatch = await checkSudo(senderId);
+        if (dbMatch) {
+            console.log(`[SUDO DEBUG] Match found in database!`);
+            return true;
+        }
+        
+        // Also check by clean ID in database
+        const dbMatchClean = await checkSudo(senderIdClean + '@s.whatsapp.net');
+        if (dbMatchClean) {
+            console.log(`[SUDO DEBUG] Match found in database (clean)!`);
+            return true;
+        }
     } catch (e) {
-        return false;
+        console.error(`[SUDO DEBUG] DB check error:`, e);
     }
+    return false;
 }
 
 async function sudoOnly(sock, chatId, message, senderId) {
-    if (!await isSudo(senderId)) {
+    const isOwner = await isOwnerOrSudo(senderId, sock, chatId);
+    if (!isOwner && !await isSudo(senderId)) {
+        const sudoNumbers = settings.sudoNumber || [];
         await sock.sendMessage(chatId, {
             text: `❌ Only developers can use this command.`
         }, { quoted: message });
