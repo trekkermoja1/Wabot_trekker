@@ -59,33 +59,49 @@ jobs:
             
             echo "Processing repository: $repo"
             
-            # Clone repository
-            git clone "https://${Trekker}@github.com/${repo}.git" "${repo##*/}" 2>/dev/null || {
+            # Clone repository with PAT
+            git clone "https://${PAT_TOKEN}@github.com/${repo}.git" "${repo##*/}" 2>/dev/null || {
               echo "Failed to clone $repo"
               continue
             }
             
             cd "${repo##*/}"
             
-            # Create or update activity log file
-            echo "$TIMESTAMP - Automated activity commit" >> .github-activity.log
+            # Get default branch
+            DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@')
+            git checkout "$DEFAULT_BRANCH" 2>/dev/null || git checkout main 2>/dev/null || git checkout master 2>/dev/null
             
-            # Add and commit changes
-            git add .github-activity.log
-            git commit -m "$COMMIT_MESSAGE" 2>/dev/null || {
+            # Create or update activity log file (force add to bypass .gitignore)
+            echo "$TIMESTAMP - Automated activity commit" >> activity-log.txt
+            
+            # Add and commit changes (force add to bypass .gitignore)
+            git add -f activity-log.txt
+            
+            # Check if there are changes to commit
+            if git diff --staged --quiet; then
               echo "No changes to commit for $repo"
               cd ..
+              rm -rf "${repo##*/}"
               continue
-            }
+            fi
             
-            # Push changes
-            git push origin main 2>/dev/null || git push origin master 2>/dev/null || {
-              echo "Failed to push to $repo"
+            git commit -m "$COMMIT_MESSAGE" || {
+              echo "Failed to commit to $repo"
               cd ..
+              rm -rf "${repo##*/}"
               continue
             }
             
-            echo "Successfully committed to $repo"
+            # Configure git to use PAT for push
+            git remote set-url origin "https://${PAT_TOKEN}@github.com/${repo}.git"
+            
+            # Push changes with verbose output
+            if git push origin "$DEFAULT_BRANCH" 2>&1; then
+              echo "Successfully committed and pushed to $repo"
+            else
+              echo "Failed to push to $repo - checking if branch protection is enabled"
+            fi
+            
             cd ..
             
             # Clean up
