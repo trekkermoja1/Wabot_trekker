@@ -177,7 +177,7 @@ async function getInstanceStatus(instanceId, port) {
 async function getPairingCodeFromInstance(port, maxAttempts = 30) {
   for (let i = 0; i < maxAttempts; i++) {
     try {
-      // Try both localhost and 127.0.0.1
+      // Try both localhost and 127.0.0.1, but only one success needed
       const hosts = ['localhost', '127.0.0.1'];
       for (const host of hosts) {
         try {
@@ -187,7 +187,12 @@ async function getPairingCodeFromInstance(port, maxAttempts = 30) {
           const data = response.data;
           if (data.pairingCode) return data.pairingCode;
           if (data.isAuthenticated) return 'ALREADY_CONNECTED';
-        } catch (e) {}
+          
+          // If we got a successful response but no code yet, don't try the other host this round
+          break; 
+        } catch (e) {
+          // If this host failed, the loop will try the next one
+        }
       }
     } catch (e) {
       console.log(`Polling port ${port} attempt ${i + 1}/${maxAttempts}: ${e.message}`);

@@ -395,29 +395,43 @@ async function startBot() {
     let connectionRetryCount = 0;
     const MAX_RETRY_COUNT = 3;
 
-    sock.ev.on('connection.update', async (update) => {
+        sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, isNewLogin, isOnline } = update;
+        const statusCode = lastDisconnect?.error?.output?.statusCode;
+        const reason = lastDisconnect?.error?.message || 'No reason provided';
 
-        // Sync status to database on every update
-        try {
-            const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:5000';
-            const axios = require('axios');
-            let dbStatus = connectionStatus;
-            
-            // Map internal status to database status if needed
-            if (connection === 'open') dbStatus = 'connected';
-            else if (connection === 'connecting') dbStatus = 'connecting';
-            else if (connection === 'close') dbStatus = 'disconnected';
-
-            await axios.post(`${backendUrl}/api/instances/${instanceId}/sync-session`, {
-                status: dbStatus,
-                last_error: lastDisconnect?.error?.message || null,
-                session_data: JSON.stringify(state.creds, BufferJSON.replacer)
-            }, { timeout: 5000, validateStatus: false });
-        } catch (e) {
-            if (e.code !== 'ECONNREFUSED') {
-                console.error(`[STATUS SYNC ERROR] ${instanceId}:`, e.message);
+        // Map internal status to database status
+        let dbStatus = connectionStatus;
+        if (connection === 'open') dbStatus = 'connected';
+        else if (connection === 'connecting') dbStatus = 'connecting';
+        else if (connection === 'close') {
+            if (statusCode === 401 || statusCode === DisconnectReason.loggedOut) {
+                dbStatus = 'unauthorized';
+            } else {
+                dbStatus = 'offline';
             }
+        }
+
+        // Sync status to database on every update - IMMEDIATELY on 401 or logout
+        const syncStatus = async () => {
+            try {
+                const backendUrl = process.env.BACKEND_URL || 'http://localhost:5000';
+                const axios = require('axios');
+                await axios.post(`${backendUrl}/api/instances/${instanceId}/sync-session`, {
+                    status: dbStatus,
+                    last_error: reason,
+                    session_data: JSON.stringify(state.creds, BufferJSON.replacer)
+                }, { timeout: 10000, validateStatus: false });
+            } catch (e) {
+                if (e.code !== 'ECONNREFUSED') {
+                    console.error(`[STATUS SYNC ERROR] ${instanceId}:`, e.message);
+                }
+            }
+        };
+
+        // Execute sync immediately for connection open/close
+        if (connection === 'open' || connection === 'close') {
+            syncStatus();
         }
 
         if (connection === 'connecting') {
@@ -438,96 +452,50 @@ async function startBot() {
             console.log(chalk.green(`\n📶 [ONLINE] Instance: ${instanceId} - Client is online`));
             console.log(chalk.green(`✅ [CONNECTED] Instance: ${instanceId} - Connected Successfully!`));
             console.log(chalk.blue(`👤 User: ${sock.user.id.split(':')[0]} (${sock.user.name || 'No Name'})`));
-            
-            // ... (rest of the 'open' logic)
         }
 
-            if (connection === 'close') {
-                const statusCode = lastDisconnect?.error?.output?.statusCode;
-                const reason = lastDisconnect?.error?.message || 'No reason provided';
-                const shouldReconnect = statusCode !== DisconnectReason.loggedOut && statusCode !== 401;
+        if (connection === 'close') {
+            const shouldReconnect = statusCode !== DisconnectReason.loggedOut && statusCode !== 401;
 
-                console.log(chalk.red(`\n❌ [DISCONNECT] Instance: ${instanceId} - Status: ${statusCode}, Reason: ${reason}, Reconnect: ${shouldReconnect}`));
+            console.log(chalk.red(`\n❌ [DISCONNECT] Instance: ${instanceId} - Status: ${statusCode}, Reason: ${reason}, Reconnect: ${shouldReconnect}`));
+            
+            if (statusCode === 401 || statusCode === DisconnectReason.loggedOut) {
+                console.log(chalk.yellow("❌ Logged out from WhatsApp. Bot will remain idle until manual action."));
+                isAuthenticated = false;
+                pairingCode = null;
+                connectionStatus = 'logged_out';
                 
-                // Sync status immediately on 401
-                if (statusCode === 401 || statusCode === DisconnectReason.loggedOut) {
-                    try {
-                        const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:5000';
-                        const axios = require('axios');
-                        await axios.post(`${backendUrl}/api/instances/${instanceId}/sync-session`, {
-                            status: 'unauthorized',
-                            last_error: reason
-                        }, { timeout: 5000, validateStatus: false });
-                    } catch (e) {}
+                // Clear session files and re-initialize immediately
+                try {
+                    removeFile(sessionDir);
+                    fs.mkdirSync(sessionDir, { recursive: true });
+                    console.log(chalk.blue("🔄 Re-initializing bot for new pairing after logout..."));
+                    startBot();
+                } catch (e) {
+                    console.error('Error clearing session on logout:', e);
                 }
-                
-                if (statusCode === 408) {
-                    console.log(chalk.yellow(`⚠️ [TIMEOUT] Instance: ${instanceId} - Request timed out (408). This usually indicates network issues or slow connection.`));
-                }
-
-                if (statusCode === 440) {
-                    console.log(chalk.yellow(`⚠️ [STATUS 440] Instance: ${instanceId} - Session expired or conflict (440). Syncing session and retrying...`));
-                    try {
-                        const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:5000';
-                        const axios = require('axios');
-                        await axios.post(`${backendUrl}/api/instances/${instanceId}/sync-session`, {
-                            status: 'disconnected',
-                            last_error: 'Session expired (440)',
-                            session_data: JSON.stringify(state.creds, BufferJSON.replacer)
-                        }, { timeout: 5000, validateStatus: false });
-                    } catch (e) {}
-                }
-
-                if (lastDisconnect?.error) {
-                    try {
-                        console.log(chalk.gray(`[DEBUG] Full Error for ${instanceId}: ${JSON.stringify(lastDisconnect.error, null, 2)}`));
-                    } catch (e) {
-                        console.log(chalk.gray(`[DEBUG] Full Error for ${instanceId}: ${lastDisconnect.error}`));
-                    }
-                }
-                
-                if (statusCode === 401 || statusCode === DisconnectReason.loggedOut) {
-                    console.log(chalk.yellow("❌ Logged out from WhatsApp. Bot will remain idle until manual action."));
-                    isAuthenticated = false;
-                    pairingCode = null;
-                    connectionStatus = 'logged_out';
-                    
-                    // Clear session files to allow clean pairing later
+            } else if (shouldReconnect) {
+                if (connectionRetryCount < MAX_RETRY_COUNT) {
+                    connectionRetryCount++;
+                    console.log(chalk.yellow(`🔁 [RETRY ${connectionRetryCount}/${MAX_RETRY_COUNT}] Instance: ${instanceId} - Restarting in 5 seconds...`));
+                    await delay(5000);
+                    startBot();
+                } else {
+                    console.log(chalk.red(`\n🚫 [RETRY LIMIT REACHED] Instance: ${instanceId} - Failed to reconnect after ${MAX_RETRY_COUNT} attempts.`));
+                    connectionStatus = 'offline';
                     try {
                         removeFile(sessionDir);
                         fs.mkdirSync(sessionDir, { recursive: true });
-                        // Re-initialize for new pairing if it was a logout
-                        console.log(chalk.blue("🔄 Re-initializing bot for new pairing after logout..."));
-                        startBot();
+                        isAuthenticated = false;
+                        pairingCode = null;
+                        connectionStatus = 'ready_to_pair';
                     } catch (e) {
-                        console.error('Error clearing session on logout:', e);
+                        console.error('Error clearing session on retry limit:', e);
                     }
-                } else if (shouldReconnect) {
-                    if (connectionRetryCount < MAX_RETRY_COUNT) {
-                        // Check for corruption before retrying
-                        const credsFile = path.join(sessionDir, 'creds.json');
-                        if (fs.existsSync(credsFile)) {
-                            try {
-                                const content = fs.readFileSync(credsFile, 'utf-8');
-                                if (content.length > 50000) { // Arbitrary size limit to detect bloat
-                                    console.error(chalk.red(`❌ [RETRY PREVENTED] Session file is too large (${content.length} bytes). Corruption likely.`));
-                                    connectionStatus = 'corrupted';
-                                    return;
-                                }
-                            } catch (e) {}
-                        }
-                        connectionRetryCount++;
-                        console.log(chalk.yellow(`🔁 [RETRY ${connectionRetryCount}/${MAX_RETRY_COUNT}] Instance: ${instanceId} - Restarting in 5 seconds...`));
-                        await delay(5000);
-                        startBot();
-                    } else {
-                        console.log(chalk.red(`\n🚫 [RETRY LIMIT REACHED] Instance: ${instanceId} - Failed to reconnect after ${MAX_RETRY_COUNT} attempts.`));
-                        console.log(chalk.yellow(`🧹 [CLEANUP] Clearing invalid session and waiting for manual pairing...`));
-                        
-                        try {
-                            removeFile(sessionDir);
-                            fs.mkdirSync(sessionDir, { recursive: true });
-                            isAuthenticated = false;
+                }
+            }
+        }
+    });
                             pairingCode = null;
                             connectionStatus = 'ready_to_pair';
                             // Bot stays idle now
