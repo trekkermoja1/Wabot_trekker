@@ -160,7 +160,7 @@ function getNextPort() {
 
 async function getInstanceStatus(instanceId, port) {
   try {
-    const response = await axios.get(`http://127.0.0.1:${port}/status`, { 
+    const response = await axios.get(`http://localhost:${port}/status`, { 
       timeout: 5000 
     });
     return response.data;
@@ -171,7 +171,7 @@ async function getInstanceStatus(instanceId, port) {
 async function getPairingCodeFromInstance(port, maxAttempts = 30) {
   for (let i = 0; i < maxAttempts; i++) {
     try {
-      const response = await axios.get(`http://127.0.0.1:${port}/pairing-code`, {
+      const response = await axios.get(`http://localhost:${port}/pairing-code`, {
         timeout: 5000
       });
       const data = response.data;
@@ -610,7 +610,7 @@ app.post('/api/instances/:instanceId/regenerate-code', async (req, res) => {
     }
 
     try {
-      const response = await axios.post(`http://127.0.0.1:${port}/regenerate-code`, {}, {
+      const response = await axios.post(`http://localhost:${port}/regenerate-code`, {}, {
         timeout: 15000
       });
       return res.json(response.data);
@@ -642,11 +642,11 @@ app.get('/api/instances/:instanceId/pairing-code', async (req, res) => {
 
     if (!botProcesses[instanceId]) {
       await startInstanceInternal(instanceId, instance.phone_number, port, instance.session_data);
-      await new Promise(r => setTimeout(r, 8000));
+      await new Promise(r => setTimeout(r, 10000)); // Increased wait time
     }
 
     try {
-      const response = await axios.get(`http://127.0.0.1:${port}/pairing-code`, {
+      const response = await axios.get(`http://localhost:${port}/pairing-code`, {
         timeout: 20000
       });
       const data = response.data;
