@@ -1,5 +1,18 @@
 // isAdmin.js
+const adminCache = new Map();
+const CACHE_TTL = 30000; // 30 seconds
+
 async function isAdmin(sock, chatId, senderId) {
+    const cacheKey = `${chatId}-${senderId}`;
+    const now = Date.now();
+    
+    if (adminCache.has(cacheKey)) {
+        const cached = adminCache.get(cacheKey);
+        if (now - cached.timestamp < CACHE_TTL) {
+            return cached.data;
+        }
+    }
+
     try {
         const metadata = await sock.groupMetadata(chatId);
         const participants = metadata.participants || [];
@@ -10,8 +23,7 @@ async function isAdmin(sock, chatId, senderId) {
         const botNumber = botId.includes(':') ? botId.split(':')[0] : (botId.includes('@') ? botId.split('@')[0] : botId);
         const botIdWithoutSuffix = botId.includes('@') ? botId.split('@')[0] : botId;
         
-        // Extract numeric part from bot LID (remove session identifier like :4)
-        // botLid format: "30997433344120:4@lid" -> extract "30997433344120"
+        // Extract numeric part from bot LID
         const botLidNumeric = botLid.includes(':') ? botLid.split(':')[0] : (botLid.includes('@') ? botLid.split('@')[0] : botLid);
         const botLidWithoutSuffix = botLid.includes('@') ? botLid.split('@')[0] : botLid;
 
@@ -20,28 +32,24 @@ async function isAdmin(sock, chatId, senderId) {
 
         // Check if bot is admin
         const isBotAdmin = participants.some(p => {
-            // Check multiple possible ID formats
             const pPhoneNumber = p.phoneNumber ? p.phoneNumber.split('@')[0] : '';
             const pId = p.id ? p.id.split('@')[0] : '';
             const pLid = p.lid ? p.lid.split('@')[0] : '';
             const pFullId = p.id || '';
             const pFullLid = p.lid || '';
-            
-            // Extract numeric part from participant LID (remove session identifier if present)
             const pLidNumeric = pLid.includes(':') ? pLid.split(':')[0] : pLid;
             
-            // Match against bot ID in multiple ways
             const botMatches = (
-                botId === pFullId || // Direct ID match
-                botId === pFullLid || // Direct LID match (new Baileys format)
-                botLid === pFullLid || // Bot LID vs participant LID (full match)
-                botLidNumeric === pLidNumeric || // Bot LID numeric vs participant LID numeric (KEY FIX)
-                botLidWithoutSuffix === pLid || // Bot LID without suffix vs participant LID
-                botNumber === pPhoneNumber || // Phone number match
-                botNumber === pId || // ID portion match
-                botIdWithoutSuffix === pPhoneNumber || // Bot ID phone vs participant phone
-                botIdWithoutSuffix === pId || // Bot ID phone vs participant ID
-                (botLid && botLid.split('@')[0].split(':')[0] === pLid) // Bot LID numeric portion match
+                botId === pFullId || 
+                botId === pFullLid || 
+                botLid === pFullLid || 
+                botLidNumeric === pLidNumeric || 
+                botLidWithoutSuffix === pLid || 
+                botNumber === pPhoneNumber || 
+                botNumber === pId || 
+                botIdWithoutSuffix === pPhoneNumber || 
+                botIdWithoutSuffix === pId || 
+                (botLid && botLid.split('@')[0].split(':')[0] === pLid)
             );
             
             return botMatches && (p.admin === 'admin' || p.admin === 'superadmin');
@@ -49,30 +57,34 @@ async function isAdmin(sock, chatId, senderId) {
 
         // Check if sender is admin
         const isSenderAdmin = participants.some(p => {
-            // Check multiple possible ID formats
             const pPhoneNumber = p.phoneNumber ? p.phoneNumber.split('@')[0] : '';
             const pId = p.id ? p.id.split('@')[0] : '';
             const pLid = p.lid ? p.lid.split('@')[0] : '';
             const pFullId = p.id || '';
             const pFullLid = p.lid || '';
             
-            // Match against sender ID in multiple ways
             const senderMatches = (
-                senderId === pFullId || // Direct ID match
-                senderId === pFullLid || // Direct LID match (new Baileys format)
-                senderNumber === pPhoneNumber || // Phone number match
-                senderNumber === pId || // ID portion match
-                senderIdWithoutSuffix === pPhoneNumber || // Sender ID phone vs participant phone
-                senderIdWithoutSuffix === pId || // Sender ID phone vs participant ID
-                (pLid && senderIdWithoutSuffix === pLid) // Sender LID vs participant LID
+                senderId === pFullId || 
+                senderId === pFullLid || 
+                senderNumber === pPhoneNumber || 
+                senderNumber === pId || 
+                senderIdWithoutSuffix === pPhoneNumber || 
+                senderIdWithoutSuffix === pId || 
+                (pLid && senderIdWithoutSuffix === pLid)
             );
             
             return senderMatches && (p.admin === 'admin' || p.admin === 'superadmin');
         });
 
-        return { isSenderAdmin, isBotAdmin };
+        const result = { isSenderAdmin, isBotAdmin };
+        adminCache.set(cacheKey, { timestamp: now, data: result });
+        return result;
     } catch (err) {
-        console.error('❌ Error in isAdmin:', err);
+        if (err.status === 429 || err.message?.includes('rate-overlimit')) {
+            console.error('⚠️ Rate limit hit in isAdmin, using fallback');
+        } else {
+            console.error('❌ Error in isAdmin:', err);
+        }
         return { isSenderAdmin: false, isBotAdmin: false };
     }
 }
