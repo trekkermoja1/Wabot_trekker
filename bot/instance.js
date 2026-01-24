@@ -291,12 +291,13 @@ async function startBot() {
             printQRInTerminal: false,
             logger: pino({ level: "fatal" }).child({ level: "fatal" }),
             browser: Browsers.windows('Chrome'),
-            markOnlineOnConnect: true,
+            markOnlineOnConnect: false,
             generateHighQualityLinkPreview: false,
             defaultQueryTimeoutMs: 60000,
             connectTimeoutMs: 60000,
             keepAliveIntervalMs: 30000,
             retryRequestDelayMs: 250,
+            maxRetries: 5,
         });
 
         botSocket = sock;
@@ -439,9 +440,19 @@ async function startBot() {
 
         // Handle new login - this fires when pairing code is accepted
         if (isNewLogin) {
-            console.log(chalk.green(`🔐 [NEW LOGIN] Instance: ${instanceId} - Pairing code accepted! Waiting for connection to open...`));
+            console.log(chalk.green(`🔐 [NEW LOGIN] Instance: ${instanceId} - Pairing code accepted! Saving credentials...`));
             connectionStatus = 'authenticating';
+            isAuthenticated = true; // Mark as authenticated immediately
             pairingCode = null; // Clear pairing code as it's been used
+            startTime = Date.now(); // Reset timeout
+            
+            // Force save credentials immediately
+            try {
+                await saveCreds();
+                console.log(chalk.green(`✅ [CREDS SAVED] Instance: ${instanceId} - Credentials saved after new login`));
+            } catch (e) {
+                console.error(chalk.red(`❌ [CREDS SAVE ERROR] Instance: ${instanceId}:`, e.message));
+            }
         }
 
         if (connection === 'connecting') {
@@ -469,6 +480,16 @@ async function startBot() {
             const shouldReconnect = statusCode !== DisconnectReason.loggedOut && statusCode !== 401;
 
             console.log(chalk.red(`\n❌ [DISCONNECT] Instance: ${instanceId} - Status: ${statusCode}, Reason: ${reason}, Reconnect: ${shouldReconnect}`));
+            
+            // If we just authenticated (isNewLogin was true), don't restart - let Baileys handle it
+            if (connectionStatus === 'authenticating' || isAuthenticated) {
+                // Status 515 = Stream Errored - Baileys will handle reconnection internally
+                if (statusCode === 515) {
+                    console.log(chalk.yellow(`🔄 [STREAM RESTART] Instance: ${instanceId} - Stream restart after authentication, waiting for reconnection...`));
+                    // Don't restart manually, just wait for connection.update to fire again
+                    return;
+                }
+            }
             
             if (statusCode === 401 || statusCode === DisconnectReason.loggedOut) {
                 console.log(chalk.yellow("❌ Logged out from WhatsApp. Bot will remain idle until manual action."));
