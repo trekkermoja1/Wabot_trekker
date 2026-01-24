@@ -160,7 +160,7 @@ const soraCommand = require('./commands/sora');
 global.packname = settings.packname;
 global.author = settings.author;
 global.channelLink = "https://whatsapp.com/channel/0029Vb6vpSv6WaKiG6ZIy73H";
-global.ytch = "Mr Unique Hacker";
+global.ytch = "Mr Trekker Wabot";
 
 // Add this near the top of main.js with other global configurations
 const channelInfo = {

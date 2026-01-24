@@ -8,7 +8,6 @@ async function helpCommand(sock, chatId, message) {
    *🤖 ${settings.botName || 'TREKKER-md'}*  
    Version: *${settings.version || '1.0.0'}*
    by ${settings.botOwner || 'trekker'}
-   YT : ${global.ytch}
 ╚═══════════════════╝
 
 *Available Commands:*
