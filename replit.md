@@ -1,4 +1,4 @@
-# KnightBot
+# TREKKER WABOT
 
 WhatsApp Bot with Backend and Frontend.
 

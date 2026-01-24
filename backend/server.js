@@ -903,7 +903,7 @@ async function startServer() {
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`
 =========================================
-🛡️  KnightBot Backend Running
+🛡️  TREKKER WABOT Backend Running
 📍  Port: ${PORT}
 👤  Admin: ${ADMIN_USERNAME}
 📦  Database: ${useSQLite ? 'SQLite' : 'PostgreSQL'}
