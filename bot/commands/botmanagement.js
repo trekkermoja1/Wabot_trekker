@@ -4,37 +4,53 @@
  */
 const axios = require('axios');
 const settings = require('../settings');
+const { isSudo: checkSudo } = require('../lib/index');
 
 const BACKEND_URL = settings.backendApiUrl || 'http://0.0.0.0:5000';
-const SUDO_NUMBER = settings.sudoNumber + '@s.whatsapp.net';
 const CURRENT_SERVER = process.env.SERVERNAME || 'server1';
 
 // Check if user is sudo
-function isSudo(senderId) {
-    return senderId === SUDO_NUMBER;
+async function isSudo(senderId) {
+    const sudoList = settings.sudoNumber || [];
+    const senderIdClean = senderId.split(':')[0].split('@')[0];
+    
+    // Check settings.js sudo list
+    if (sudoList.some(num => num.toString() === senderIdClean)) {
+        return true;
+    }
+    
+    // Check database sudo list
+    try {
+        return await checkSudo(senderId);
+    } catch (e) {
+        return false;
+    }
+}
+
+async function sudoOnly(sock, chatId, message, senderId) {
+    if (!await isSudo(senderId)) {
+        await sock.sendMessage(chatId, {
+            text: `❌ Only developers can use this command.`
+        }, { quoted: message });
+        return false;
+    }
+    return true;
 }
 
 /**
  * .approve command - Approve a new bot
- * Usage: .approve <bot_id> <duration_months>
- * Example: .approve abc123 3
  */
 async function approveCommand(sock, chatId, message, args) {
     const senderId = message.key.participant || message.key.remoteJid;
-    
-    if (!isSudo(senderId)) {
-        await sock.sendMessage(chatId, {
-            text: `❌ This command is only available for sudo user (${settings.sudoNumber})`
-        }, { quoted: message });
-        return;
-    }
+    if (!await sudoOnly(sock, chatId, message, senderId)) return;
     
     if (args.length < 2) {
         await sock.sendMessage(chatId, {
-            text: `*Bot Approval*\n\nUsage: .approve <bot_id> <duration>\n\nDuration options: 1, 2, 3, 6, 12 (months)\n\nExample: .approve abc123 3`
+            text: `*Bot Approval*\n\nUsage: .approve <bot_id> <duration>\n\nExample: .approve abc123 3`
         }, { quoted: message });
         return;
     }
+    // ... rest of the function (no changes needed beyond sudo check)
     
     const botId = args[0];
     const durationMonths = parseInt(args[1]);
@@ -90,13 +106,7 @@ async function approveCommand(sock, chatId, message, args) {
  */
 async function renewCommand(sock, chatId, message, args) {
     const senderId = message.key.participant || message.key.remoteJid;
-    
-    if (!isSudo(senderId)) {
-        await sock.sendMessage(chatId, {
-            text: `❌ This command is only available for sudo user (${settings.sudoNumber})`
-        }, { quoted: message });
-        return;
-    }
+    if (!await sudoOnly(sock, chatId, message, senderId)) return;
     
     if (args.length < 2) {
         await sock.sendMessage(chatId, {
@@ -149,13 +159,7 @@ async function renewCommand(sock, chatId, message, args) {
  */
 async function newBotsCommand(sock, chatId, message) {
     const senderId = message.key.participant || message.key.remoteJid;
-    
-    if (!isSudo(senderId)) {
-        await sock.sendMessage(chatId, {
-            text: `❌ This command is only available for sudo user (${settings.sudoNumber})`
-        }, { quoted: message });
-        return;
-    }
+    if (!await sudoOnly(sock, chatId, message, senderId)) return;
     
     try {
         const response = await axios.get(`${BACKEND_URL}/api/instances?status=new&all_servers=true`);
@@ -196,13 +200,7 @@ async function newBotsCommand(sock, chatId, message) {
  */
 async function approvedBotsCommand(sock, chatId, message) {
     const senderId = message.key.participant || message.key.remoteJid;
-    
-    if (!isSudo(senderId)) {
-        await sock.sendMessage(chatId, {
-            text: `❌ This command is only available for sudo user (${settings.sudoNumber})`
-        }, { quoted: message });
-        return;
-    }
+    if (!await sudoOnly(sock, chatId, message, senderId)) return;
     
     try {
         const response = await axios.get(`${BACKEND_URL}/api/instances?status=approved&all_servers=true`);
@@ -240,13 +238,7 @@ async function approvedBotsCommand(sock, chatId, message) {
  */
 async function expiredBotsCommand(sock, chatId, message) {
     const senderId = message.key.participant || message.key.remoteJid;
-    
-    if (!isSudo(senderId)) {
-        await sock.sendMessage(chatId, {
-            text: `❌ This command is only available for sudo user (${settings.sudoNumber})`
-        }, { quoted: message });
-        return;
-    }
+    if (!await sudoOnly(sock, chatId, message, senderId)) return;
     
     try {
         const response = await axios.get(`${BACKEND_URL}/api/instances?status=expired&all_servers=true`);
@@ -288,13 +280,7 @@ async function expiredBotsCommand(sock, chatId, message) {
  */
 async function allBotsCommand(sock, chatId, message) {
     const senderId = message.key.participant || message.key.remoteJid;
-    
-    if (!isSudo(senderId)) {
-        await sock.sendMessage(chatId, {
-            text: `❌ This command is only available for sudo user (${settings.sudoNumber})`
-        }, { quoted: message });
-        return;
-    }
+    if (!await sudoOnly(sock, chatId, message, senderId)) return;
     
     try {
         const response = await axios.get(`${BACKEND_URL}/api/instances?all_servers=true`);
@@ -346,13 +332,7 @@ async function allBotsCommand(sock, chatId, message) {
  */
 async function deleteBotCommand(sock, chatId, message, args) {
     const senderId = message.key.participant || message.key.remoteJid;
-    
-    if (!isSudo(senderId)) {
-        await sock.sendMessage(chatId, {
-            text: `❌ This command is only available for sudo user (${settings.sudoNumber})`
-        }, { quoted: message });
-        return;
-    }
+    if (!await sudoOnly(sock, chatId, message, senderId)) return;
     
     if (args.length < 1) {
         await sock.sendMessage(chatId, {
@@ -383,13 +363,7 @@ async function deleteBotCommand(sock, chatId, message, args) {
  */
 async function stopBotCommand(sock, chatId, message, args) {
     const senderId = message.key.participant || message.key.remoteJid;
-    
-    if (!isSudo(senderId)) {
-        await sock.sendMessage(chatId, {
-            text: `❌ This command is only available for sudo user (${settings.sudoNumber})`
-        }, { quoted: message });
-        return;
-    }
+    if (!await sudoOnly(sock, chatId, message, senderId)) return;
     
     if (args.length < 1) {
         await sock.sendMessage(chatId, {
@@ -420,13 +394,7 @@ async function stopBotCommand(sock, chatId, message, args) {
  */
 async function startBotCommand(sock, chatId, message, args) {
     const senderId = message.key.participant || message.key.remoteJid;
-    
-    if (!isSudo(senderId)) {
-        await sock.sendMessage(chatId, {
-            text: `❌ This command is only available for sudo user (${settings.sudoNumber})`
-        }, { quoted: message });
-        return;
-    }
+    if (!await sudoOnly(sock, chatId, message, senderId)) return;
     
     if (args.length < 1) {
         await sock.sendMessage(chatId, {

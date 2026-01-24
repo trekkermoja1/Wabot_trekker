@@ -14,15 +14,29 @@ async function bioCommand(sock, chatId, message, query) {
             bio = status.status || bio;
         } catch (e) {}
 
-        const contact = await sock.onWhatsApp(target);
-        const name = contact[0]?.notify || 'Unknown';
+        let name = 'Unknown';
+        let ppUrl = null;
+        try {
+            // Get profile picture
+            ppUrl = await sock.profilePictureUrl(target, 'image');
+        } catch (e) {}
+
+        try {
+            // Try to get name from contact or store
+            const contact = await sock.onWhatsApp(target);
+            name = contact[0]?.notify || name;
+        } catch (e) {}
 
         const text = `👤 *User Profile*\n\n*Name:* ${name}\n*Number:* ${target.split('@')[0]}\n*Bio:* ${bio}`;
         
-        await sock.sendMessage(chatId, { text }, { quoted: message });
+        if (ppUrl) {
+            await sock.sendMessage(chatId, { image: { url: ppUrl }, caption: text }, { quoted: message });
+        } else {
+            await sock.sendMessage(chatId, { text }, { quoted: message });
+        }
     } catch (e) {
         console.error('Error in bioCommand:', e);
-        await sock.sendMessage(chatId, { text: '❌ Failed to fetch user bio.' }, { quoted: message });
+        await sock.sendMessage(chatId, { text: '❌ Failed to fetch user profile.' }, { quoted: message });
     }
 }
 
