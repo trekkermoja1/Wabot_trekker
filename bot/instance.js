@@ -510,11 +510,6 @@ async function startBot() {
             console.log(chalk.green(`\n📶 [ONLINE] Instance: ${instanceId} - Client is online`));
             console.log(chalk.green(`✅ [CONNECTED] Instance: ${instanceId} - Connected Successfully!`));
                 console.log(chalk.blue(`👤 User: ${sock.user.id.split(':')[0]} (${sock.user.name || 'No Name'})`));
-
-                // Initialize global contacts and cache self
-                if (!global.contacts) global.contacts = {};
-                const selfId = sock.user.id.split(':')[0] + '@s.whatsapp.net';
-                global.contacts[selfId] = { name: sock.user.name || 'Bot', timestamp: Date.now() };
             }
 
         if (connection === 'close') {
