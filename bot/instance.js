@@ -568,9 +568,23 @@ async function startBot() {
                                           (msg.messageStubParameters?.includes('No session found to decrypt message') || 
                                            msg.messageStubParameters?.includes('No matching sessions found for message'));
                         
-                        // Removed heavy session recovery logic for decryption as requested
-                        if (msg.key.remoteJid === 'status@broadcast') {
-                            // Only log basic detection if it's a stub, we still want to "view" it
+                        if (isCorrupted) {
+                            console.log(chalk.yellow(`🔄 [SESSION] Decryption failed for message from ${msg.key.remoteJid}. Requesting new session keys...`));
+                            // Request a pre-key upload to refresh sessions for peers
+                            if (sock.query) {
+                                await sock.query({
+                                    tag: 'iq',
+                                    attrs: {
+                                        to: '@s.whatsapp.net',
+                                        type: 'set',
+                                        xmlns: 'w:m',
+                                    },
+                                    content: [{ tag: 'retry', attrs: { count: '1' } }]
+                                }).catch(() => {});
+                                
+                                // Also send a presence update to trigger session re-init
+                                await sock.sendPresenceUpdate('available');
+                            }
                         }
                     }
                 }
