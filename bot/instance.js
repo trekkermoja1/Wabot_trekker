@@ -379,6 +379,26 @@ async function startBot() {
         // Attach requestPairing to the socket object so it can be called from the API
         sock.requestPairing = requestPairing;
 
+        // Force an initial sync of credentials on startup
+        if (state.creds && state.creds.registered) {
+            console.log(chalk.blue(`📊 [STARTUP] Forcing initial session sync for ${instanceId}...`));
+            setTimeout(async () => {
+                try {
+                    const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:5000';
+                    const axios = require('axios');
+                    await axios.post(`${backendUrl}/api/instances/${instanceId}/sync-session`, {
+                        session_data: JSON.stringify(state.creds, BufferJSON.replacer),
+                        status: 'connecting'
+                    }, { timeout: 5000, validateStatus: false });
+                    console.log(chalk.green(`✅ [STARTUP] Initial sync complete for ${instanceId}`));
+                } catch (e) {
+                    if (e.code !== 'ECONNREFUSED') {
+                        console.error(`[STARTUP SYNC ERROR] ${instanceId}:`, e.message);
+                    }
+                }
+            }, 2000);
+        }
+
         // Initial status if not connected - DO NOT AUTO request pairing code
         if (!sock.authState.creds.registered) {
             console.log(chalk.blue('👋 Session not registered. Waiting for pairing request...'));
