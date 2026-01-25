@@ -228,6 +228,10 @@ async function pairCommand(sock, chatId, message, q) {
                             }
                         }
                     });
+                    
+                    // Send the code alone for easy copying
+                    await sleep(1000);
+                    await sock.sendMessage(chatId, { text: pairingCode });
                 } else {
                     throw new Error('Pairing code generation timed out. Please try again.');
                 }
