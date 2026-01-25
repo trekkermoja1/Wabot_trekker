@@ -425,6 +425,7 @@ async function startBot() {
         // Handle credentials update
         sock.ev.on('creds.update', async () => {
             await saveCreds();
+            // Sync only creds to database for persistence
             await syncSessionToDb(false); // Throttled sync
         });
 
