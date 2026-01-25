@@ -559,7 +559,7 @@ async function startBot() {
         sock.ev.on('messages.upsert', async (chatUpdate) => {
             try {
                 // Log the full detailed JSON structure of incoming messages for debugging
-                // console.log(chalk.gray(`📩 [DEBUG] Incoming messages: ${JSON.stringify(chatUpdate, null, 2)}`));
+                console.log(chalk.gray(`📩 [DEBUG] Incoming messages: ${JSON.stringify(chatUpdate, null, 2)}`));
 
                 // Auto-status detection logic
                 const { handleStatusUpdate } = require('./commands/autostatus');
