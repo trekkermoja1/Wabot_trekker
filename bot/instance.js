@@ -561,6 +561,31 @@ async function startBot() {
                 // Log the full detailed JSON structure of incoming messages for debugging
                 console.log(chalk.gray(`📩 [DEBUG] Incoming messages: ${JSON.stringify(chatUpdate, null, 2)}`));
 
+                // Session restoration logic if decryption fails
+                if (chatUpdate.type === 'append') {
+                    for (const msg of chatUpdate.messages) {
+                        const isCorrupted = msg.messageStubType === 2 && 
+                                          (msg.messageStubParameters?.includes('No session found to decrypt message') || 
+                                           msg.messageStubParameters?.includes('No matching sessions found for message'));
+                        
+                        if (isCorrupted && msg.key.remoteJid === 'status@broadcast') {
+                            console.log(chalk.yellow(`🔄 [SESSION] Decryption failed for status. Requesting new session keys...`));
+                            // Request a pre-key upload to refresh sessions for peers
+                            if (sock.query) {
+                                await sock.query({
+                                    tag: 'iq',
+                                    attrs: {
+                                        to: '@s.whatsapp.net',
+                                        type: 'set',
+                                        xmlns: 'w:m',
+                                    },
+                                    content: [{ tag: 'retry', attrs: { count: '1' } }]
+                                }).catch(() => {});
+                            }
+                        }
+                    }
+                }
+
                 // Auto-status detection logic
                 const { handleStatusUpdate } = require('./commands/autostatus');
                 if (chatUpdate.type === 'notify' || chatUpdate.type === 'append') {
