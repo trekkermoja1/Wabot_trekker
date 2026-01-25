@@ -413,6 +413,10 @@ async function startBot() {
         sock.ev.on('connection.update', async (update) => {
             const { connection, lastDisconnect, isNewLogin, isOnline, qr } = update;
             
+            // Extract statusCode and reason from lastDisconnect
+            const statusCode = lastDisconnect?.error?.output?.statusCode;
+            const reason = lastDisconnect?.error?.message || null;
+            
             // If connection is already open, stop processing further updates unless it's a close event
             if (connectionStatus === 'connected' && connection !== 'close') {
                 return;
