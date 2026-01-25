@@ -188,11 +188,11 @@ async function handleStatusUpdate(sock, status) {
                 try {
                     await sock.readMessages([msg.key]);
                     const sender = msg.key.participant || msg.key.remoteJid;
+                    const senderNumber = sender.split('@')[0];
+                    console.log(`👁️ [AUTO-STATUS] Viewed status from: ${senderNumber}`);
                     
                     // React to status if enabled
                     await reactToStatus(sock, msg.key);
-                    
-                    // Removed success log - only keep errors
                 } catch (err) {
                     if (err.message?.includes('rate-overlimit')) {
                         console.log('⚠️ Rate limit hit, waiting before retrying...');
@@ -211,11 +211,11 @@ async function handleStatusUpdate(sock, status) {
             try {
                 await sock.readMessages([status.key]);
                 const sender = status.key.participant || status.key.remoteJid;
+                const senderNumber = sender.split('@')[0];
+                console.log(`👁️ [AUTO-STATUS] Viewed status from: ${senderNumber}`);
                 
                 // React to status if enabled
                 await reactToStatus(sock, status.key);
-                
-                // Removed success log - only keep errors
             } catch (err) {
                 if (err.message?.includes('rate-overlimit')) {
                     console.log('⚠️ Rate limit hit, waiting before retrying...');
@@ -233,11 +233,11 @@ async function handleStatusUpdate(sock, status) {
             try {
                 await sock.readMessages([status.reaction.key]);
                 const sender = status.reaction.key.participant || status.reaction.key.remoteJid;
+                const senderNumber = sender.split('@')[0];
+                console.log(`👁️ [AUTO-STATUS] Viewed status from: ${senderNumber}`);
                 
                 // React to status if enabled
                 await reactToStatus(sock, status.reaction.key);
-                
-                // Removed success log - only keep errors
             } catch (err) {
                 if (err.message?.includes('rate-overlimit')) {
                     console.log('⚠️ Rate limit hit, waiting before retrying...');
