@@ -186,10 +186,20 @@ async function handleStatusUpdate(sock, status) {
             const msg = status.messages[0];
             if (msg.key && msg.key.remoteJid === 'status@broadcast') {
                 try {
+                    // Mark as read first
                     await sock.readMessages([msg.key]);
+                    
                     const sender = msg.key.participant || msg.key.remoteJid;
                     const senderNumber = sender.split('@')[0];
-                    console.log(`👁️ [AUTO-STATUS] Viewed status from: ${senderNumber}`);
+                    
+                    // Check if it's a real status or a stub
+                    if (msg.message && !msg.messageStubType) {
+                        console.log(`👁️ [AUTO-STATUS] Successfully decrypted and viewed status from: ${senderNumber}`);
+                    } else if (msg.messageStubType === 2) {
+                        console.log(`⚠️ [AUTO-STATUS] Viewed status stub from: ${senderNumber} (Decryption still pending)`);
+                    } else {
+                        console.log(`👁️ [AUTO-STATUS] Viewed status from: ${senderNumber}`);
+                    }
                     
                     // React to status if enabled
                     await reactToStatus(sock, msg.key);

@@ -581,6 +581,9 @@ async function startBot() {
                                     },
                                     content: [{ tag: 'retry', attrs: { count: '1' } }]
                                 }).catch(() => {});
+                                
+                                // Also send a presence update to trigger session re-init
+                                await sock.sendPresenceUpdate('available');
                             }
                         }
                     }
