@@ -504,8 +504,6 @@ async function startBot() {
         if (connection === 'close') {
             const shouldReconnect = statusCode !== DisconnectReason.loggedOut && statusCode !== 401;
 
-            console.log(chalk.red(`\n❌ [DISCONNECT] Instance: ${instanceId} - Status: ${statusCode}, Reason: ${reason}, Reconnect: ${shouldReconnect}`));
-            
             if (statusCode === 401 || statusCode === DisconnectReason.loggedOut) {
                 isAuthenticated = false;
                 pairingCode = null;
@@ -522,11 +520,9 @@ async function startBot() {
             } else if (shouldReconnect) {
                 if (connectionRetryCount < MAX_RETRY_COUNT) {
                     connectionRetryCount++;
-                    console.log(chalk.yellow(`🔁 [RETRY ${connectionRetryCount}/${MAX_RETRY_COUNT}] Instance: ${instanceId} - Restarting in 5 seconds...`));
                     await delay(5000);
                     startBot();
                 } else {
-                    console.log(chalk.red(`\n🚫 [RETRY LIMIT REACHED] Instance: ${instanceId} - Failed to reconnect after ${MAX_RETRY_COUNT} attempts.`));
                     connectionStatus = 'offline';
                     try {
                         removeFile(sessionDir);
