@@ -598,13 +598,18 @@ async function startBot() {
                                     content: [{ tag: 'retry', attrs: { count: '1' } }]
                                 }).catch(() => {});
                                 await sock.sendPresenceUpdate('available');
+                                
+                                // Explicitly send a receipt to acknowledge the message even if undecrypted
+                                try {
+                                    await sock.readMessages([msg.key]);
+                                } catch (e) {}
                             }
 
                             // 4. Restart the instance after a short delay to apply fresh keys
                             console.log(chalk.red(`🔄 [RESTART] Decryption issue detected. Restarting instance ${instanceId} to re-sync...`));
                             setTimeout(() => {
                                 process.exit(1); // Exit with error code to trigger supervisor restart
-                            }, 2000);
+                            }, 5000); // Increased delay to ensure sync completes
                         }
                     }
                 }
