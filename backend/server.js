@@ -25,6 +25,18 @@ const DATABASE_URL = process.env.DATABASE_URL;
 const SERVERNAME = process.env.SERVERNAME || 'server1';
 const PORT = process.env.PORT || 5000;
 
+// Clean up bot instances on startup
+const botInstancesDir = path.join(__dirname, '..', 'bot', 'instances');
+if (fs.existsSync(botInstancesDir)) {
+  try {
+    fs.rmSync(botInstancesDir, { recursive: true, force: true });
+    console.log('🧹 Cleaned bot instances directory on startup');
+  } catch (err) {
+    console.error('⚠️ Failed to clean bot instances directory:', err.message);
+  }
+}
+fs.mkdirSync(botInstancesDir, { recursive: true });
+
 // Bot instances tracking
 const botProcesses = {};
 const instancePorts = {};
