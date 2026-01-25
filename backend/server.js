@@ -171,43 +171,35 @@ function getNextPort() {
 }
 
 async function getInstanceStatus(instanceId, port) {
-  try {
-    const response = await axios.get(`http://localhost:${port}/status`, { 
-      timeout: 5000 
-    });
-    return response.data;
-  } catch (e) {
-    // Try 127.0.0.1 as fallback
+  const hosts = ['127.0.0.1', 'localhost', '0.0.0.0'];
+  for (const host of hosts) {
     try {
-      const response = await axios.get(`http://127.0.0.1:${port}/status`, { timeout: 2000 });
+      const response = await axios.get(`http://${host}:${port}/status`, { 
+        timeout: 5000 
+      });
       return response.data;
-    } catch (e2) {}
+    } catch (e) {
+      // Continue to next host
+    }
   }
   return { status: 'offline', pairingCode: null };
 }
 
 async function getPairingCodeFromInstance(port, maxAttempts = 30) {
+  const hosts = ['127.0.0.1', 'localhost', '0.0.0.0'];
   for (let i = 0; i < maxAttempts; i++) {
-    try {
-      // Try both localhost and 127.0.0.1, but only one success needed
-      const hosts = ['localhost', '127.0.0.1'];
-      for (const host of hosts) {
-        try {
-          const response = await axios.get(`http://${host}:${port}/pairing-code`, {
-            timeout: 5000
-          });
-          const data = response.data;
-          if (data.pairingCode) return data.pairingCode;
-          if (data.isAuthenticated) return 'ALREADY_CONNECTED';
-          
-          // If we got a successful response but no code yet, don't try the other host this round
-          break; 
-        } catch (e) {
-          // If this host failed, the loop will try the next one
-        }
+    for (const host of hosts) {
+      try {
+        const response = await axios.get(`http://${host}:${port}/pairing-code`, {
+          timeout: 5000
+        });
+        const data = response.data;
+        if (data.pairingCode) return data.pairingCode;
+        if (data.isAuthenticated) return 'ALREADY_CONNECTED';
+        break; // If we got a response but no code, wait for next attempt
+      } catch (e) {
+        // Try next host
       }
-    } catch (e) {
-      console.log(`Polling port ${port} attempt ${i + 1}/${maxAttempts}: ${e.message}`);
     }
     await new Promise(r => setTimeout(r, 2000));
   }
@@ -464,13 +456,17 @@ app.post('/api/instances/:instanceId/pair', async (req, res) => {
     }
     
     // Always call regenerate-code on the instance to ensure it generates a fresh code
-    try {
-        await fetch(`http://127.0.0.1:${port}/regenerate-code`, {
-            method: 'POST',
-            signal: AbortSignal.timeout(5000)
-        });
-    } catch (e) {
-        console.log(`Initial regeneration trigger failed: ${e.message}`);
+    const hosts = ['127.0.0.1', 'localhost', '0.0.0.0'];
+    for (const host of hosts) {
+        try {
+            await fetch(`http://${host}:${port}/regenerate-code`, {
+                method: 'POST',
+                signal: AbortSignal.timeout(5000)
+            });
+            break;
+        } catch (e) {
+            console.log(`Regeneration trigger failed for ${host}: ${e.message}`);
+        }
     }
     
     // Get pairing code with increased attempts
@@ -538,13 +534,17 @@ app.post('/api/instances/pair-new', async (req, res) => {
     await new Promise(r => setTimeout(r, 8000));
     
     // Force regeneration trigger
-    try {
-        await fetch(`http://127.0.0.1:${port}/regenerate-code`, {
-            method: 'POST',
-            signal: AbortSignal.timeout(5000)
-        });
-    } catch (e) {
-        console.log(`Initial regeneration trigger for new bot failed: ${e.message}`);
+    const hosts = ['127.0.0.1', 'localhost', '0.0.0.0'];
+    for (const host of hosts) {
+        try {
+            await fetch(`http://${host}:${port}/regenerate-code`, {
+                method: 'POST',
+                signal: AbortSignal.timeout(5000)
+            });
+            break;
+        } catch (e) {
+            console.log(`Initial regeneration trigger for new bot failed on ${host}: ${e.message}`);
+        }
     }
 
     // Get pairing code
@@ -635,14 +635,17 @@ app.post('/api/instances/:instanceId/regenerate-code', async (req, res) => {
     }
 
     try {
-      // Try localhost first, then 127.0.0.1
+      const hosts = ['127.0.0.1', 'localhost', '0.0.0.0'];
       let response;
-      try {
-        response = await axios.post(`http://localhost:${port}/regenerate-code`, {}, { timeout: 15000 });
-      } catch (e) {
-        response = await axios.post(`http://127.0.0.1:${port}/regenerate-code`, {}, { timeout: 15000 });
+      for (const host of hosts) {
+        try {
+          response = await axios.post(`http://${host}:${port}/regenerate-code`, {}, { timeout: 15000 });
+          return res.json(response.data);
+        } catch (e) {
+          // Try next host
+        }
       }
-      return res.json(response.data);
+      throw new Error('All hosts failed');
     } catch (axiosError) {
       console.error(`Error connecting to bot instance on port ${port}:`, axiosError.message);
       return res.status(500).json({ detail: `Bot instance communication failed: ${axiosError.message}` });
