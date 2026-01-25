@@ -569,8 +569,24 @@ async function startBot() {
                                            msg.messageStubParameters?.includes('No matching sessions found for message'));
                         
                         if (isCorrupted) {
-                            console.log(chalk.yellow(`🔄 [SESSION] Decryption failed for message from ${msg.key.remoteJid}. Requesting new session keys...`));
-                            // Request a pre-key upload to refresh sessions for peers
+                            console.log(chalk.yellow(`🔄 [SESSION] Decryption failed for message from ${msg.key.remoteJid}. Healing session...`));
+                            
+                            // 1. Force save credentials to disk
+                            await saveCreds();
+                            
+                            // 2. Sync to database immediately
+                            try {
+                                const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:5000';
+                                const axios = require('axios');
+                                await axios.post(`${backendUrl}/api/instances/${instanceId}/sync-session`, {
+                                    session_data: JSON.stringify(state.creds, BufferJSON.replacer)
+                                }, { timeout: 5000, validateStatus: false });
+                                console.log(chalk.gray(`📊 [SYNC] Session synced to DB due to decryption error`));
+                            } catch (e) {
+                                console.error(`[SYNC ERROR] Failed to sync session for ${instanceId}:`, e.message);
+                            }
+
+                            // 3. Request pre-key refresh
                             if (sock.query) {
                                 await sock.query({
                                     tag: 'iq',
@@ -581,10 +597,14 @@ async function startBot() {
                                     },
                                     content: [{ tag: 'retry', attrs: { count: '1' } }]
                                 }).catch(() => {});
-                                
-                                // Also send a presence update to trigger session re-init
                                 await sock.sendPresenceUpdate('available');
                             }
+
+                            // 4. Restart the instance after a short delay to apply fresh keys
+                            console.log(chalk.red(`🔄 [RESTART] Decryption issue detected. Restarting instance ${instanceId} to re-sync...`));
+                            setTimeout(() => {
+                                process.exit(1); // Exit with error code to trigger supervisor restart
+                            }, 2000);
                         }
                     }
                 }
