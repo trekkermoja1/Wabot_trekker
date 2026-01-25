@@ -205,11 +205,6 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
         const rawText = message.message?.conversation || message.message?.extendedTextMessage?.text || message.message?.imageMessage?.caption || message.message?.videoMessage?.caption || '';
         const userMessage = rawText.trim().toLowerCase();
 
-        // HEAVY LOGGING: MESSAGE METADATA
-        console.log('--- MESSAGE METADATA START ---');
-        console.log(JSON.stringify(message, null, 2));
-        console.log('--- MESSAGE METADATA END ---');
-
         // LOG ALL MESSAGE TRAFFIC
         const displayId = senderId.includes('@s.whatsapp.net') ? senderId : (senderId.split('@')[0] + '@s.whatsapp.net');
         const msgType = Object.keys(message.message || {})[0] || 'unknown';

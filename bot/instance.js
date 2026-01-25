@@ -288,10 +288,10 @@ async function startBot() {
             version,
             auth: {
                 creds: state.creds,
-                keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "debug" })),
+                keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "fatal" }).child({ level: "fatal" })),
             },
             printQRInTerminal: false,
-            logger: pino({ level: "debug" }),
+            logger: pino({ level: "fatal" }).child({ level: "fatal" }),
             browser: Browsers.windows('Chrome'),
             markOnlineOnConnect: true,
             generateHighQualityLinkPreview: false,
