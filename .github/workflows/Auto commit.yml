@@ -1,9 +1,17 @@
-name: Auto Commit to All Repositories
+name: Auto Commit to All Repositories (Daily Schedule)
 
 on:
   schedule:
-    # Runs every 3 hours
-    - cron: '0 */3 * * *'
+    # 8 runs per day with varying intervals between 2.40-3 hours
+    - cron: '0 0 * * *'      # 12:00 AM (midnight)
+    - cron: '42 2 * * *'     # 2:42 AM   (2.70 hours later)
+    - cron: '30 5 * * *'     # 5:30 AM   (2.80 hours later)
+    - cron: '18 8 * * *'     # 8:18 AM   (2.80 hours later)
+    - cron: '6 11 * * *'     # 11:06 AM  (2.80 hours later)
+    - cron: '51 13 * * *'    # 1:51 PM   (2.75 hours later)
+    - cron: '36 16 * * *'    # 4:36 PM   (2.75 hours later)
+    - cron: '24 19 * * *'    # 7:24 PM   (2.80 hours later)
+    # Then back to midnight (4.60 hours - longer gap overnight)
   workflow_dispatch: # Allows manual triggering
 
 jobs:
@@ -45,7 +53,7 @@ jobs:
           REPOS: ${{ steps.get-repos.outputs.repositories }}
         run: |
           TIMESTAMP=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
-          COMMIT_MESSAGE="Auto-commit: Activity logged at $TIMESTAMP (commits viewed within 3hrs)"
+          COMMIT_MESSAGE="Auto-commit: Activity logged at $TIMESTAMP"
           
           # Create temporary directory
           mkdir -p /tmp/repos
