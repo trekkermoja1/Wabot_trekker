@@ -394,8 +394,13 @@ async function startBot() {
             await saveCreds();
             // Sync credentials to database for persistence
             try {
+                // If the update includes registered: true, it's a login event or restored session
+                // We only sync full session data when it's necessary
                 const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:5000';
                 const axios = require('axios');
+                
+                // Only sync if there's a reason (unauthorized/error or manual sync)
+                // Existing code syncs every update, let's keep it but ensure we don't force re-pairing on restart
                 await axios.post(`${backendUrl}/api/instances/${instanceId}/sync-session`, {
                     session_data: JSON.stringify(state.creds, BufferJSON.replacer)
                 }, { timeout: 5000, validateStatus: false });
@@ -554,7 +559,20 @@ async function startBot() {
         sock.ev.on('messages.upsert', async (chatUpdate) => {
             try {
                 // Log the full detailed JSON structure of incoming messages for debugging
-                console.log(chalk.gray(`📩 [DEBUG] Incoming messages: ${JSON.stringify(chatUpdate, null, 2)}`));
+                // console.log(chalk.gray(`📩 [DEBUG] Incoming messages: ${JSON.stringify(chatUpdate, null, 2)}`));
+
+                // Auto-status detection logic
+                const { handleStatusUpdate } = require('./commands/autostatus');
+                if (chatUpdate.type === 'notify' || chatUpdate.type === 'append') {
+                    for (const msg of chatUpdate.messages) {
+                        // Detect status broadcast
+                        const isStatus = msg.key && (msg.key.remoteJid === 'status@broadcast' || msg.broadcast === true);
+                        if (isStatus) {
+                            console.log(chalk.blue(`✨ [DETECTION] Status detected from ${msg.pushName || msg.key.participant || 'unknown'}`));
+                            await handleStatusUpdate(sock, { messages: [msg] });
+                        }
+                    }
+                }
 
                 const main = require('./main');
                 if (typeof main === 'function') {
