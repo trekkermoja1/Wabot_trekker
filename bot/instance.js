@@ -418,17 +418,6 @@ async function startBot() {
                 return;
             }
 
-            // Also skip if it's just an online status update and we're already connecting/connected
-            if (!connection && isOnline !== undefined && (connectionStatus === 'connected' || connectionStatus === 'connecting')) {
-                return;
-            }
-
-            const statusCode = lastDisconnect?.error?.output?.statusCode;
-        const reason = lastDisconnect?.error?.message || 'No reason provided';
-
-        // Log all connection updates for debugging
-        console.log(chalk.gray(`📡 [CONNECTION UPDATE] Instance: ${instanceId} - connection: ${connection}, isNewLogin: ${isNewLogin}, isOnline: ${isOnline}`));
-
         // Map internal status to database status
         let dbStatus = connectionStatus;
         if (connection === 'open') dbStatus = 'connected';
@@ -518,7 +507,6 @@ async function startBot() {
             console.log(chalk.red(`\n❌ [DISCONNECT] Instance: ${instanceId} - Status: ${statusCode}, Reason: ${reason}, Reconnect: ${shouldReconnect}`));
             
             if (statusCode === 401 || statusCode === DisconnectReason.loggedOut) {
-                console.log(chalk.yellow("❌ Logged out from WhatsApp. Bot will remain idle until manual action."));
                 isAuthenticated = false;
                 pairingCode = null;
                 connectionStatus = 'logged_out';
@@ -527,7 +515,6 @@ async function startBot() {
                 try {
                     removeFile(sessionDir);
                     fs.mkdirSync(sessionDir, { recursive: true });
-                    console.log(chalk.blue("🔄 Re-initializing bot for new pairing after logout..."));
                     startBot();
                 } catch (e) {
                     console.error('Error clearing session on logout:', e);
