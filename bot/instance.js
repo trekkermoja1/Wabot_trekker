@@ -376,59 +376,56 @@ async function startBot() {
             }
         };
 
+        // Helper function for session syncing
+        const syncSessionToDb = async (force = false) => {
+            const now = Date.now();
+            if (!force && lastStatusSync !== 0 && (now - lastStatusSync < SYNC_INTERVAL)) {
+                return;
+            }
+
+            try {
+                const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:5000';
+                const axios = require('axios');
+                
+                // Determine current status
+                let currentStatus = connectionStatus;
+                if (botSocket?.user) currentStatus = 'connected';
+                
+                console.log(chalk.blue(`📊 [SYNC] Syncing session to database for ${instanceId} (Status: ${currentStatus})...`));
+                
+                await axios.post(`${backendUrl}/api/instances/${instanceId}/sync-session`, {
+                    status: currentStatus,
+                    session_data: JSON.stringify(state.creds, BufferJSON.replacer)
+                }, { 
+                    timeout: 6000, // Allocate up to 6 seconds
+                    validateStatus: false 
+                });
+                
+                lastStatusSync = now;
+                console.log(chalk.green(`✅ [SYNC] Session synced successfully for ${instanceId}`));
+            } catch (e) {
+                if (e.code !== 'ECONNREFUSED') {
+                    console.error(`[SYNC ERROR] ${instanceId}:`, e.message);
+                }
+            }
+        };
+
         // Attach requestPairing to the socket object so it can be called from the API
         sock.requestPairing = requestPairing;
-
-        // Force an initial sync of credentials on startup
-        if (state.creds && state.creds.registered) {
-            console.log(chalk.blue(`📊 [STARTUP] Forcing initial session sync for ${instanceId}...`));
-            setTimeout(async () => {
-                try {
-                    const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:5000';
-                    const axios = require('axios');
-                    await axios.post(`${backendUrl}/api/instances/${instanceId}/sync-session`, {
-                        session_data: JSON.stringify(state.creds, BufferJSON.replacer),
-                        status: 'connecting'
-                    }, { timeout: 5000, validateStatus: false });
-                    console.log(chalk.green(`✅ [STARTUP] Initial sync complete for ${instanceId}`));
-                } catch (e) {
-                    if (e.code !== 'ECONNREFUSED') {
-                        console.error(`[STARTUP SYNC ERROR] ${instanceId}:`, e.message);
-                    }
-                }
-            }, 2000);
-        }
 
         // Initial status if not connected - DO NOT AUTO request pairing code
         if (!sock.authState.creds.registered) {
             console.log(chalk.blue('👋 Session not registered. Waiting for pairing request...'));
             connectionStatus = 'ready_to_pair';
-            // REMOVED: Auto-request pairing code after a short delay
         } else {
             // This is only reached if state.creds.registered was already true or became true during load
             connectionStatus = 'connecting';
         }
         
         // Handle credentials update
-        sock.ev.on('creds.update', async (update) => {
+        sock.ev.on('creds.update', async () => {
             await saveCreds();
-            // Sync credentials to database for persistence
-            try {
-                // If the update includes registered: true, it's a login event or restored session
-                // We only sync full session data when it's necessary
-                const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:5000';
-                const axios = require('axios');
-                
-                // Only sync if there's a reason (unauthorized/error or manual sync)
-                // Existing code syncs every update, let's keep it but ensure we don't force re-pairing on restart
-                await axios.post(`${backendUrl}/api/instances/${instanceId}/sync-session`, {
-                    session_data: JSON.stringify(state.creds, BufferJSON.replacer)
-                }, { timeout: 5000, validateStatus: false });
-            } catch (e) {
-                if (e.code !== 'ECONNREFUSED') {
-                    console.error(`[SYNC ERROR] Failed to sync session for ${instanceId}:`, e.message);
-                }
-            }
+            await syncSessionToDb(false); // Throttled sync
         });
 
         // Handle connection updates
@@ -436,101 +433,37 @@ async function startBot() {
     const MAX_RETRY_COUNT = 3;
 
         sock.ev.on('connection.update', async (update) => {
-            const { connection, lastDisconnect, isNewLogin, isOnline, qr } = update;
+            const { connection, lastDisconnect, isNewLogin } = update;
             
             // Extract statusCode and reason from lastDisconnect
             const statusCode = lastDisconnect?.error?.output?.statusCode;
             const reason = lastDisconnect?.error?.message || null;
             
-            // If connection is already open, stop processing further updates unless it's a close event
-            if (connectionStatus === 'connected' && connection !== 'close') {
-                return;
-            }
-
-        // Map internal status to database status
-        let dbStatus = connectionStatus;
-        if (connection === 'open') dbStatus = 'connected';
-        else if (connection === 'connecting') dbStatus = 'connecting';
-        else if (connection === 'close') {
-            if (statusCode === 401 || statusCode === DisconnectReason.loggedOut) {
-                dbStatus = 'unauthorized';
-            } else {
-                dbStatus = 'offline';
-            }
-        }
-
-        // Sync status to database on every update - throttled to once per hour unless forced
-        const syncStatus = async (force = false) => {
-            const now = Date.now();
-            if (!force && lastStatusSync !== 0 && (now - lastStatusSync < SYNC_INTERVAL)) {
-                return;
-            }
-
-            try {
-                const backendUrl = process.env.BACKEND_URL || 'http://localhost:5000';
-                const axios = require('axios');
-                await axios.post(`${backendUrl}/api/instances/${instanceId}/sync-session`, {
-                    status: dbStatus,
-                    last_error: reason || 'Hourly scheduled sync',
-                    session_data: JSON.stringify(state.creds, BufferJSON.replacer)
-                }, { timeout: 10000, validateStatus: false });
-                lastStatusSync = now;
-                console.log(chalk.gray(`📊 [SYNC] Status synced for ${instanceId} (Force: ${force})`));
-            } catch (e) {
-                if (e.code !== 'ECONNREFUSED') {
-                    console.error(`[STATUS SYNC ERROR] ${instanceId}:`, e.message);
+            if (connection === 'connecting') {
+                if (connectionStatus !== 'pairing' && connectionStatus !== 'authenticating') {
+                    connectionStatus = 'connecting';
                 }
+                console.log(chalk.yellow(`🔄 [CONNECTING] Instance: ${instanceId} - Connecting to WhatsApp...`));
             }
-        };
 
-        // Execute sync immediately for connection open/close (considered "start" or critical change)
-        if (connection === 'open' || connection === 'close') {
-            syncStatus(true);
-        } else {
-            // Other updates are throttled
-            syncStatus(false);
-        }
-
-        // Set up hourly sync if not already set
-        if (!sock._hourlySyncInterval) {
-            sock._hourlySyncInterval = setInterval(() => {
-                if (botSocket === sock) {
-                    syncStatus(false);
-                } else {
-                    clearInterval(sock._hourlySyncInterval);
-                }
-            }, SYNC_INTERVAL);
-        }
-
-        // Handle new login - this fires when pairing code is accepted
-        if (isNewLogin) {
-            console.log(chalk.green(`🔐 [NEW LOGIN] Instance: ${instanceId} - Pairing code accepted! Waiting for connection to open...`));
-            connectionStatus = 'authenticating';
-            pairingCode = null; // Clear pairing code as it's been used
-        }
-
-        if (connection === 'connecting') {
-            // Keep pairing status if we're in the middle of pairing, otherwise set to connecting
-            if (connectionStatus !== 'pairing' && connectionStatus !== 'authenticating') {
-                connectionStatus = 'connecting';
-            }
-            console.log(chalk.yellow(`🔄 [CONNECTING] Instance: ${instanceId} - Connecting to WhatsApp...`));
-        }
-
-        if (connection === 'open') {
-            connectionRetryCount = 0; // Reset retry count on success
-            connectionStatus = 'connected';
-            isAuthenticated = true;
-            pairingCode = null; // Clear pairing code once connected
-            pairingCodeGeneratedAt = null;
-            startTime = Date.now(); // Reset start time on success
-            
-            console.log(chalk.green(`\n📶 [ONLINE] Instance: ${instanceId} - Client is online`));
-            console.log(chalk.green(`✅ [CONNECTED] Instance: ${instanceId} - Connected Successfully!`));
+            if (connection === 'open') {
+                connectionRetryCount = 0;
+                connectionStatus = 'connected';
+                isAuthenticated = true;
+                pairingCode = null;
+                pairingCodeGeneratedAt = null;
+                startTime = Date.now();
+                
+                console.log(chalk.green(`\n📶 [ONLINE] Instance: ${instanceId} - Client is online`));
+                console.log(chalk.green(`✅ [CONNECTED] Instance: ${instanceId} - Connected Successfully!`));
+                
+                // WAIT FOR SYNC TO COMPLETE (Allocating up to 6s)
+                await syncSessionToDb(true);
+                
                 console.log(chalk.blue(`👤 User: ${sock.user.id.split(':')[0]} (${sock.user.name || 'No Name'})`));
             }
 
-        if (connection === 'close') {
+            if (connection === 'close') {
             const shouldReconnect = statusCode !== DisconnectReason.loggedOut && statusCode !== 401;
 
             if (statusCode === 401 || statusCode === DisconnectReason.loggedOut) {
@@ -547,6 +480,9 @@ async function startBot() {
                     console.error('Error clearing session on logout:', e);
                 }
             } else if (shouldReconnect) {
+                // Sync status before reconnecting
+                await syncSessionToDb(true);
+                
                 if (connectionRetryCount < MAX_RETRY_COUNT) {
                     connectionRetryCount++;
                     await delay(5000);
