@@ -83,6 +83,7 @@ async function helpCommand(sock, chatId, message) {
 ║ ➤ .pmblocker setmsg <text>
 ║ ➤ .setmention <reply to msg>
 ║ ➤ .mention <on/off>
+║ ➤ .botoff <on/off>
 ║ ➤ .sudo <add/del/list> <user>
 ╚═══════════════════╝
 

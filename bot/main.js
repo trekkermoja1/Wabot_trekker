@@ -157,6 +157,7 @@ const { anticallCommand, readState: readAnticallState } = require('./commands/an
 const { pmblockerCommand, readState: readPmBlockerState } = require('./commands/pmblocker');
 const settingsCommand = require('./commands/settings');
 const soraCommand = require('./commands/sora');
+const botoffCommand = require('./commands/botoff');
 
 // Global settings
 global.packname = settings.packname;
@@ -189,7 +190,19 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
         if (!message) return;
         chatId = message.key.remoteJid;
         const senderId = message.key.participant || message.key.remoteJid;
+        const senderNumber = senderId.split('@')[0].replace(/[^0-9]/g, '');
         const isGroup = chatId.endsWith('@g.us');
+
+        // Check for botoff status
+        let isBotOff = false;
+        try {
+            const botoffPath = './bot/data/botoff.json';
+            if (fs.existsSync(botoffPath)) {
+                const botoffList = JSON.parse(fs.readFileSync(botoffPath, 'utf8'));
+                isBotOff = botoffList.includes(chatId);
+            }
+        } catch (e) {}
+
         const senderIsSudo = await isSudo(senderId);
         
         // Ensure isOwnerOrSudo is defined
@@ -201,7 +214,12 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
             // Fallback to manual check if function fails
             const ownerJid = settings.ownerNumber + '@s.whatsapp.net';
             const sudoList = await getSudoList();
-            senderIsOwnerOrSudo = senderId === ownerJid || sudoList.includes(senderId) || message.key.fromMe;
+            senderIsOwnerOrSudo = senderId === ownerJid || sudoList.includes(senderId) || message.key.fromMe || senderNumber === settings.ownerNumber;
+        }
+
+        // If bot is OFF in this group, ignore everyone except owner
+        if (isGroup && isBotOff && !senderIsOwnerOrSudo) {
+            return;
         }
 
         const rawText = message.message?.conversation || message.message?.extendedTextMessage?.text || message.message?.imageMessage?.caption || message.message?.videoMessage?.caption || '';
@@ -361,6 +379,10 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
 
         // Command processing
         switch (true) {
+            case userMessage.startsWith('.botoff'):
+                await botoffCommand(sock, chatId, message, userMessage.split(' ').slice(1));
+                commandExecuted = true;
+                break;
             case userMessage.startsWith('.pair'):
                 const pairCommand = require('./commands/pair');
                 const qPair = rawText.slice(5).trim();
