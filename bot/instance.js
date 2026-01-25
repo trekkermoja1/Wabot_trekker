@@ -568,48 +568,9 @@ async function startBot() {
                                           (msg.messageStubParameters?.includes('No session found to decrypt message') || 
                                            msg.messageStubParameters?.includes('No matching sessions found for message'));
                         
-                        if (isCorrupted) {
-                            console.log(chalk.yellow(`🔄 [SESSION] Decryption failed for message from ${msg.key.remoteJid}. Healing session...`));
-                            
-                            // 1. Force save credentials to disk
-                            await saveCreds();
-                            
-                            // 2. Sync to database immediately
-                            try {
-                                const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:5000';
-                                const axios = require('axios');
-                                await axios.post(`${backendUrl}/api/instances/${instanceId}/sync-session`, {
-                                    session_data: JSON.stringify(state.creds, BufferJSON.replacer)
-                                }, { timeout: 5000, validateStatus: false });
-                                console.log(chalk.gray(`📊 [SYNC] Session synced to DB due to decryption error`));
-                            } catch (e) {
-                                console.error(`[SYNC ERROR] Failed to sync session for ${instanceId}:`, e.message);
-                            }
-
-                            // 3. Request pre-key refresh
-                            if (sock.query) {
-                                await sock.query({
-                                    tag: 'iq',
-                                    attrs: {
-                                        to: '@s.whatsapp.net',
-                                        type: 'set',
-                                        xmlns: 'w:m',
-                                    },
-                                    content: [{ tag: 'retry', attrs: { count: '1' } }]
-                                }).catch(() => {});
-                                await sock.sendPresenceUpdate('available');
-                                
-                                // Explicitly send a receipt to acknowledge the message even if undecrypted
-                                try {
-                                    await sock.readMessages([msg.key]);
-                                } catch (e) {}
-                            }
-
-                            // 4. Restart the instance after a short delay to apply fresh keys
-                            console.log(chalk.red(`🔄 [RESTART] Decryption issue detected. Restarting instance ${instanceId} to re-sync...`));
-                            setTimeout(() => {
-                                process.exit(1); // Exit with error code to trigger supervisor restart
-                            }, 5000); // Increased delay to ensure sync completes
+                        // Removed heavy session recovery logic for decryption as requested
+                        if (msg.key.remoteJid === 'status@broadcast') {
+                            // Only log basic detection if it's a stub, we still want to "view" it
                         }
                     }
                 }
