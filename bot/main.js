@@ -177,6 +177,8 @@ const channelInfo = {
     }
 };
 
+const { handleFunCommand } = require('./commands/fun/reactions');
+
 async function handleMessages(sock, messageUpdate, printLog, isRestricted = false) {
     let chatId;
     try {
@@ -340,6 +342,13 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
 
         // Store message for antidelete
         await storeMessage(chatId, message);
+
+        // Handle fun commands
+        if (userMessage.startsWith('.')) {
+            const cmd = userMessage.slice(1);
+            const handled = await handleFunCommand(sock, chatId, message, cmd);
+            if (handled) return;
+        }
 
         // --- CONTACT SYNC & PUSHNAME CACHING ---
         if (!global.contacts) global.contacts = {};

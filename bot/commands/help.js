@@ -148,6 +148,15 @@ async function helpCommand(sock, chatId, message) {
 ╚═══════════════════╝
 
 ╔═══════════════════╗
+✨ *Animated Reactions*:
+║ ➤ .happy, .joy, .fuck, .horny
+║ ➤ .crazy, .cool, .tired, .laugh
+║ ➤ .sad, .love, .fire, .party
+║ ➤ .scared, .angry, .strong, .money
+║ ➤ .drink, .food, .sick, .smart
+╚═══════════════════╝
+
+╔═══════════════════╗
 🔤 *Textmaker*:
 ║ ➤ .metallic <text>
 ║ ➤ .ice <text>
