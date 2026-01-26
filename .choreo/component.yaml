@@ -12,7 +12,7 @@ endpoints:
     displayName: REST Service
     type: REST
     service:
-      basePath: /public
+      basePath: /
       port: 5000
       networkVisibilities:
         - Public
