@@ -26,6 +26,24 @@ const DATABASE_URL = process.env.DATABASE_URL;
 const SERVERNAME = process.env.SERVERNAME || 'server1';
 const PORT = process.env.PORT || 5000;
 
+// Dynamic URL detection
+app.use((req, res, next) => {
+  if (!process.env.BACKEND_URL) {
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+    const host = req.headers.host;
+    process.env.BACKEND_URL = `${protocol}://${host}`;
+  }
+  next();
+});
+
+// Serve static files
+app.use(express.static(path.join(__dirname, '..', 'public')));
+
+// Main landing page
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
+});
+
 // Clean up bot instances on startup
 const botInstancesDir = path.join(__dirname, '..', 'bot', 'instances');
 if (fs.existsSync(botInstancesDir)) {
@@ -245,7 +263,7 @@ async function startInstanceInternal(instanceId, phoneNumber, port, sessionData 
       console.log(`💾 Restored session for ${instanceId}`);
     }
 
-    const publicDomain = process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : `http://127.0.0.1:${PORT}`;
+    const publicDomain = process.env.BACKEND_URL || `http://127.0.0.1:${PORT}`;
     const env = { ...process.env, BACKEND_URL: publicDomain };
     if (sessionData) env.HAS_SESSION = 'true';
 
