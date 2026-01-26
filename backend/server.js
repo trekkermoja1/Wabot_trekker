@@ -17,6 +17,7 @@ require('dotenv').config({ quiet: true });
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // Environment configuration
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
@@ -881,15 +882,195 @@ app.post('/api/instances/:instanceId/approve', async (req, res) => {
   }
 });
 
+// Serve static pairing page from public directory
+app.use(express.static(path.join(__dirname, '..', 'public')));
+
+// HTML Form POST handler for pairing (works without JavaScript)
+app.post('/pair', async (req, res) => {
+  try {
+    const { name, phone_number } = req.body;
+    
+    if (!name || !phone_number) {
+      return res.send(generatePairingResultHTML(null, 'Please provide both name and phone number.'));
+    }
+    
+    const cleanPhone = phone_number.replace(/[^0-9]/g, '');
+    if (cleanPhone.length < 10) {
+      return res.send(generatePairingResultHTML(null, 'Invalid phone number. Please include country code.'));
+    }
+    
+    const existing = await executeQuery('SELECT id, start_status FROM bot_instances WHERE phone_number = $1', [cleanPhone]);
+    if (existing.rows.length > 0) {
+      return res.send(generatePairingResultHTML(null, 'A bot already exists for this phone number. Contact support for assistance.'));
+    }
+    
+    const targetServer = await findAvailableServer();
+    const instanceId = uuidv4().substring(0, 8);
+    const port = getNextPort();
+    
+    await executeQuery(
+      'INSERT INTO bot_instances (id, name, phone_number, status, start_status, server_name, port) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+      [instanceId, name, cleanPhone, 'new', 'new', targetServer, port]
+    );
+    
+    const botDir = path.join(__dirname, '..', 'bot');
+    const instanceDir = path.join(botDir, 'instances', instanceId);
+    fs.mkdirSync(path.join(instanceDir, 'session'), { recursive: true });
+    fs.mkdirSync(path.join(instanceDir, 'data'), { recursive: true });
+    
+    const started = await startInstanceInternal(instanceId, cleanPhone, port, null);
+    
+    if (!started) {
+      return res.send(generatePairingResultHTML(null, 'Failed to start bot instance. Please try again later.'));
+    }
+    
+    await new Promise(r => setTimeout(r, 8000));
+    
+    const hosts = ['127.0.0.1', 'localhost', '0.0.0.0'];
+    for (const host of hosts) {
+      try {
+        await fetch(`http://${host}:${port}/regenerate-code`, {
+          method: 'POST',
+          signal: AbortSignal.timeout(5000)
+        });
+        break;
+      } catch (e) {}
+    }
+    
+    const pairingCode = await getPairingCodeFromInstance(port, 60);
+    
+    if (!pairingCode) {
+      console.log(chalk.red(`[PAIR-FORM] Failed to generate pairing code for ${instanceId}`));
+      return res.send(generatePairingResultHTML(null, 'Failed to generate pairing code. Please try again.'));
+    }
+    
+    console.log(chalk.green(`[PAIR-FORM] Generated code for ${instanceId}: ${pairingCode}`));
+    res.send(generatePairingResultHTML(pairingCode, null, name, cleanPhone, instanceId));
+    
+  } catch (e) {
+    console.error('Pair form error:', e);
+    res.send(generatePairingResultHTML(null, 'An error occurred. Please try again later.'));
+  }
+});
+
+function generatePairingResultHTML(pairingCode, error, name, phone, instanceId) {
+  const styles = `
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+      }
+      .container {
+        background: white;
+        border-radius: 16px;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        padding: 40px;
+        width: 100%;
+        max-width: 450px;
+        text-align: center;
+      }
+      .logo h1 { color: #25D366; font-size: 28px; margin-bottom: 8px; }
+      .logo p { color: #666; font-size: 14px; margin-bottom: 30px; }
+      .pairing-code {
+        background: #f0fff4;
+        border: 3px dashed #25D366;
+        border-radius: 12px;
+        padding: 30px;
+        margin: 20px 0;
+      }
+      .pairing-code h2 { color: #333; font-size: 16px; margin-bottom: 15px; }
+      .code {
+        font-size: 36px;
+        font-weight: bold;
+        color: #25D366;
+        letter-spacing: 8px;
+        font-family: 'Courier New', monospace;
+      }
+      .error-box {
+        background: #fff5f5;
+        border: 2px solid #fc8181;
+        border-radius: 12px;
+        padding: 20px;
+        margin: 20px 0;
+        color: #c53030;
+      }
+      .info { color: #666; font-size: 14px; margin: 15px 0; line-height: 1.6; }
+      .details { background: #f7fafc; border-radius: 8px; padding: 15px; margin: 20px 0; text-align: left; }
+      .details p { font-size: 13px; color: #4a5568; margin: 5px 0; }
+      .details strong { color: #2d3748; }
+      .back-link {
+        display: inline-block;
+        margin-top: 25px;
+        padding: 14px 30px;
+        background: #25D366;
+        color: white;
+        text-decoration: none;
+        border-radius: 10px;
+        font-weight: 600;
+      }
+      .back-link:hover { background: #1ea952; }
+      .instructions { background: #f8f9fa; border-radius: 10px; padding: 20px; margin-top: 25px; text-align: left; }
+      .instructions h3 { color: #333; font-size: 14px; margin-bottom: 12px; }
+      .instructions ol { padding-left: 20px; color: #666; font-size: 13px; line-height: 1.8; }
+    </style>
+  `;
+  
+  if (error) {
+    return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Pairing Error</title>${styles}</head><body>
+      <div class="container">
+        <div class="logo"><h1>TREKKER WABOT</h1><p>Pairing Service</p></div>
+        <div class="error-box"><strong>Error:</strong> ${error}</div>
+        <a href="/" class="back-link">Try Again</a>
+      </div>
+    </body></html>`;
+  }
+  
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Pairing Code</title>${styles}</head><body>
+    <div class="container">
+      <div class="logo"><h1>TREKKER WABOT</h1><p>Pairing Code Generated</p></div>
+      <div class="pairing-code">
+        <h2>Your Pairing Code</h2>
+        <div class="code">${pairingCode}</div>
+      </div>
+      <div class="details">
+        <p><strong>Bot Name:</strong> ${name}</p>
+        <p><strong>Phone:</strong> ${phone}</p>
+        <p><strong>Instance ID:</strong> ${instanceId}</p>
+      </div>
+      <div class="instructions">
+        <h3>To complete pairing:</h3>
+        <ol>
+          <li>Open WhatsApp on your phone</li>
+          <li>Go to Settings > Linked Devices</li>
+          <li>Tap "Link a Device"</li>
+          <li>Choose "Link with phone number instead"</li>
+          <li>Enter the code shown above</li>
+        </ol>
+      </div>
+      <p class="info">This code expires in a few minutes. If it expires, create a new pairing request.</p>
+      <a href="/" class="back-link">Pair Another Device</a>
+    </div>
+  </body></html>`;
+}
+
 // Server static files from the React app
 app.use(express.static(path.join(__dirname, 'static')));
 
 // The "catchall" handler: for any request that doesn't
 // match one above, send back React's index.html file.
 app.get(/^(?!\/api).*/, (req, res) => {
-    const indexPath = path.join(__dirname, 'static', 'index.html');
-    if (fs.existsSync(indexPath)) {
-        res.sendFile(indexPath);
+    const publicIndexPath = path.join(__dirname, '..', 'public', 'index.html');
+    const staticIndexPath = path.join(__dirname, 'static', 'index.html');
+    if (fs.existsSync(publicIndexPath)) {
+        res.sendFile(publicIndexPath);
+    } else if (fs.existsSync(staticIndexPath)) {
+        res.sendFile(staticIndexPath);
     } else {
         res.status(404).send('Frontend not found. Please run build script.');
     }
