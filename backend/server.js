@@ -245,7 +245,8 @@ async function startInstanceInternal(instanceId, phoneNumber, port, sessionData 
       console.log(`💾 Restored session for ${instanceId}`);
     }
 
-    const env = { ...process.env, BACKEND_URL: `http://127.0.0.1:${PORT}` };
+    const publicDomain = process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : `http://127.0.0.1:${PORT}`;
+    const env = { ...process.env, BACKEND_URL: publicDomain };
     if (sessionData) env.HAS_SESSION = 'true';
 
     const proc = spawn('node', ['instance.js', instanceId, phoneNumber, String(port)], {

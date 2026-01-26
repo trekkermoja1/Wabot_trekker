@@ -4,7 +4,9 @@ const settings = require('../settings');
 
 // Helper to try multiple backend URLs
 async function axiosRequest(method, path, data = null, options = {}) {
+    const publicDomain = process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : null;
     const fallbacks = [
+        publicDomain,
         settings.backendApiUrl,
         'http://127.0.0.1:5000',
         'http://0.0.0.0:5000',
