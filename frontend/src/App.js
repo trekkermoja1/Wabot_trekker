@@ -592,7 +592,7 @@ function App() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl max-w-md w-full p-8 text-center">
             <h2 className="text-2xl font-bold mb-4">WhatsApp Pairing Code</h2>
-            <p className="text-gray-600 mb-6">Enter this code on your phone in Linked Devices > Link with Phone Number</p>
+            <p className="text-gray-600 mb-6">Enter this code on your phone in Linked Devices &gt; Link with Phone Number</p>
             <div className="bg-gray-100 rounded-xl p-6 mb-6">
               {fetchingPairingCode ? (
                 <div className="flex flex-col items-center">

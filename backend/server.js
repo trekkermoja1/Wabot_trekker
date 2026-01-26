@@ -687,7 +687,7 @@ app.get('/api/instances/:instanceId/pairing-code', async (req, res) => {
         response = await axios.get(`http://127.0.0.1:${port}/pairing-code`, { timeout: 20000 });
       }
       const data = response.data;
-      res.json({ pairing_code: data.pairingCode, status: data.status });
+      res.json({ pairing_code: data.pairingCode, pairingCode: data.pairingCode, status: data.status });
     } catch (axiosError) {
       res.status(500).json({ detail: `Bot instance communication failed: ${axiosError.message}` });
     }
