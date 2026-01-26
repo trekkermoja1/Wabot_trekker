@@ -886,6 +886,7 @@ app.post('/api/instances/:instanceId/approve', async (req, res) => {
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // HTML Form POST handler for pairing (works without JavaScript)
+// Supports both new bots and re-pairing existing offline/connecting bots
 app.post('/pair', async (req, res) => {
   try {
     const { name, phone_number } = req.body;
@@ -899,24 +900,50 @@ app.post('/pair', async (req, res) => {
       return res.send(generatePairingResultHTML(null, 'Invalid phone number. Please include country code.'));
     }
     
-    const existing = await executeQuery('SELECT id, start_status FROM bot_instances WHERE phone_number = $1', [cleanPhone]);
+    let instanceId, port, botName;
+    const existing = await executeQuery('SELECT * FROM bot_instances WHERE phone_number = $1', [cleanPhone]);
+    
     if (existing.rows.length > 0) {
-      return res.send(generatePairingResultHTML(null, 'A bot already exists for this phone number. Contact support for assistance.'));
+      const existingBot = existing.rows[0];
+      const botStatus = existingBot.status;
+      
+      if (botStatus === 'connected') {
+        return res.send(generatePairingResultHTML(null, 'This bot is already connected and active. No re-pairing needed.'));
+      }
+      
+      instanceId = existingBot.id;
+      port = existingBot.port || getNextPort();
+      botName = existingBot.name;
+      
+      console.log(chalk.yellow(`[PAIR-FORM] Re-pairing existing bot ${instanceId} (status: ${botStatus})`));
+      
+      await stopInstance(instanceId);
+      
+      const botDir = path.join(__dirname, '..', 'bot');
+      const sessionDir = path.join(botDir, 'instances', instanceId, 'session');
+      if (fs.existsSync(sessionDir)) {
+        fs.rmSync(sessionDir, { recursive: true, force: true });
+      }
+      fs.mkdirSync(sessionDir, { recursive: true });
+      
+      await executeQuery('UPDATE bot_instances SET session_data = NULL, status = $1, port = $2 WHERE id = $3', ['pairing', port, instanceId]);
+      
+    } else {
+      const targetServer = await findAvailableServer();
+      instanceId = uuidv4().substring(0, 8);
+      port = getNextPort();
+      botName = name;
+      
+      await executeQuery(
+        'INSERT INTO bot_instances (id, name, phone_number, status, start_status, server_name, port) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+        [instanceId, name, cleanPhone, 'new', 'new', targetServer, port]
+      );
+      
+      const botDir = path.join(__dirname, '..', 'bot');
+      const instanceDir = path.join(botDir, 'instances', instanceId);
+      fs.mkdirSync(path.join(instanceDir, 'session'), { recursive: true });
+      fs.mkdirSync(path.join(instanceDir, 'data'), { recursive: true });
     }
-    
-    const targetServer = await findAvailableServer();
-    const instanceId = uuidv4().substring(0, 8);
-    const port = getNextPort();
-    
-    await executeQuery(
-      'INSERT INTO bot_instances (id, name, phone_number, status, start_status, server_name, port) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-      [instanceId, name, cleanPhone, 'new', 'new', targetServer, port]
-    );
-    
-    const botDir = path.join(__dirname, '..', 'bot');
-    const instanceDir = path.join(botDir, 'instances', instanceId);
-    fs.mkdirSync(path.join(instanceDir, 'session'), { recursive: true });
-    fs.mkdirSync(path.join(instanceDir, 'data'), { recursive: true });
     
     const started = await startInstanceInternal(instanceId, cleanPhone, port, null);
     
@@ -944,8 +971,12 @@ app.post('/pair', async (req, res) => {
       return res.send(generatePairingResultHTML(null, 'Failed to generate pairing code. Please try again.'));
     }
     
+    if (pairingCode === 'ALREADY_CONNECTED') {
+      return res.send(generatePairingResultHTML(null, 'This bot is already connected. No pairing needed.'));
+    }
+    
     console.log(chalk.green(`[PAIR-FORM] Generated code for ${instanceId}: ${pairingCode}`));
-    res.send(generatePairingResultHTML(pairingCode, null, name, cleanPhone, instanceId));
+    res.send(generatePairingResultHTML(pairingCode, null, botName, cleanPhone, instanceId));
     
   } catch (e) {
     console.error('Pair form error:', e);
