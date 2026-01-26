@@ -2,7 +2,7 @@ name: Auto Commit to All Repositories (Daily Schedule)
 
 on:
   schedule:
-    # 8 runs per day with varying intervals between 2.40-3 hours
+    # 8 runs per day with varying intervals between 2.40-3 hours (UTC times)
     - cron: '0 0 * * *'      # 12:00 AM (midnight)
     - cron: '42 2 * * *'     # 2:42 AM   (2.70 hours later)
     - cron: '30 5 * * *'     # 5:30 AM   (2.80 hours later)
@@ -13,6 +13,12 @@ on:
     - cron: '24 19 * * *'    # 7:24 PM   (2.80 hours later)
     # Then back to midnight (4.60 hours - longer gap overnight)
   workflow_dispatch: # Allows manual triggering
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - '.github/workflows/**'  # Triggers when workflow is updated
 
 jobs:
   auto-commit:
