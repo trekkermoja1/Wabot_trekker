@@ -384,7 +384,7 @@ async function startBot() {
             }
 
             try {
-                const backendUrl = process.env.BACKEND_URL || 'http://127.0.0.1:5000';
+                const backendUrl = process.env.BACKEND_URL || 'http://0.0.0.0:5000';
                 const axios = require('axios');
                 
                 // Determine current status

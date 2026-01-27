@@ -263,7 +263,7 @@ async function startInstanceInternal(instanceId, phoneNumber, port, sessionData 
       console.log(`💾 Restored session for ${instanceId}`);
     }
 
-    const publicDomain = process.env.BACKEND_URL || `http://127.0.0.1:${PORT}`;
+    const publicDomain = process.env.BACKEND_URL || `http://0.0.0.0:${PORT}`;
     const env = { ...process.env, BACKEND_URL: publicDomain };
     if (sessionData) env.HAS_SESSION = 'true';
 
