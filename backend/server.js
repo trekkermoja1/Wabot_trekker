@@ -44,7 +44,8 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
 });
 
-// Clean up bot instances on startup
+// Clean up bot instances on startup - disabled to prevent EADDRINUSE and data loss on server restart
+/*
 const botInstancesDir = path.join(__dirname, '..', 'bot', 'instances');
 if (fs.existsSync(botInstancesDir)) {
   try {
@@ -55,6 +56,11 @@ if (fs.existsSync(botInstancesDir)) {
   }
 }
 fs.mkdirSync(botInstancesDir, { recursive: true });
+*/
+const botInstancesDir = path.join(__dirname, '..', 'bot', 'instances');
+if (!fs.existsSync(botInstancesDir)) {
+    fs.mkdirSync(botInstancesDir, { recursive: true });
+}
 
 // Bot instances tracking
 const botProcesses = {};
@@ -246,7 +252,9 @@ async function startInstanceInternal(instanceId, phoneNumber, port, sessionData 
     // Write session data if provided
     if (sessionData) {
       const sessionDir = path.join(botDir, 'instances', instanceId, 'session');
-      fs.mkdirSync(sessionDir, { recursive: true });
+      if (!fs.existsSync(sessionDir)) {
+          fs.mkdirSync(sessionDir, { recursive: true });
+      }
       const credsPath = path.join(sessionDir, 'creds.json');
       
       let credsToSave = sessionData;

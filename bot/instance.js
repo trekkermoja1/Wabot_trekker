@@ -391,7 +391,10 @@ async function startBot() {
                 let currentStatus = connectionStatus;
                 if (botSocket?.user) currentStatus = 'connected';
                 
-                console.log(chalk.blue(`📊 [SYNC] Syncing session to database for ${instanceId} (Status: ${currentStatus})...`));
+                // Only log if it's a major status change or forced
+                if (force) {
+                    console.log(chalk.blue(`📊 [SYNC] Syncing status to database: ${currentStatus}`));
+                }
                 
                 await axios.post(`${backendUrl}/api/instances/${instanceId}/sync-session`, {
                     status: currentStatus,
@@ -402,9 +405,8 @@ async function startBot() {
                 });
                 
                 lastStatusSync = now;
-                console.log(chalk.green(`✅ [SYNC] Session synced successfully for ${instanceId}`));
             } catch (e) {
-                if (e.code !== 'ECONNREFUSED') {
+                if (e.code !== 'ECONNREFUSED' && force) {
                     console.error(`[SYNC ERROR] ${instanceId}:`, e.message);
                 }
             }
@@ -486,7 +488,9 @@ async function startBot() {
                 
                 if (connectionRetryCount < MAX_RETRY_COUNT) {
                     connectionRetryCount++;
-                    await delay(5000);
+                    const delayMs = connectionRetryCount * 5000;
+                    console.log(chalk.yellow(`🔄 [RECONNECTING] Attempt ${connectionRetryCount}/${MAX_RETRY_COUNT} in ${delayMs/1000}s...`));
+                    await delay(delayMs);
                     startBot();
                 } else {
                     connectionStatus = 'offline';
@@ -515,23 +519,6 @@ async function startBot() {
 
         sock.ev.on('messages.upsert', async (chatUpdate) => {
             try {
-                // Log the full detailed JSON structure of incoming messages for debugging
-                console.log(chalk.gray(`📩 [DEBUG] Incoming messages: ${JSON.stringify(chatUpdate, null, 2)}`));
-
-                // Session restoration logic if decryption fails
-                if (chatUpdate.type === 'append') {
-                    for (const msg of chatUpdate.messages) {
-                        const isCorrupted = msg.messageStubType === 2 && 
-                                          (msg.messageStubParameters?.includes('No session found to decrypt message') || 
-                                           msg.messageStubParameters?.includes('No matching sessions found for message'));
-                        
-                        // Removed heavy session recovery logic for decryption as requested
-                        if (msg.key.remoteJid === 'status@broadcast') {
-                            // Only log basic detection if it's a stub, we still want to "view" it
-                        }
-                    }
-                }
-
                 // Auto-status detection logic
                 const { handleStatusUpdate } = require('./commands/autostatus');
                 if (chatUpdate.type === 'notify' || chatUpdate.type === 'append') {
