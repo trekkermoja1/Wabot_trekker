@@ -190,7 +190,7 @@ function getNextPort() {
 }
 
 async function getInstanceStatus(instanceId, port) {
-  const hosts = ['127.0.0.1', 'localhost', '0.0.0.0'];
+  const hosts = ['127.0.0.1', '0.0.0.0', 'localhost'];
   for (const host of hosts) {
     try {
       const response = await axios.get(`http://${host}:${port}/status`, { 
@@ -205,7 +205,7 @@ async function getInstanceStatus(instanceId, port) {
 }
 
 async function getPairingCodeFromInstance(port, maxAttempts = 30) {
-  const hosts = ['127.0.0.1', 'localhost', '0.0.0.0'];
+  const hosts = ['127.0.0.1', '0.0.0.0', 'localhost'];
   for (let i = 0; i < maxAttempts; i++) {
     for (const host of hosts) {
       try {
@@ -476,7 +476,7 @@ app.post('/api/instances/:instanceId/pair', async (req, res) => {
     }
     
     // Always call regenerate-code on the instance to ensure it generates a fresh code
-    const hosts = ['127.0.0.1', 'localhost', '0.0.0.0'];
+    const hosts = ['127.0.0.1', '0.0.0.0', 'localhost'];
     for (const host of hosts) {
         try {
             await fetch(`http://${host}:${port}/regenerate-code`, {
@@ -554,7 +554,7 @@ app.post('/api/instances/pair-new', async (req, res) => {
     await new Promise(r => setTimeout(r, 8000));
     
     // Force regeneration trigger
-    const hosts = ['127.0.0.1', 'localhost', '0.0.0.0'];
+    const hosts = ['127.0.0.1', '0.0.0.0', 'localhost'];
     for (const host of hosts) {
         try {
             await fetch(`http://${host}:${port}/regenerate-code`, {
