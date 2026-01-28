@@ -167,7 +167,13 @@ async function pairCommand(sock, chatId, message, q) {
                     });
 
                     // Trigger regeneration (clears old sessions on bot side)
-                    await axiosRequest('POST', `/api/instances/${botId}/regenerate-code`);
+                    try {
+                        await axiosRequest('POST', `/api/instances/${botId}/regenerate-code`);
+                    } catch (err) {
+                        console.log(`Initial regeneration failed, retrying after a short delay: ${err.message}`);
+                        await sleep(5000);
+                        await axiosRequest('POST', `/api/instances/${botId}/regenerate-code`);
+                    }
                 } else {
                     // Bot doesn't exist - create new one
                     await sock.sendMessage(chatId, {

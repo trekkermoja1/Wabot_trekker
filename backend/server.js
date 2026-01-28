@@ -651,29 +651,47 @@ app.post('/api/instances', async (req, res) => {
 app.post('/api/instances/:instanceId/regenerate-code', async (req, res) => {
   try {
     const { instanceId } = req.params;
-    const result = await executeQuery('SELECT port FROM bot_instances WHERE id = $1', [instanceId]);
+    const result = await executeQuery('SELECT * FROM bot_instances WHERE id = $1', [instanceId]);
     
     if (result.rows.length === 0) {
       return res.status(404).json({ detail: 'Instance not found' });
     }
 
-    const port = result.rows[0].port;
+    const instance = result.rows[0];
+    let port = instance.port;
     if (!port) {
-       return res.status(400).json({ detail: 'Instance has no assigned port' });
+       port = getNextPort();
+       await executeQuery('UPDATE bot_instances SET port = $1 WHERE id = $2', [port, instanceId]);
+    }
+
+    // Ensure instance is running before trying to regenerate code
+    if (!botProcesses[instanceId]) {
+      console.log(chalk.yellow(`[REGENERATE] Bot ${instanceId} is offline, starting it first...`));
+      await startInstanceInternal(instanceId, instance.phone_number, port, instance.session_data);
+      // Wait for it to boot up
+      await new Promise(r => setTimeout(r, 8000));
     }
 
     try {
       const hosts = ['127.0.0.1', 'localhost', '0.0.0.0'];
       let response;
-      for (const host of hosts) {
-        try {
-          response = await axios.post(`http://${host}:${port}/regenerate-code`, {}, { timeout: 15000 });
-          return res.json(response.data);
-        } catch (e) {
-          // Try next host
+      let lastError;
+
+      // Multiple retry attempts
+      for (let attempt = 0; attempt < 3; attempt++) {
+        for (const host of hosts) {
+          try {
+            response = await axios.post(`http://${host}:${port}/regenerate-code`, {}, { timeout: 10000 });
+            return res.json(response.data);
+          } catch (e) {
+            lastError = e;
+          }
         }
+        console.log(`[REGENERATE] Attempt ${attempt + 1} failed for ${instanceId}, retrying...`);
+        await new Promise(r => setTimeout(r, 3000));
       }
-      throw new Error('All hosts failed');
+      
+      throw lastError || new Error('All hosts and attempts failed');
     } catch (axiosError) {
       console.error(`Error connecting to bot instance on port ${port}:`, axiosError.message);
       return res.status(500).json({ detail: `Bot instance communication failed: ${axiosError.message}` });
