@@ -148,6 +148,7 @@ const server = http.createServer(async (req, res) => {
             user: botSocket?.user || null,
             apiPort
         }));
+        return;
     } else if (pathname === '/pairing-code' || pathname === '/pairing-code/') {
         // Trigger pairing if not already paired and not authenticated
         if (!pairingCode && !isAuthenticated && connectionStatus === 'ready_to_pair') {

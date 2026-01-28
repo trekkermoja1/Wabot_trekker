@@ -665,11 +665,20 @@ app.post('/api/instances/:instanceId/regenerate-code', async (req, res) => {
     }
 
     // Ensure instance is running before trying to regenerate code
-    if (!botProcesses[instanceId]) {
-      console.log(chalk.yellow(`[REGENERATE] Bot ${instanceId} is offline, starting it first...`));
+    let isAlive = false;
+    try {
+      const checkRes = await axios.get(`http://127.0.0.1:${port}/status`, { timeout: 2000 });
+      isAlive = checkRes.status === 200;
+    } catch (e) {
+      isAlive = false;
+    }
+
+    if (!isAlive || !botProcesses[instanceId]) {
+      console.log(chalk.yellow(`[REGENERATE] Bot ${instanceId} is offline or unresponsive, starting/restarting...`));
+      await stopInstance(instanceId);
       await startInstanceInternal(instanceId, instance.phone_number, port, instance.session_data);
       // Wait for it to boot up
-      await new Promise(r => setTimeout(r, 8000));
+      await new Promise(r => setTimeout(r, 10000));
     }
 
     try {
