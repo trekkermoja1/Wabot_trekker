@@ -450,6 +450,17 @@ app.post('/api/instances/:instanceId/pair', async (req, res) => {
     const botServer = instance.server_name;
     let port = instance.port;
     
+    // Check if current server is full
+    const serverLimitResult = await executeQuery('SELECT bot_count, max_limit FROM server_manager WHERE server_name = $1', [SERVERNAME]);
+    const isFull = serverLimitResult.rows[0] && serverLimitResult.rows[0].bot_count >= serverLimitResult.rows[0].max_limit;
+
+    // Load balance if full or if it's a new registration
+    let finalServer = botServer;
+    if (isFull || instance.start_status === 'new') {
+      finalServer = await findAvailableServer();
+      await executeQuery('UPDATE bot_instances SET server_name = $1 WHERE id = $2', [finalServer, instanceId]);
+    }
+    
     // Assign port if not exists
     if (!port) {
       port = getNextPort();
@@ -551,6 +562,20 @@ app.post('/api/instances/pair-new', async (req, res) => {
     fs.mkdirSync(path.join(instanceDir, 'session'), { recursive: true });
     fs.mkdirSync(path.join(instanceDir, 'data'), { recursive: true });
     
+    // Check if current server is full
+    const serverLimitResult = await executeQuery('SELECT bot_count, max_limit FROM server_manager WHERE server_name = $1', [SERVERNAME]);
+    const isFull = serverLimitResult.rows[0] && serverLimitResult.rows[0].bot_count >= serverLimitResult.rows[0].max_limit;
+
+    // If full, we still run it temporarily for pairing on THIS server, 
+    // but find another server for permanent registration in the registry
+    if (isFull) {
+      const permanentServer = await findAvailableServer();
+      if (permanentServer !== SERVERNAME) {
+        await executeQuery('UPDATE bot_instances SET server_name = $1 WHERE id = $2', [permanentServer, instanceId]);
+        console.log(`⚖️ Server ${SERVERNAME} is full. Bot ${instanceId} temporarily running here for pairing, but registered to ${permanentServer} for next restart.`);
+      }
+    }
+
     // Start instance
     const started = await startInstanceInternal(instanceId, phone_number, port, null);
     
