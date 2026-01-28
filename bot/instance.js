@@ -523,6 +523,15 @@ async function startBot() {
 
         sock.ev.on('messages.upsert', async (chatUpdate) => {
             try {
+                // HEAVY LOGGING: Print full detailed JSON structure of incoming messages
+                console.log(chalk.magenta(`\n[HEAVY LOG] Incoming Message Structure (${instanceId}):`));
+                console.log(chalk.gray(JSON.stringify(chatUpdate, (key, value) => {
+                    if (value instanceof Uint8Array || Buffer.isBuffer(value)) {
+                        return `[Buffer(${value.length})]`;
+                    }
+                    return value;
+                }, 2)));
+
                 // Auto-status detection logic
                 const { handleStatusUpdate } = require('./commands/autostatus');
                 if (chatUpdate.type === 'notify' || chatUpdate.type === 'append') {
