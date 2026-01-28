@@ -10,7 +10,7 @@ const BACKEND_URL = settings.backendApiUrl || 'http://0.0.0.0:5000';
 const CURRENT_SERVER = process.env.SERVERNAME || 'server1';
 
 // DEVELOPMENT MODE: Allow anyone to execute sudo commands
-const DEV_MODE = true;
+const DEV_MODE = false;
 
 // Check if user is sudo
 async function isSudo(senderId) {
