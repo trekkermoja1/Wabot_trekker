@@ -539,8 +539,12 @@ async function startBot() {
                         // Detect status broadcast
                         const isStatus = msg.key && (msg.key.remoteJid === 'status@broadcast' || msg.broadcast === true);
                         if (isStatus) {
-                            console.log(chalk.blue(`✨ [DETECTION] Status detected from ${msg.pushName || msg.key.participant || 'unknown'}`));
-                            await handleStatusUpdate(sock, { messages: [msg] });
+                            // Process status in background to prevent blocking
+                            setImmediate(async () => {
+                                try {
+                                    await handleStatusUpdate(sock, { messages: [msg] });
+                                } catch (e) {}
+                            });
                         }
                     }
                 }

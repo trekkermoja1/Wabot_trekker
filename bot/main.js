@@ -184,6 +184,18 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
     let chatId;
     try {
         const { messages, type } = messageUpdate;
+        // Prioritize notify events, handle append in background if needed
+        if (type === 'append') {
+            // Background process for appends to keep queue clear
+            setImmediate(async () => {
+                try {
+                    for (const msg of messages) {
+                        await storeMessage(msg.key.remoteJid, msg);
+                    }
+                } catch (e) {}
+            });
+            return;
+        }
         if (type !== 'notify') return;
 
         const message = messages[0];
