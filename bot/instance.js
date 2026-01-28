@@ -321,7 +321,7 @@ async function startBot() {
         });
 
         let pairingRetryCount = 0;
-        const MAX_PAIRING_RETRIES = 5;
+        const MAX_PAIRING_RETRIES = 15;
         
         const requestPairing = async () => {
             if (connectionStatus === 'logged_out' || isAuthenticated || connectionStatus === 'connected') {
@@ -335,6 +335,9 @@ async function startBot() {
                 connectionStatus = 'error';
                 return;
             }
+
+            // Ensure we don't request too fast
+            await delay(2000);
             
             try {
                 connectionStatus = 'pairing';
@@ -367,12 +370,12 @@ async function startBot() {
                     setTimeout(requestPairing, 30000);
                 } else if (err.message && (err.message.includes('Connection Closed') || err.message.includes('Precondition Required'))) {
                     // Connection not ready, wait and retry
-                    console.log(chalk.yellow('🔄 Connection not ready, retrying in 8s...'));
+                    console.log(chalk.yellow('🔄 Connection not ready, retrying in 10s...'));
                     connectionStatus = 'connecting';
-                    setTimeout(requestPairing, 8000);
-                } else {
-                    console.log(chalk.yellow('🔄 Retrying pairing code request in 10s...'));
                     setTimeout(requestPairing, 10000);
+                } else {
+                    console.log(chalk.yellow('🔄 Retrying pairing code request in 12s...'));
+                    setTimeout(requestPairing, 12000);
                 }
             }
         };

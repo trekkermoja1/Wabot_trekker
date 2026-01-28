@@ -677,8 +677,8 @@ app.post('/api/instances/:instanceId/regenerate-code', async (req, res) => {
       console.log(chalk.yellow(`[REGENERATE] Bot ${instanceId} is offline or unresponsive, starting/restarting...`));
       await stopInstance(instanceId);
       await startInstanceInternal(instanceId, instance.phone_number, port, instance.session_data);
-      // Wait for it to boot up
-      await new Promise(r => setTimeout(r, 10000));
+      // Wait for it to boot up and establish initial WS connection
+      await new Promise(r => setTimeout(r, 15000));
     }
 
     try {
