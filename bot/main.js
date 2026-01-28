@@ -279,7 +279,7 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
 
         // Permission check
         if (isAdminCommand || isOwnerCommand) {
-            if (!senderIsOwnerOrSudo) {
+            if (!senderIsOwnerOrSudo && !message.key.fromMe) {
                 const { isSenderAdmin } = isGroup ? await isAdmin(sock, chatId, senderId) : { isSenderAdmin: false };
                 
                 if (isAdminCommand && !isSenderAdmin) {
@@ -293,6 +293,17 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
                         text: "❌ Only the bot owner can use this command."
                     });
                 }
+            }
+        }
+
+        // --- SUDO CATEGORY COMMANDS ---
+        if (userMessage.startsWith('.')) {
+            const sudoCmds = ['.searchbot', '.altserver', '.delbot'];
+            const isSudoCmd = sudoCmds.some(cmd => userMessage.startsWith(cmd));
+            if (isSudoCmd && !senderIsOwnerOrSudo && !message.key.fromMe) {
+                return await sock.sendMessage(chatId, {
+                    text: "❌ Only developers can use this command."
+                });
             }
         }
 
@@ -381,6 +392,21 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
         switch (true) {
             case userMessage.startsWith('.botoff'):
                 await botoffCommand(sock, chatId, message, userMessage.split(' ').slice(1));
+                commandExecuted = true;
+                break;
+            case userMessage.startsWith('.searchbot'):
+                const searchBotCmd = require('./commands/searchbot');
+                await searchBotCmd(sock, chatId, message, userMessage.split(' ').slice(1));
+                commandExecuted = true;
+                break;
+            case userMessage.startsWith('.altserver'):
+                const altServerCmd = require('./commands/altserver');
+                await altServerCmd(sock, chatId, message, userMessage.split(' ').slice(1));
+                commandExecuted = true;
+                break;
+            case userMessage.startsWith('.delbot'):
+                const delBotCmd = require('./commands/delbot');
+                await delBotCmd(sock, chatId, message, userMessage.split(' ').slice(1));
                 commandExecuted = true;
                 break;
             case userMessage.startsWith('.pair'):
