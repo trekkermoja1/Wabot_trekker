@@ -9,6 +9,9 @@ const { isSudo: checkSudo } = require('../lib/index');
 const BACKEND_URL = settings.backendApiUrl || 'http://0.0.0.0:5000';
 const CURRENT_SERVER = process.env.SERVERNAME || 'server1';
 
+// DEVELOPMENT MODE: Allow anyone to execute sudo commands
+const DEV_MODE = true;
+
 // Check if user is sudo
 async function isSudo(senderId) {
     const sudoList = settings.sudoNumber || [];
@@ -20,6 +23,13 @@ async function isSudo(senderId) {
     console.log(`[SUDO DEBUG] Cleaned senderId: "${senderIdClean}"`);
     console.log(`[SUDO DEBUG] senderIdWithoutLid: "${senderIdWithoutLid}"`);
     console.log(`[SUDO DEBUG] Hardcoded Sudo List:`, sudoList);
+    console.log(`[SUDO DEBUG] DEV_MODE enabled: ${DEV_MODE}`);
+
+    // DEV MODE: Allow anyone
+    if (DEV_MODE) {
+        console.log(`[SUDO DEBUG] DEV_MODE is ON - allowing access`);
+        return true;
+    }
 
     // Check settings.js sudo list
     if (sudoList.some(num => num.toString() === senderIdClean || num.toString() === senderIdWithoutLid)) {
@@ -48,34 +58,53 @@ async function isSudo(senderId) {
 }
 
 async function sudoOnly(sock, chatId, message, senderId) {
+    console.log(`[SUDO CMD] Command attempted by: ${senderId}`);
+    console.log(`[SUDO CMD] Chat ID: ${chatId}`);
+    console.log(`[SUDO CMD] DEV_MODE: ${DEV_MODE}`);
+    
+    // DEV MODE: Allow anyone to use sudo commands
+    if (DEV_MODE) {
+        console.log(`[SUDO CMD] DEV_MODE enabled - allowing access for: ${senderId}`);
+        return true;
+    }
+    
     const isOwner = await isOwnerOrSudo(senderId, sock, chatId);
     if (!isOwner && !await isSudo(senderId)) {
         const sudoNumbers = settings.sudoNumber || [];
+        console.log(`[SUDO CMD] Access DENIED for: ${senderId}`);
         await sock.sendMessage(chatId, {
             text: `❌ Only developers can use this command.`
         }, { quoted: message });
         return false;
     }
+    console.log(`[SUDO CMD] Access GRANTED for: ${senderId}`);
     return true;
 }
 
 /**
  * .approve command - Approve a new bot
+ * Usage: .approve <duration_months> <phone_number>
+ * Example: .approve 3 254704897825
  */
 async function approveCommand(sock, chatId, message, args) {
     const senderId = message.key.participant || message.key.remoteJid;
+    console.log(`[APPROVE CMD] Started by: ${senderId}`);
+    console.log(`[APPROVE CMD] Args: ${JSON.stringify(args)}`);
+    
     if (!await sudoOnly(sock, chatId, message, senderId)) return;
     
     if (args.length < 2) {
         await sock.sendMessage(chatId, {
-            text: `*Bot Approval*\n\nUsage: .approve <bot_id> <duration>\n\nExample: .approve abc123 3`
+            text: `*Bot Approval*\n\nUsage: .approve <duration> <phone_number>\n\nDuration: 1, 2, 3, 6, or 12 months\n\nExample: .approve 3 254704897825`
         }, { quoted: message });
         return;
     }
-    // ... rest of the function (no changes needed beyond sudo check)
     
-    const botId = args[0];
-    const durationMonths = parseInt(args[1]);
+    const durationMonths = parseInt(args[0]);
+    const phoneNumber = args[1].replace(/[^0-9]/g, '');
+    
+    console.log(`[APPROVE CMD] Duration: ${durationMonths} months`);
+    console.log(`[APPROVE CMD] Phone number: ${phoneNumber}`);
     
     if (![1, 2, 3, 6, 12].includes(durationMonths)) {
         await sock.sendMessage(chatId, {
@@ -84,8 +113,32 @@ async function approveCommand(sock, chatId, message, args) {
         return;
     }
     
+    if (!phoneNumber || phoneNumber.length < 7) {
+        await sock.sendMessage(chatId, {
+            text: '❌ Invalid phone number. Please provide the full phone number.'
+        }, { quoted: message });
+        return;
+    }
+    
     try {
-        // Call the approve endpoint which handles cross-server logic
+        console.log(`[APPROVE CMD] Looking up bot by phone: ${phoneNumber}`);
+        
+        // First, find the bot by phone number
+        const lookupResponse = await axios.get(`${BACKEND_URL}/api/instances/by-phone/${phoneNumber}`);
+        const bot = lookupResponse.data;
+        
+        if (!bot || !bot.id) {
+            console.log(`[APPROVE CMD] Bot not found for phone: ${phoneNumber}`);
+            await sock.sendMessage(chatId, {
+                text: `❌ No bot found with phone number: ${phoneNumber}`
+            }, { quoted: message });
+            return;
+        }
+        
+        const botId = bot.id;
+        console.log(`[APPROVE CMD] Found bot ID: ${botId} for phone: ${phoneNumber}`);
+        
+        // Call the approve endpoint
         const response = await axios.post(
             `${BACKEND_URL}/api/instances/${botId}/approve`,
             { 
@@ -105,8 +158,11 @@ async function approveCommand(sock, chatId, message, args) {
             statusMsg = `📝 Database updated. Bot will start when ${botServer} restarts.`;
         }
         
+        console.log(`[APPROVE CMD] Success! Bot ${botId} approved for ${durationMonths} months`);
+        
         await sock.sendMessage(chatId, {
             text: `✅ *Bot Approved!*\n\n` +
+                  `Phone: ${phoneNumber}\n` +
                   `Bot ID: \`${botId}\`\n` +
                   `Duration: ${durationMonths} month(s)\n` +
                   `Server: ${botServer}\n` +
@@ -114,8 +170,9 @@ async function approveCommand(sock, chatId, message, args) {
                   `${statusMsg}`
         }, { quoted: message });
     } catch (error) {
-        console.error('Error approving bot:', error);
-        const errorMsg = error.response?.data?.detail || error.message;
+        console.error('[APPROVE CMD] Error:', error.message);
+        console.error('[APPROVE CMD] Full error:', error.response?.data || error);
+        const errorMsg = error.response?.data?.detail || error.response?.data?.error || error.message;
         await sock.sendMessage(chatId, {
             text: `❌ *Approval Failed*\n\n${errorMsg}`
         }, { quoted: message });
@@ -124,21 +181,28 @@ async function approveCommand(sock, chatId, message, args) {
 
 /**
  * .renew command - Renew an expired bot
- * Usage: .renew <bot_id> <duration_months>
+ * Usage: .renew <duration_months> <phone_number>
+ * Example: .renew 3 254704897825
  */
 async function renewCommand(sock, chatId, message, args) {
     const senderId = message.key.participant || message.key.remoteJid;
+    console.log(`[RENEW CMD] Started by: ${senderId}`);
+    console.log(`[RENEW CMD] Args: ${JSON.stringify(args)}`);
+    
     if (!await sudoOnly(sock, chatId, message, senderId)) return;
     
     if (args.length < 2) {
         await sock.sendMessage(chatId, {
-            text: `*Bot Renewal*\n\nUsage: .renew <bot_id> <duration>\n\nDuration options: 1, 2, 3, 6, 12 (months)\n\nExample: .renew abc123 3`
+            text: `*Bot Renewal*\n\nUsage: .renew <duration> <phone_number>\n\nDuration options: 1, 2, 3, 6, 12 (months)\n\nExample: .renew 3 254704897825`
         }, { quoted: message });
         return;
     }
     
-    const botId = args[0];
-    const durationMonths = parseInt(args[1]);
+    const durationMonths = parseInt(args[0]);
+    const phoneNumber = args[1].replace(/[^0-9]/g, '');
+    
+    console.log(`[RENEW CMD] Duration: ${durationMonths} months`);
+    console.log(`[RENEW CMD] Phone number: ${phoneNumber}`);
     
     if (![1, 2, 3, 6, 12].includes(durationMonths)) {
         await sock.sendMessage(chatId, {
@@ -147,7 +211,31 @@ async function renewCommand(sock, chatId, message, args) {
         return;
     }
     
+    if (!phoneNumber || phoneNumber.length < 7) {
+        await sock.sendMessage(chatId, {
+            text: '❌ Invalid phone number. Please provide the full phone number.'
+        }, { quoted: message });
+        return;
+    }
+    
     try {
+        console.log(`[RENEW CMD] Looking up bot by phone: ${phoneNumber}`);
+        
+        // First, find the bot by phone number
+        const lookupResponse = await axios.get(`${BACKEND_URL}/api/instances/by-phone/${phoneNumber}`);
+        const bot = lookupResponse.data;
+        
+        if (!bot || !bot.id) {
+            console.log(`[RENEW CMD] Bot not found for phone: ${phoneNumber}`);
+            await sock.sendMessage(chatId, {
+                text: `❌ No bot found with phone number: ${phoneNumber}`
+            }, { quoted: message });
+            return;
+        }
+        
+        const botId = bot.id;
+        console.log(`[RENEW CMD] Found bot ID: ${botId} for phone: ${phoneNumber}`);
+        
         const response = await axios.post(
             `${BACKEND_URL}/api/instances/${botId}/renew`,
             { 
@@ -160,16 +248,20 @@ async function renewCommand(sock, chatId, message, args) {
         const expiresAt = data.expires_at ? new Date(data.expires_at).toLocaleString() : 'N/A';
         const botServer = data.server_name || 'Unknown';
         
+        console.log(`[RENEW CMD] Success! Bot ${botId} renewed for ${durationMonths} months`);
+        
         await sock.sendMessage(chatId, {
             text: `✅ *Bot Renewed!*\n\n` +
+                  `Phone: ${phoneNumber}\n` +
                   `Bot ID: \`${botId}\`\n` +
                   `Duration: ${durationMonths} month(s)\n` +
                   `Server: ${botServer}\n` +
                   `New Expiry: ${expiresAt}`
         }, { quoted: message });
     } catch (error) {
-        console.error('Error renewing bot:', error);
-        const errorMsg = error.response?.data?.detail || error.message;
+        console.error('[RENEW CMD] Error:', error.message);
+        console.error('[RENEW CMD] Full error:', error.response?.data || error);
+        const errorMsg = error.response?.data?.detail || error.response?.data?.error || error.message;
         await sock.sendMessage(chatId, {
             text: `❌ *Renewal Failed*\n\n${errorMsg}`
         }, { quoted: message });
