@@ -409,7 +409,13 @@ function App() {
                       <button onClick={() => handleStartBot(bot.id)} className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-medium transition">Start</button>
                       <button onClick={() => handleStopBot(bot.id)} className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg font-medium transition">Stop</button>
                       <button onClick={() => { setSelectedBot(bot); setShowApproveModal(true); }} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition">Approve</button>
-                      <button onClick={() => getPairingCode(bot.id)} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-medium transition">Pair Code</button>
+                      <button 
+                        onClick={() => getPairingCode(bot.id)} 
+                        disabled={fetchingPairingCode}
+                        className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-medium transition disabled:opacity-50"
+                      >
+                        {fetchingPairingCode ? 'Loading...' : 'Pair Code'}
+                      </button>
                       <button onClick={() => handleDeleteBot(bot.id)} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition">Delete</button>
                     </div>
                   </div>
@@ -453,7 +459,13 @@ function App() {
                     <div className="flex gap-2">
                       <button onClick={() => handleStartBot(bot.id)} className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-medium transition">Start</button>
                       <button onClick={() => handleStopBot(bot.id)} className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg font-medium transition">Stop</button>
-                      <button onClick={() => getPairingCode(bot.id)} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-medium transition">Pair Code</button>
+                      <button 
+                        onClick={() => getPairingCode(bot.id)} 
+                        disabled={fetchingPairingCode}
+                        className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-medium transition disabled:opacity-50"
+                      >
+                        {fetchingPairingCode ? 'Loading...' : 'Pair Code'}
+                      </button>
                       <button onClick={() => handleDeleteBot(bot.id)} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition">Delete</button>
                     </div>
                   </div>

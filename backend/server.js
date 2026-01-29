@@ -38,10 +38,16 @@ app.use((req, res, next) => {
 
 // Serve static files
 app.use(express.static(path.join(__dirname, '..', 'public')));
+app.use(express.static(path.join(__dirname, 'static')));
 
 // Main landing page
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
+});
+
+// Dashboard route
+app.get('/dashboard', (req, res) => {
+  res.sendFile(path.join(__dirname, 'static', 'index.html'));
 });
 
 // Clean up bot instances on startup - disabled to prevent EADDRINUSE and data loss on server restart
