@@ -274,10 +274,22 @@ async function startBot() {
     }
 
     const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
-        
-        // If registered, it means Baileys loaded the creds.json written by the backend
-        if (state.creds && state.creds.registered) {
-            console.log(chalk.green(`✅ Session restored from filesystem for ${instanceId}`));
+    
+    // If registered, it means Baileys loaded the creds.json written by the backend
+    if (state.creds && state.creds.registered) {
+        console.log(chalk.green(`✅ Session restored from filesystem for ${instanceId}`));
+    } else {
+        // Check if we have session data in the environment or passed via args
+        const sessionDataArg = args[3]; 
+        if (sessionDataArg) {
+            try {
+                const sessionData = JSON.parse(sessionDataArg, BufferJSON.reviver);
+                Object.assign(state.creds, sessionData);
+                await saveCreds();
+                console.log(chalk.green(`✅ Session restored from database data for ${instanceId}`));
+            } catch (e) {
+                console.error(chalk.red(`❌ Error loading session data from argument: ${e.message}`));
+            }
         } else {
             console.log(chalk.yellow(`ℹ️ No registered session found on filesystem for ${instanceId}`));
             // Log what we have in state.creds for debugging
@@ -285,6 +297,7 @@ async function startBot() {
                 console.log(chalk.gray(`📊 Current state.creds keys: ${Object.keys(state.creds).join(', ')}`));
             }
         }
+    }
         const sock = makeWASocket({
             version,
             auth: {

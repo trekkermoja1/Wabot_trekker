@@ -273,9 +273,21 @@ async function startInstanceInternal(instanceId, phoneNumber, port, sessionData 
 
     const publicDomain = process.env.BACKEND_URL || `http://0.0.0.0:${PORT}`;
     const env = { ...process.env, BACKEND_URL: publicDomain };
-    if (sessionData) env.HAS_SESSION = 'true';
+    
+    // Pass session data as an argument if it exists
+    const instanceArgs = ['instance.js', instanceId, phoneNumber, String(port)];
+    if (sessionData) {
+      env.HAS_SESSION = 'true';
+      let sessionDataStr;
+      if (typeof sessionData === 'string') {
+        sessionDataStr = sessionData;
+      } else {
+        sessionDataStr = JSON.stringify(sessionData);
+      }
+      instanceArgs.push(sessionDataStr);
+    }
 
-    const proc = spawn('node', ['instance.js', instanceId, phoneNumber, String(port)], {
+    const proc = spawn('node', instanceArgs, {
       cwd: botDir,
       detached: true,
       stdio: 'inherit',
