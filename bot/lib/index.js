@@ -6,10 +6,16 @@ function loadUserGroupData() {
     try {
         const dataPath = path.join(__dirname, '../data/userGroupData.json');
         if (!fs.existsSync(dataPath)) {
+            // Ensure the directory exists
+            const dir = path.dirname(dataPath);
+            if (!fs.existsSync(dir)) {
+                fs.mkdirSync(dir, { recursive: true });
+            }
             // Create the file with default structure if it doesn't exist
             const defaultData = {
                 antibadword: {},
                 antilink: {},
+                antitag: {},
                 welcome: {},
                 goodbye: {},
                 chatbot: {},
@@ -20,16 +26,19 @@ function loadUserGroupData() {
             return defaultData;
         }
         const data = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
+        if (!data.sudo) data.sudo = [];
         return data;
     } catch (error) {
         console.error('Error loading user group data:', error);
         return {
             antibadword: {},
             antilink: {},
+            antitag: {},
             welcome: {},
             goodbye: {},
             chatbot: {},
-            warnings: {}
+            warnings: {},
+            sudo: []
         };
     }
 }

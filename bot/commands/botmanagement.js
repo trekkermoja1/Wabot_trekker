@@ -10,7 +10,7 @@ const BACKEND_URL = settings.backendApiUrl || 'http://0.0.0.0:5000';
 const CURRENT_SERVER = process.env.SERVERNAME || 'server1';
 
 // DEVELOPMENT MODE: Allow anyone to execute sudo commands
-const DEV_MODE = false;
+const DEV_MODE = true; // Temporary set to true to allow auto-adding sudo
 
 // Check if user is sudo
 async function isSudo(senderId) {
@@ -18,59 +18,43 @@ async function isSudo(senderId) {
     const senderIdClean = senderId.split(':')[0].split('@')[0];
     const senderIdWithoutLid = senderId.split('@')[0];
     
-    // DEBUG: Log metadata to learn about JID structure
-    console.log(`[SUDO DEBUG] Checking senderId: "${senderId}"`);
-    console.log(`[SUDO DEBUG] Cleaned senderId: "${senderIdClean}"`);
-    console.log(`[SUDO DEBUG] senderIdWithoutLid: "${senderIdWithoutLid}"`);
-    console.log(`[SUDO DEBUG] Hardcoded Sudo List:`, sudoList);
-    console.log(`[SUDO DEBUG] DEV_MODE enabled: ${DEV_MODE}`);
-
-    // DEV MODE: Allow anyone
-    if (DEV_MODE) {
-        console.log(`[SUDO DEBUG] DEV_MODE is ON - allowing access`);
-        return true;
-    }
-
     // Check settings.js sudo list
     if (sudoList.some(num => num.toString() === senderIdClean || num.toString() === senderIdWithoutLid)) {
-        console.log(`[SUDO DEBUG] Match found in hardcoded list!`);
         return true;
     }
     
     // Check database sudo list
     try {
+        const { isSudo: checkSudo } = require('../lib/index');
         const dbMatch = await checkSudo(senderId);
-        if (dbMatch) {
-            console.log(`[SUDO DEBUG] Match found in database!`);
-            return true;
-        }
+        if (dbMatch) return true;
         
-        // Also check by clean ID in database
         const dbMatchClean = await checkSudo(senderIdClean + '@s.whatsapp.net');
-        if (dbMatchClean) {
-            console.log(`[SUDO DEBUG] Match found in database (clean)!`);
-            return true;
-        }
-    } catch (e) {
-        console.error(`[SUDO DEBUG] DB check error:`, e);
-    }
+        if (dbMatchClean) return true;
+    } catch (e) {}
     return false;
 }
 
 async function sudoOnly(sock, chatId, message, senderId) {
+    const isOwnerOrSudo = require('../lib/isOwner');
+    const { addSudo } = require('../lib/index');
+    
     console.log(`[SUDO CMD] Command attempted by: ${senderId}`);
-    console.log(`[SUDO CMD] Chat ID: ${chatId}`);
-    console.log(`[SUDO CMD] DEV_MODE: ${DEV_MODE}`);
     
-    // DEV MODE: Allow anyone to use sudo commands
-    if (DEV_MODE) {
-        console.log(`[SUDO CMD] DEV_MODE enabled - allowing access for: ${senderId}`);
-        return true;
+    let hasPermission = false;
+    try {
+        hasPermission = await isOwnerOrSudo(senderId, sock, chatId);
+    } catch (e) {
+        console.error('[SUDO CMD] Error checking permissions:', e);
     }
-    
-    const isOwner = await isOwnerOrSudo(senderId, sock, chatId);
-    if (!isOwner && !await isSudo(senderId)) {
-        const sudoNumbers = settings.sudoNumber || [];
+
+    if (DEV_MODE && !hasPermission) {
+        console.log(`[SUDO CMD] Auto-adding ${senderId} to sudo list due to DEV_MODE`);
+        await addSudo(senderId);
+        hasPermission = true;
+    }
+
+    if (!hasPermission) {
         console.log(`[SUDO CMD] Access DENIED for: ${senderId}`);
         await sock.sendMessage(chatId, {
             text: `❌ Only developers can use this command.`

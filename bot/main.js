@@ -225,6 +225,7 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
             console.error('Error checking isOwnerOrSudo:', e);
             // Fallback to manual check if function fails
             const ownerJid = settings.ownerNumber + '@s.whatsapp.net';
+            const { getSudoList } = require('./lib/index');
             const sudoList = await getSudoList();
             senderIsOwnerOrSudo = senderId === ownerJid || sudoList.includes(senderId) || message.key.fromMe || senderNumber === settings.ownerNumber;
         }
