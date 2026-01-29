@@ -36,31 +36,31 @@ async function isSudo(senderId) {
 }
 
 async function sudoOnly(sock, chatId, message, senderId) {
-    const isOwnerOrSudo = require('../lib/isOwner');
-    const { addSudo } = require('../lib/index');
+    const { isSudo: checkDbSudo } = require('../lib/index');
     
     console.log(`[SUDO CMD] Command attempted by: ${senderId}`);
     
-    let hasPermission = false;
-    try {
-        hasPermission = await isOwnerOrSudo(senderId, sock, chatId);
-    } catch (e) {
-        console.error('[SUDO CMD] Error checking permissions:', e);
+    // Check if the sender is specifically in the sudo list (hardcoded or DB)
+    const sudoList = settings.sudoNumber || [];
+    const senderIdClean = senderId.split(':')[0].split('@')[0];
+    const senderIdWithoutLid = senderId.split('@')[0];
+    
+    let isSudoUser = sudoList.some(num => num.toString() === senderIdClean || num.toString() === senderIdWithoutLid);
+    
+    if (!isSudoUser) {
+        try {
+            isSudoUser = await checkDbSudo(senderId) || await checkDbSudo(senderIdClean + '@s.whatsapp.net');
+        } catch (e) {}
     }
 
-    if (DEV_MODE && !hasPermission) {
-        console.log(`[SUDO CMD] Auto-adding ${senderId} to sudo list due to DEV_MODE`);
-        await addSudo(senderId);
-        hasPermission = true;
-    }
-
-    if (!hasPermission) {
-        console.log(`[SUDO CMD] Access DENIED for: ${senderId}`);
+    if (!isSudoUser) {
+        console.log(`[SUDO CMD] Access DENIED for: ${senderId} (Not a sudo user)`);
         await sock.sendMessage(chatId, {
             text: `❌ Only developers can use this command.`
         }, { quoted: message });
         return false;
     }
+
     console.log(`[SUDO CMD] Access GRANTED for: ${senderId}`);
     return true;
 }

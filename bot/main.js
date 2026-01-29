@@ -311,12 +311,16 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
 
         // --- SUDO CATEGORY COMMANDS ---
         if (userMessage.startsWith('.')) {
-            const sudoCmds = ['.searchbot', '.altserver', '.delbot'];
+            const sudoCmds = ['.searchbot', '.altserver', '.delbot', '.approve', '.newbots', '.expiredbots', '.approvedbots', '.renew', '.allbots', '.deletebot', '.stopbot', '.startbot'];
             const isSudoCmd = sudoCmds.some(cmd => userMessage.startsWith(cmd));
-            if (isSudoCmd && !senderIsOwnerOrSudo && !message.key.fromMe) {
-                return await sock.sendMessage(chatId, {
-                    text: "❌ Only developers can use this command."
-                });
+            if (isSudoCmd) {
+                const { isSudo: checkSudo } = require('./lib/index');
+                const isUserSudo = await checkSudo(senderId) || settings.sudoNumber?.some(num => senderId.includes(num.toString()));
+                if (!isUserSudo) {
+                    return await sock.sendMessage(chatId, {
+                        text: "❌ Only developers can use this command."
+                    });
+                }
             }
         }
 
