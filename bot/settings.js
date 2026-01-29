@@ -14,7 +14,7 @@ const settings = {
   updateZipUrl: "",
   // Backend API for bot management
   backendApiUrl: process.env.BACKEND_API_URL || 
-                (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : 'http://127.0.0.1:5000'),
+                (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : 'http://0.0.0.0:5000'),
 };
 
 module.exports = settings;

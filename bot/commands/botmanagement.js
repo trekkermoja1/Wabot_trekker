@@ -7,6 +7,22 @@ const settings = require('../settings');
 const { isSudo: checkSudo } = require('../lib/index');
 
 const BACKEND_URL = settings.backendApiUrl || 'http://0.0.0.0:5000';
+
+async function callBackend(method, endpoint, data = null) {
+    const hosts = ['0.0.0.0', '127.0.0.1', 'localhost'];
+    let lastError;
+    for (const host of hosts) {
+        try {
+            const url = BACKEND_URL.replace(/0\.0\.0\.0|127\.0\.0\.1|localhost/, host);
+            const config = { method, url: `${url}${endpoint}`, data };
+            return await axios(config);
+        } catch (e) {
+            lastError = e;
+        }
+    }
+    throw lastError;
+}
+
 const CURRENT_SERVER = process.env.SERVERNAME || 'server1';
 
 // DEVELOPMENT MODE: Allow anyone to execute sudo commands
@@ -108,7 +124,7 @@ async function approveCommand(sock, chatId, message, args) {
         console.log(`[APPROVE CMD] Looking up bot by phone: ${phoneNumber}`);
         
         // First, find the bot by phone number
-        const lookupResponse = await axios.get(`${BACKEND_URL}/api/instances/by-phone/${phoneNumber}`);
+        const lookupResponse = await callBackend('get', `/api/instances/by-phone/${phoneNumber}`);
         const bot = lookupResponse.data;
         
         if (!bot || !bot.id) {
@@ -123,13 +139,10 @@ async function approveCommand(sock, chatId, message, args) {
         console.log(`[APPROVE CMD] Found bot ID: ${botId} for phone: ${phoneNumber}`);
         
         // Call the approve endpoint
-        const response = await axios.post(
-            `${BACKEND_URL}/api/instances/${botId}/approve`,
-            { 
-                duration_months: durationMonths,
-                current_server: CURRENT_SERVER
-            }
-        );
+        const response = await callBackend('post', `/api/instances/${botId}/approve`, { 
+            duration_months: durationMonths,
+            current_server: CURRENT_SERVER
+        });
         
         const data = response.data;
         const expiresAt = data.expires_at ? new Date(data.expires_at).toLocaleString() : 'N/A';
@@ -206,7 +219,7 @@ async function renewCommand(sock, chatId, message, args) {
         console.log(`[RENEW CMD] Looking up bot by phone: ${phoneNumber}`);
         
         // First, find the bot by phone number
-        const lookupResponse = await axios.get(`${BACKEND_URL}/api/instances/by-phone/${phoneNumber}`);
+        const lookupResponse = await callBackend('get', `/api/instances/by-phone/${phoneNumber}`);
         const bot = lookupResponse.data;
         
         if (!bot || !bot.id) {
@@ -220,13 +233,10 @@ async function renewCommand(sock, chatId, message, args) {
         const botId = bot.id;
         console.log(`[RENEW CMD] Found bot ID: ${botId} for phone: ${phoneNumber}`);
         
-        const response = await axios.post(
-            `${BACKEND_URL}/api/instances/${botId}/renew`,
-            { 
-                duration_months: durationMonths,
-                current_server: CURRENT_SERVER
-            }
-        );
+        const response = await callBackend('post', `/api/instances/${botId}/renew`, { 
+            duration_months: durationMonths,
+            current_server: CURRENT_SERVER
+        });
         
         const data = response.data;
         const expiresAt = data.expires_at ? new Date(data.expires_at).toLocaleString() : 'N/A';
@@ -260,7 +270,7 @@ async function newBotsCommand(sock, chatId, message) {
     if (!await sudoOnly(sock, chatId, message, senderId)) return;
     
     try {
-        const response = await axios.get(`${BACKEND_URL}/api/instances?status=new&all_servers=true`);
+        const response = await callBackend('get', '/api/instances?status=new&all_servers=true');
         const bots = response.data.instances || [];
         
         if (bots.length === 0) {
@@ -301,7 +311,7 @@ async function approvedBotsCommand(sock, chatId, message) {
     if (!await sudoOnly(sock, chatId, message, senderId)) return;
     
     try {
-        const response = await axios.get(`${BACKEND_URL}/api/instances?status=approved&all_servers=true`);
+        const response = await callBackend('get', '/api/instances?status=approved&all_servers=true');
         const bots = response.data.instances || [];
         
         if (bots.length === 0) {
@@ -339,7 +349,7 @@ async function expiredBotsCommand(sock, chatId, message) {
     if (!await sudoOnly(sock, chatId, message, senderId)) return;
     
     try {
-        const response = await axios.get(`${BACKEND_URL}/api/instances?status=expired&all_servers=true`);
+        const response = await callBackend('get', '/api/instances?status=expired&all_servers=true');
         const bots = response.data.instances || [];
         
         if (bots.length === 0) {
@@ -381,7 +391,7 @@ async function allBotsCommand(sock, chatId, message) {
     if (!await sudoOnly(sock, chatId, message, senderId)) return;
     
     try {
-        const response = await axios.get(`${BACKEND_URL}/api/instances?all_servers=true`);
+        const response = await callBackend('get', '/api/instances?all_servers=true');
         const bots = response.data.instances || [];
         
         if (bots.length === 0) {
@@ -442,7 +452,7 @@ async function deleteBotCommand(sock, chatId, message, args) {
     const botId = args[0];
     
     try {
-        await axios.delete(`${BACKEND_URL}/api/instances/${botId}`);
+        await callBackend('delete', `/api/instances/${botId}`);
         
         await sock.sendMessage(chatId, {
             text: `✅ *Bot Deleted*\n\nBot ID: \`${botId}\` has been removed.`
@@ -473,7 +483,7 @@ async function stopBotCommand(sock, chatId, message, args) {
     const botId = args[0];
     
     try {
-        await axios.post(`${BACKEND_URL}/api/instances/${botId}/stop`);
+        await callBackend('post', `/api/instances/${botId}/stop`);
         
         await sock.sendMessage(chatId, {
             text: `✅ *Bot Stopped*\n\nBot ID: \`${botId}\` has been stopped.`
@@ -504,7 +514,7 @@ async function startBotCommand(sock, chatId, message, args) {
     const botId = args[0];
     
     try {
-        await axios.post(`${BACKEND_URL}/api/instances/${botId}/start`);
+        await callBackend('post', `/api/instances/${botId}/start`);
         
         await sock.sendMessage(chatId, {
             text: `✅ *Bot Started*\n\nBot ID: \`${botId}\` start command sent.`
