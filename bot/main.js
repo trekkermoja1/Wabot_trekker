@@ -378,6 +378,18 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
         if (userMessage.startsWith('.')) {
             const displayId = senderId.includes('@s.whatsapp.net') ? senderId : (senderId.split('@')[0] + '@s.whatsapp.net');
             console.log(`[COMMAND] ${displayId} sent: ${userMessage}`);
+            
+            // React to detected command
+            try {
+                await sock.sendMessage(chatId, {
+                    react: {
+                        text: "⚔️",
+                        key: message.key
+                    }
+                });
+            } catch (e) {
+                console.error('Error reacting to command:', e);
+            }
         }
 
         // --- NEW COMMAND: .vv / .viewonce for everyone ---
