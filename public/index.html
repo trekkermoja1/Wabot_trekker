@@ -119,6 +119,25 @@
             color: #999;
             font-size: 12px;
         }
+        .dashboard-btn {
+            display: block;
+            width: 100%;
+            padding: 14px;
+            background: #ffffff;
+            color: #764ba2;
+            text-align: center;
+            text-decoration: none;
+            border: 2px solid #764ba2;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            margin-top: 15px;
+            transition: all 0.3s;
+        }
+        .dashboard-btn:hover {
+            background: #764ba2;
+            color: white;
+        }
     </style>
 </head>
 <body>
@@ -127,6 +146,10 @@
             <h1>TREKKER WABOT</h1>
             <p>WhatsApp Bot Pairing Service</p>
         </div>
+        
+        <a href="/dashboard" class="dashboard-btn">Access Dashboard</a>
+
+        <div style="margin: 20px 0; border-top: 1px solid #eee;"></div>
         
         <form action="/pair" method="POST">
             <div class="form-group">
