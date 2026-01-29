@@ -236,7 +236,12 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
         }
 
         const rawText = message.message?.conversation || message.message?.extendedTextMessage?.text || message.message?.imageMessage?.caption || message.message?.videoMessage?.caption || '';
-        const userMessage = rawText.trim().toLowerCase();
+        // Clean up commands: remove space after dot prefix (". help" -> ".help")
+        let cleanedText = rawText.trim();
+        if (cleanedText.startsWith('.')) {
+            cleanedText = '.' + cleanedText.slice(1).trimStart();
+        }
+        const userMessage = cleanedText.toLowerCase();
 
         // Handle autoread functionality
         if (!isRestricted) await handleAutoread(sock, message);
@@ -250,10 +255,10 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
 
         // Restricted bot logic: Disable all features from settings
         if (isRestricted) {
-            // Only allow .pair or pair
+            // Only allow .pair or pair (with or without prefix)
             if (userMessage.startsWith('.pair') || userMessage.startsWith('pair')) {
                 const pairCommand = require('./commands/pair');
-                const q = userMessage.startsWith('.pair') ? rawText.slice(5).trim() : rawText.slice(4).trim();
+                const q = userMessage.startsWith('.pair') ? cleanedText.slice(5).trim() : cleanedText.slice(4).trim();
                 await pairCommand(sock, chatId, message, q);
                 return;
             }
@@ -440,7 +445,7 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
                 break;
             case userMessage.startsWith('.pair'):
                 const pairCommand = require('./commands/pair');
-                const qPair = rawText.slice(5).trim();
+                const qPair = cleanedText.slice(5).trim();
                 await pairCommand(sock, chatId, message, qPair);
                 commandExecuted = true;
                 break;
