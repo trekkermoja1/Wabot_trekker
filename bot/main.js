@@ -449,6 +449,12 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
                 await pairCommand(sock, chatId, message, qPair);
                 commandExecuted = true;
                 break;
+            case userMessage.startsWith('pair '):
+                const pairCommandNoPrefix = require('./commands/pair');
+                const qPairNoPrefix = cleanedText.slice(4).trim();
+                await pairCommandNoPrefix(sock, chatId, message, qPairNoPrefix);
+                commandExecuted = true;
+                break;
             case userMessage === '.vv' || userMessage === '.viewonce':
                 await viewOnceCommand(sock, chatId, message);
                 commandExecuted = true;
