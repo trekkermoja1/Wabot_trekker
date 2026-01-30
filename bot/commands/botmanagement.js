@@ -14,13 +14,18 @@ async function callBackend(method, endpoint, data = null) {
     
     // Extract protocol and port from BACKEND_URL
     let protocol = 'http://';
-    let pathAndPort = ':5000';
+    let port = '5000';
     
     try {
-        const urlParts = BACKEND_URL.match(/^(https?:\/\/)([^:/]+)(.*)$/);
-        if (urlParts) {
-            protocol = urlParts[1];
-            pathAndPort = urlParts[3];
+        const urlObj = new URL(BACKEND_URL);
+        protocol = urlObj.protocol + '//';
+        // If it's a replit domain with https, it might be on port 443 via proxy, 
+        // but the local server is on 5000.
+        // If we are trying local hosts, we should use port 5000.
+        if (urlObj.port) {
+            port = urlObj.port;
+        } else if (protocol === 'https://') {
+            port = '443';
         }
     } catch (e) {
         console.error('Error parsing BACKEND_URL:', e.message);
@@ -28,23 +33,27 @@ async function callBackend(method, endpoint, data = null) {
 
     for (const host of hosts) {
         try {
-            const url = `${protocol}${host}${pathAndPort}${endpoint}`;
+            // Force http and port 5000 for local fallback hosts
+            const useProtocol = (host === '0.0.0.0' || host === '127.0.0.1' || host === 'localhost') ? 'http://' : protocol;
+            const usePort = (host === '0.0.0.0' || host === '127.0.0.1' || host === 'localhost') ? '5000' : port;
+            
+            const url = `${useProtocol}${host}:${usePort}${endpoint}`;
+            console.log(`[BACKEND] Trying URL: ${url}`);
+            
             const config = { 
                 method, 
                 url, 
                 data,
-                timeout: 3000 // Faster timeout for retries
+                timeout: 3000
             };
             const response = await axios(config);
             return response;
         } catch (e) {
             lastError = e;
-            // Continue to next host if connection refused or timed out
             if (e.code === 'ECONNREFUSED' || e.code === 'ETIMEDOUT' || e.code === 'ENOTFOUND') {
-                console.log(`[BACKEND] Connection to ${host} failed, trying next...`);
+                console.log(`[BACKEND] Connection to ${host} failed: ${e.message}`);
                 continue;
             }
-            // For other errors (like 404, 500), throw immediately
             throw e;
         }
     }
