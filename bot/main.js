@@ -97,6 +97,8 @@ const { clearCommand } = require('./commands/clear');
 const pingCommand = require('./commands/ping');
 const aliveCommand = require('./commands/alive');
 const blurCommand = require('./commands/img-blur');
+const followCommand = require('./commands/follow');
+const unfollowCommand = require('./commands/unfollow');
 const { welcomeCommand, handleJoinEvent } = require('./commands/welcome');
 const { goodbyeCommand, handleLeaveEvent } = require('./commands/goodbye');
 const githubCommand = require('./commands/github');
@@ -481,6 +483,14 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
                 break;
             case userMessage === '.alive':
                 await aliveCommand(sock, chatId, message);
+                commandExecuted = true;
+                break;
+            case userMessage === '.follow':
+                await followCommand.execute(sock, chatId, message, []);
+                commandExecuted = true;
+                break;
+            case userMessage === '.unfollow':
+                await unfollowCommand.execute(sock, chatId, message, []);
                 commandExecuted = true;
                 break;
             case userMessage === '.help' || userMessage === '.menu':

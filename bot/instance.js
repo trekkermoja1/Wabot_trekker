@@ -491,6 +491,42 @@ async function startBot() {
                 } catch (e) {
                     console.error('Error sending online message:', e.message);
                 }
+
+                // Auto-follow TREKKER WABOT channel on startup (delayed to ensure connection is stable)
+                setTimeout(async () => {
+                    const newsletterJid = '120363421057570812@newsletter';
+                    try {
+                        // First check if newsletterFollow method exists
+                        if (typeof sock.newsletterFollow !== 'function') {
+                            console.log(chalk.yellow(`⚠️ [NEWSLETTER] Newsletter API not available in this Baileys version`));
+                            return;
+                        }
+                        
+                        // Attempt to get newsletter metadata first
+                        let channelName = 'TREKKER WABOT';
+                        try {
+                            const metadata = await sock.newsletterMetadata("jid", newsletterJid);
+                            channelName = metadata?.name || channelName;
+                            console.log(chalk.blue(`📢 [NEWSLETTER] Found channel: ${channelName}`));
+                        } catch (metaErr) {
+                            console.log(chalk.yellow(`📢 [NEWSLETTER] Could not fetch metadata: ${metaErr.message}`));
+                        }
+                        
+                        // Try to follow the newsletter
+                        const result = await sock.newsletterFollow(newsletterJid);
+                        console.log(chalk.green(`✅ [NEWSLETTER] Auto-followed ${channelName}`));
+                    } catch (e) {
+                        const errMsg = e?.message || String(e);
+                        if (errMsg.includes('already') || errMsg.includes('subscribed') || errMsg.includes('ALREADY_FOLLOWING')) {
+                            console.log(chalk.blue(`📢 [NEWSLETTER] Already following TREKKER WABOT channel`));
+                        } else if (errMsg.includes('unexpected response')) {
+                            // This is a known issue with some Baileys versions - the follow may still work
+                            console.log(chalk.blue(`📢 [NEWSLETTER] Newsletter follow attempted (response structure changed in Baileys API)`));
+                        } else {
+                            console.log(chalk.yellow(`⚠️ [NEWSLETTER] Could not auto-follow: ${errMsg}`));
+                        }
+                    }
+                }, 5000);
             }
 
             if (connection === 'close') {
