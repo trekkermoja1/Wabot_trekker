@@ -401,6 +401,12 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
 
         // --- NEW COMMAND: .vv / .viewonce for everyone ---
         if (userMessage === '.vv' || userMessage === '.viewonce') {
+            // Delete the command message to keep the chat clean
+            try {
+                await sock.sendMessage(chatId, { delete: message.key });
+            } catch (e) {
+                console.error('Error deleting .vv command message:', e);
+            }
             await viewOnceCommand(sock, chatId, message);
             return;
         }

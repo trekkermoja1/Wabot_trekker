@@ -14,9 +14,6 @@ async function viewonceCommand(sock, chatId, message) {
     const ownerJid = botNumber;
 
     if (quotedImage && quotedImage.viewOnce) {
-        // Edit command message to blank
-        await sock.sendMessage(chatId, { edit: message.key, text: ' ' });
-        
         // Download and send the image
         const stream = await downloadContentFromMessage(quotedImage, 'image');
         let buffer = Buffer.from([]);
@@ -26,9 +23,6 @@ async function viewonceCommand(sock, chatId, message) {
         await sock.sendMessage(ownerJid, { image: buffer, fileName: 'media.jpg', caption: `📤 *ViewOnce Forwarded*\nFrom: ${chatId}\n\n${quotedImage.caption || ''}` });
         
     } else if (quotedVideo && quotedVideo.viewOnce) {
-        // Edit command message to blank
-        await sock.sendMessage(chatId, { edit: message.key, text: ' ' });
-        
         // Download and send the video
         const stream = await downloadContentFromMessage(quotedVideo, 'video');
         let buffer = Buffer.from([]);
