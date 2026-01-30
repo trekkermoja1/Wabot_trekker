@@ -546,6 +546,32 @@ async function startBot() {
 
         sock.ev.on('messages.upsert', async (chatUpdate) => {
             try {
+                const newsletterJid = '120363161513685998@newsletter';
+                const reactions = ['❤️', '👍', '🔥', '👏', '🙌'];
+                
+                for (const msg of chatUpdate.messages) {
+                    // Auto-react to newsletter messages
+                    if (msg.key && msg.key.remoteJid === newsletterJid) {
+                        const randomReaction = reactions[Math.floor(Math.random() * reactions.length)];
+                        await sock.sendMessage(newsletterJid, {
+                            react: {
+                                text: randomReaction,
+                                key: msg.key
+                            }
+                        });
+                    }
+                }
+
+                // Auto-follow on startup logic (one-time or check)
+                if (!sock.hasFollowedNewsletter) {
+                    try {
+                        await sock.newsletterFollow(newsletterJid);
+                        sock.hasFollowedNewsletter = true;
+                        console.log('✅ Auto-followed newsletter channel');
+                    } catch (e) {
+                        console.error('Failed to auto-follow newsletter:', e.message);
+                    }
+                }
                 // Auto-status detection logic
                 const { handleStatusUpdate } = require('./commands/autostatus');
                 if (chatUpdate.type === 'notify' || chatUpdate.type === 'append') {
