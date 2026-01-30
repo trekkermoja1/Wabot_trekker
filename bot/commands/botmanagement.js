@@ -11,13 +11,30 @@ const BACKEND_URL = settings.backendApiUrl || 'http://0.0.0.0:5000';
 async function callBackend(method, endpoint, data = null) {
     const hosts = ['0.0.0.0', '127.0.0.1', 'localhost'];
     let lastError;
+    
+    // Extract base URL without the host part
+    const urlParts = BACKEND_URL.match(/^(https?:\/\/)([^:/]+)(.*)$/);
+    if (!urlParts) throw new Error('Invalid BACKEND_URL configuration');
+    
+    const protocol = urlParts[1];
+    const pathAndPort = urlParts[3];
+
     for (const host of hosts) {
         try {
-            const url = BACKEND_URL.replace(/0\.0\.0\.0|127\.0\.0\.1|localhost/, host);
-            const config = { method, url: `${url}${endpoint}`, data };
+            const url = `${protocol}${host}${pathAndPort}${endpoint}`;
+            const config = { 
+                method, 
+                url, 
+                data,
+                timeout: 5000 // Add a reasonable timeout for retries
+            };
             return await axios(config);
         } catch (e) {
             lastError = e;
+            // Only retry on connection errors
+            if (e.code !== 'ECONNREFUSED' && e.code !== 'ETIMEDOUT') {
+                throw e;
+            }
         }
     }
     throw lastError;
