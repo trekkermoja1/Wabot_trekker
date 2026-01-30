@@ -76,7 +76,10 @@ async function helpCommand(sock, chatId, message) {
 ║ ➤ .autoreact <on/off>
 ║ ➤ .autostatus <on/off>
 ║ ➤ .autostatus react <on/off>
-║ ➤ .autotyping <typing/recording/bot/off>
+║ ➤ .presence <typing/recording/both/off/1-4>
+║ ➤ .typing <on/off>
+║ ➤ .recording <on/off>
+║ ➤ .autoswitch <on/off>
 ║ ➤ .autoread <on/off>
 ║ ➤ .anticall <on/off>
 ║ ➤ .pmblocker <on/off/status>
