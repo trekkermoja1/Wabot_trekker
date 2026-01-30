@@ -122,19 +122,6 @@ Use `.help` or `.menu` in WhatsApp to see all available commands:
 
 ---
 
-## 🔒 Environment Variables
-
-### Backend (.env)
-```
-MONGO_URL=mongodb://localhost:27017
-```
-
-### Frontend (.env)
-```
-REACT_APP_BACKEND_URL=http://your-backend-url
-```
-
----
 
 ## 📝 License
 
