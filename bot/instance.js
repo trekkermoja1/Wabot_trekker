@@ -486,7 +486,7 @@ async function startBot() {
                 try {
                     const devSuffix = process.env.DEV_MODE === 'true' ? ' [DEV MODE]' : '';
                     await sock.sendMessage(sock.user.id, { 
-                        text: `TREKKER wabot is online${devSuffix}` 
+                        text: `TREKKER wabot is active${devSuffix}` 
                     });
                 } catch (e) {
                     console.error('Error sending online message:', e.message);
