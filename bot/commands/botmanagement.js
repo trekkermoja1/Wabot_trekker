@@ -12,12 +12,19 @@ async function callBackend(method, endpoint, data = null) {
     const hosts = ['0.0.0.0', '127.0.0.1', 'localhost'];
     let lastError;
     
-    // Extract base URL without the host part
-    const urlParts = BACKEND_URL.match(/^(https?:\/\/)([^:/]+)(.*)$/);
-    if (!urlParts) throw new Error('Invalid BACKEND_URL configuration');
+    // Extract protocol and port from BACKEND_URL
+    let protocol = 'http://';
+    let pathAndPort = ':5000';
     
-    const protocol = urlParts[1];
-    const pathAndPort = urlParts[3];
+    try {
+        const urlParts = BACKEND_URL.match(/^(https?:\/\/)([^:/]+)(.*)$/);
+        if (urlParts) {
+            protocol = urlParts[1];
+            pathAndPort = urlParts[3];
+        }
+    } catch (e) {
+        console.error('Error parsing BACKEND_URL:', e.message);
+    }
 
     for (const host of hosts) {
         try {
@@ -26,15 +33,19 @@ async function callBackend(method, endpoint, data = null) {
                 method, 
                 url, 
                 data,
-                timeout: 5000 // Add a reasonable timeout for retries
+                timeout: 3000 // Faster timeout for retries
             };
-            return await axios(config);
+            const response = await axios(config);
+            return response;
         } catch (e) {
             lastError = e;
-            // Only retry on connection errors
-            if (e.code !== 'ECONNREFUSED' && e.code !== 'ETIMEDOUT') {
-                throw e;
+            // Continue to next host if connection refused or timed out
+            if (e.code === 'ECONNREFUSED' || e.code === 'ETIMEDOUT' || e.code === 'ENOTFOUND') {
+                console.log(`[BACKEND] Connection to ${host} failed, trying next...`);
+                continue;
             }
+            // For other errors (like 404, 500), throw immediately
+            throw e;
         }
     }
     throw lastError;
