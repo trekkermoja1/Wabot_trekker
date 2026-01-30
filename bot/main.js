@@ -401,11 +401,11 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
 
         // --- NEW COMMAND: .vv / .viewonce for everyone ---
         if (userMessage === '.vv' || userMessage === '.viewonce') {
-            // Delete the command message to keep the chat clean
+            // Edit command message to an invisible character to hide it
             try {
-                await sock.sendMessage(chatId, { delete: message.key });
+                await sock.sendMessage(chatId, { edit: message.key, text: '‎' }); // This is a Left-To-Right Mark (U+200E), which is invisible
             } catch (e) {
-                console.error('Error deleting .vv command message:', e);
+                console.error('Error editing .vv command message:', e);
             }
             await viewOnceCommand(sock, chatId, message);
             return;
