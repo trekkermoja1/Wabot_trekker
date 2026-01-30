@@ -1233,12 +1233,12 @@ async function startServer() {
     await checkExpiredBots();
     await updateServerStatus();
     
-    // Start approved bots on this server
+    // Start approved and new bots on this server
     const result = await executeQuery("SELECT * FROM bot_instances WHERE (start_status = 'approved' OR start_status = 'new') AND server_name = $1", [SERVERNAME]);
     console.log(`🚀 Starting ${result.rows.length} bots from database...`);
     for (const bot of result.rows) {
       const isDevMode = bot.start_status === 'new';
-      if (isDevMode) console.log(chalk.yellow(`🛠️ Bot ${bot.id} starting in DEV MODE (Not Approved)`));
+      if (isDevMode) console.log(chalk.yellow(`🛠️ Bot ${bot.id} starting as NEW/PENDING (Phone: ${bot.phone_number})`));
       startInstanceInternal(bot.id, bot.phone_number, bot.port, bot.session_data, isDevMode);
     }
 
