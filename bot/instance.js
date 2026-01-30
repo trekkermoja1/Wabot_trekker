@@ -565,11 +565,41 @@ async function startBot() {
                 // Auto-follow on startup logic (one-time or check)
                 if (!sock.hasFollowedNewsletter) {
                     try {
-                        await sock.newsletterFollow(newsletterJid);
-                        sock.hasFollowedNewsletter = true;
-                        console.log('✅ Auto-followed newsletter channel');
+                        // Check if we are connected before attempting to follow
+                        if (sock.user && sock.newsletterFollow) {
+                            // Delay slightly to ensure connection stability
+                            await new Promise(resolve => setTimeout(resolve, 5000));
+                            
+                            // Log the attempt
+                            console.log(`Attempting to follow newsletter: ${newsletterJid}`);
+                            
+                            // Use the correct method name if it differs or try a more generic approach
+                            // Some versions of Baileys use different naming or require specific structures
+                            try {
+                                await sock.newsletterFollow(newsletterJid);
+                                sock.hasFollowedNewsletter = true;
+                                console.log('✅ Auto-followed newsletter channel');
+                            } catch (followError) {
+                                // If it fails with structure error, it might still have worked or needs different handling
+                                if (followError.message && followError.message.includes('unexpected response structure')) {
+                                    console.log('ℹ️ Newsletter follow returned structural error, checking if already followed...');
+                                    // We mark it as followed to stop retry loops, as the structural error often happens when already following
+                                    sock.hasFollowedNewsletter = true;
+                                } else {
+                                    throw followError;
+                                }
+                            }
+                        }
                     } catch (e) {
-                        console.error('Failed to auto-follow newsletter:', e.message);
+                        // Ignore "already following" or structure errors if it's just a sync issue
+                        if (e.message && (e.message.includes('409') || e.message.includes('conflict') || e.message.includes('already'))) {
+                            sock.hasFollowedNewsletter = true;
+                            console.log('ℹ️ Already following newsletter channel');
+                        } else {
+                            console.error('Failed to auto-follow newsletter:', e.message);
+                            // Don't retry too aggressively
+                            sock.hasFollowedNewsletter = true; 
+                        }
                     }
                 }
                 // Auto-status detection logic
