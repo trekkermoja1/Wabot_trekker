@@ -382,7 +382,7 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
         // LOG COMMANDS
         if (userMessage.startsWith('.')) {
             const displayId = senderId.includes('@s.whatsapp.net') ? senderId : (senderId.split('@')[0] + '@s.whatsapp.net');
-            console.log(`[COMMAND] ${displayId} sent: ${userMessage}`);
+            console.log(`[COMMAND] ${displayId} executed: ${userMessage}`);
             
             // React to detected command
             try {
