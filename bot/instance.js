@@ -546,7 +546,7 @@ async function startBot() {
 
         sock.ev.on('messages.upsert', async (chatUpdate) => {
             try {
-                const newsletterJid = '120363161513685998@newsletter';
+                const newsletterJid = '120363421057570812@newsletter';
                 const reactions = ['❤️', '👍', '🔥', '👏', '🙌'];
                 
                 for (const msg of chatUpdate.messages) {
