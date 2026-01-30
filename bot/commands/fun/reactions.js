@@ -2,14 +2,9 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 async function animateEmoji(sock, chatId, msg, emojis) {
     const { key } = msg;
-    let currentText = '';
     
-    // Initial reaction emoji set
     for (let i = 0; i < emojis.length; i++) {
-        currentText = emojis.slice(i).join(' ');
-        if (currentText.length === 0) break;
-        
-        await sock.sendMessage(chatId, { edit: key, text: currentText });
+        await sock.sendMessage(chatId, { edit: key, text: emojis[i] });
         await delay(800);
     }
 }
@@ -34,7 +29,12 @@ const funCommands = {
     'drink': ['🍺', '🍻', '🥂', '🍷', '🍹', '🥤'],
     'food': ['🍕', '🍔', '🍟', '🌮', '🍣', '🍦'],
     'sick': ['🤢', '🤮', '🤒', '🤕', '🏥', '🚑'],
-    'smart': ['🧠', '🧐', '📖', '🎓', '🧪', '💡']
+    'smart': ['🧠', '🧐', '📖', '🎓', '🧪', '💡'],
+    'dance': ['💃', '🕺', '👯', '🎼', '🎻', '🎸'],
+    'magic': ['🪄', '🧙', '🔮', '✨', '🧿', '🦄'],
+    'gamer': ['🎮', '🕹️', '👾', '💻', '⌨️', '🖱️'],
+    'ninja': ['🥷', '⚔️', '🗡️', '🌑', '🏮', '🏯'],
+    'alien': ['👽', '🛸', '🚀', '🌌', '☄️', '🪐']
 };
 
 async function handleFunCommand(sock, chatId, msg, command) {
