@@ -13,7 +13,8 @@ const settings = {
   version: "1.0.0",
   updateZipUrl: "",
   // Backend API for bot management
-  backendApiUrl: process.env.BACKEND_API_URL || 
+  backendApiUrl: process.env.BACKEND_URL || 
+                process.env.BACKEND_API_URL || 
                 (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : 'http://0.0.0.0:5000'),
 };
 

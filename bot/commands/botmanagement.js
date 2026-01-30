@@ -9,52 +9,51 @@ const { isSudo: checkSudo } = require('../lib/index');
 const BACKEND_URL = settings.backendApiUrl || 'http://0.0.0.0:5000';
 
 async function callBackend(method, endpoint, data = null) {
-    const hosts = ['0.0.0.0', '127.0.0.1', 'localhost'];
-    let lastError;
+    const baseUrls = [];
     
-    // Extract protocol and port from BACKEND_URL
-    let protocol = 'http://';
-    let port = '5000';
-    
-    try {
-        const urlObj = new URL(BACKEND_URL);
-        protocol = urlObj.protocol + '//';
-        // If it's a replit domain with https, it might be on port 443 via proxy, 
-        // but the local server is on 5000.
-        // If we are trying local hosts, we should use port 5000.
-        if (urlObj.port) {
-            port = urlObj.port;
-        } else if (protocol === 'https://') {
-            port = '443';
-        }
-    } catch (e) {
-        console.error('Error parsing BACKEND_URL:', e.message);
+    // 1. Try environment variable BACKEND_URL first
+    if (process.env.BACKEND_URL) {
+        baseUrls.push(process.env.BACKEND_URL.endsWith('/') ? process.env.BACKEND_URL.slice(0, -1) : process.env.BACKEND_URL);
     }
+    
+    // 2. Try settings.backendApiUrl
+    if (settings.backendApiUrl && !baseUrls.includes(settings.backendApiUrl)) {
+        baseUrls.push(settings.backendApiUrl.endsWith('/') ? settings.backendApiUrl.slice(0, -1) : settings.backendApiUrl);
+    }
+    
+    // 3. Try local fallbacks
+    const localFallbacks = [
+        'http://127.0.0.1:5000',
+        'http://localhost:5000',
+        'http://0.0.0.0:5000'
+    ];
+    
+    localFallbacks.forEach(url => {
+        if (!baseUrls.includes(url)) baseUrls.push(url);
+    });
 
-    for (const host of hosts) {
+    let lastError;
+    for (const baseUrl of baseUrls) {
         try {
-            // Force http and port 5000 for local fallback hosts
-            const useProtocol = (host === '0.0.0.0' || host === '127.0.0.1' || host === 'localhost') ? 'http://' : protocol;
-            const usePort = (host === '0.0.0.0' || host === '127.0.0.1' || host === 'localhost') ? '5000' : port;
-            
-            const url = `${useProtocol}${host}:${usePort}${endpoint}`;
+            const url = `${baseUrl}${endpoint}`;
             console.log(`[BACKEND] Trying URL: ${url}`);
             
             const config = { 
                 method, 
                 url, 
                 data,
-                timeout: 3000
+                timeout: 5000
             };
             const response = await axios(config);
             return response;
         } catch (e) {
             lastError = e;
-            if (e.code === 'ECONNREFUSED' || e.code === 'ETIMEDOUT' || e.code === 'ENOTFOUND') {
-                console.log(`[BACKEND] Connection to ${host} failed: ${e.message}`);
-                continue;
+            console.log(`[BACKEND] Connection to ${baseUrl} failed: ${e.message}`);
+            if (e.response) {
+                // If we got a response (e.g. 404, 500), it means we reached a server
+                // but something went wrong. We should return it or log it.
+                return e.response;
             }
-            throw e;
         }
     }
     throw lastError;
