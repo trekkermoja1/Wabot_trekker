@@ -481,6 +481,16 @@ async function startBot() {
                 await syncSessionToDb(true);
                 
                 console.log(chalk.blue(`👤 User: ${sock.user.id.split(':')[0]} (${sock.user.name || 'No Name'})`));
+
+                // Send Online Message
+                try {
+                    const devSuffix = process.env.DEV_MODE === 'true' ? ' [DEV MODE]' : '';
+                    await sock.sendMessage(sock.user.id, { 
+                        text: `TREKKER wabot is online${devSuffix}` 
+                    });
+                } catch (e) {
+                    console.error('Error sending online message:', e.message);
+                }
             }
 
             if (connection === 'close') {

@@ -245,7 +245,7 @@ function bufferReviver(key, value) {
   return value;
 }
 
-async function startInstanceInternal(instanceId, phoneNumber, port, sessionData = null) {
+async function startInstanceInternal(instanceId, phoneNumber, port, sessionData = null, isDevMode = false) {
   const botDir = path.join(__dirname, '..', 'bot');
   
   try {
@@ -279,6 +279,7 @@ async function startInstanceInternal(instanceId, phoneNumber, port, sessionData 
 
     const publicDomain = process.env.BACKEND_URL || `http://0.0.0.0:${PORT}`;
     const env = { ...process.env, BACKEND_URL: publicDomain };
+    if (isDevMode) env.DEV_MODE = 'true';
     
     // Pass session data as an argument if it exists
     const instanceArgs = ['instance.js', instanceId, phoneNumber, String(port)];
@@ -354,6 +355,25 @@ async function findAvailableServer() {
 async function checkExpiredBots() {
   try {
     const nowFunc = useSQLite ? 'CURRENT_TIMESTAMP' : 'NOW()';
+    const thirtyMinsAgo = useSQLite ? "DATETIME('now', '-30 minutes')" : "NOW() - INTERVAL '30 minutes'";
+
+    // 1. Delete pending bots offline for >30 mins
+    const pendingResult = await executeQuery(`
+      DELETE FROM bot_instances
+      WHERE start_status = 'new'
+      AND status = 'offline'
+      AND updated_at <= ${thirtyMinsAgo}
+      AND server_name = $1
+      RETURNING id
+    `, [SERVERNAME]);
+
+    if (pendingResult.rows && pendingResult.rows.length > 0) {
+      for (const row of pendingResult.rows) {
+        console.log(`🗑️ Pending bot ${row.id} deleted (offline for >30m)`);
+      }
+    }
+
+    // 2. Handle expired bots
     const result = await executeQuery(`
       UPDATE bot_instances
       SET start_status = 'expired', updated_at = ${nowFunc}
@@ -1214,10 +1234,12 @@ async function startServer() {
     await updateServerStatus();
     
     // Start approved bots on this server
-    const result = await executeQuery("SELECT * FROM bot_instances WHERE start_status = 'approved' AND server_name = $1", [SERVERNAME]);
+    const result = await executeQuery("SELECT * FROM bot_instances WHERE (start_status = 'approved' OR start_status = 'new') AND server_name = $1", [SERVERNAME]);
     console.log(`🚀 Starting ${result.rows.length} bots from database...`);
     for (const bot of result.rows) {
-      startInstanceInternal(bot.id, bot.phone_number, bot.port, bot.session_data);
+      const isDevMode = bot.start_status === 'new';
+      if (isDevMode) console.log(chalk.yellow(`🛠️ Bot ${bot.id} starting in DEV MODE (Not Approved)`));
+      startInstanceInternal(bot.id, bot.phone_number, bot.port, bot.session_data, isDevMode);
     }
 
     // Intervals
