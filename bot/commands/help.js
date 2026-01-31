@@ -17,6 +17,7 @@ async function helpCommand(sock, chatId, message) {
 ║ ➤ .help or .menu
 ║ ➤ .ping
 ║ ➤ .alive
+║ ➤ .battery
 ║ ➤ .tts <text>
 ║ ➤ .owner
 ║ ➤ .joke
@@ -35,6 +36,21 @@ async function helpCommand(sock, chatId, message) {
 ║ ➤ .jid
 ║ ➤ .url
 ╚═══════════════════╝ 
+
+╔═══════════════════╗
+📜 *Newsletter Commands*:
+║ ➤ .newsletter create
+║ ➤ .newsletter follow
+║ ➤ .newsletter unfollow
+║ ➤ .newsletter mute
+║ ➤ .newsletter unmute
+║ ➤ .newsletter reaction
+║ ➤ .newsletter update
+║ ➤ .newsletter metadata
+║ ➤ .newsletter admincount
+║ ➤ .newsletter delete
+║ ➤ .newsletter react
+╚═══════════════════╝
 
 ╔═══════════════════╗
 👮‍♂️ *Admin Commands*:
