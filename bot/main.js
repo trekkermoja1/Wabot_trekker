@@ -547,6 +547,20 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
                 await unbanCommand(sock, chatId, message);
                 commandExecuted = true;
                 break;
+            case userMessage.startsWith('.block'):
+                {
+                    const args = rawText.trim().split(/\s+/).slice(1);
+                    await blockCommand(sock, chatId, message, args);
+                }
+                commandExecuted = true;
+                break;
+            case userMessage.startsWith('.unblock'):
+                {
+                    const args = rawText.trim().split(/\s+/).slice(1);
+                    await unblockCommand(sock, chatId, message, args);
+                }
+                commandExecuted = true;
+                break;
             case userMessage.startsWith('.promote'):
                 await promoteCommand(sock, chatId, message);
                 commandExecuted = true;
