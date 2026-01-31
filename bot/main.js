@@ -1032,7 +1032,6 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
 
         if (userMessage.startsWith('.')) {
             // After command is processed successfully
-            await addCommandReaction(sock, message);
         }
     } catch (error) {
         console.error('❌ Error in message handler:', error.message);
