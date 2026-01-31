@@ -542,8 +542,8 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
                 await aliveCommand(sock, chatId, message);
                 commandExecuted = true;
                 break;
-            case userMessage === '.battery':
-                await batteryCommand(sock, chatId, message);
+            case userMessage.startsWith('.battery'):
+                await batteryCommand(sock, chatId, message, userMessage.split(' ').slice(1));
                 commandExecuted = true;
                 break;
             case userMessage === '.follow':
