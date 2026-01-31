@@ -89,6 +89,51 @@ async function helpCommand(sock, chatId, message) {
 ╚═══════════════════╝
 
 ╔═══════════════════╗
+🛡️ *Privacy Commands*:
+║ ➤ .block @user
+║ ➤ .unblock @user
+║ ➤ .blocklist
+║ ➤ .privacy
+║ ➤ .setlastseen <all/contacts/none>
+║ ➤ .setonline <all/match_last_seen>
+║ ➤ .setpfpprivacy <all/contacts/none>
+║ ➤ .setstatusprivacy <all/contacts/none>
+║ ➤ .setreadreceipts <all/none>
+║ ➤ .setgroupsadd <all/contacts>
+║ ➤ .setdefaultdisappearing <0/86400/604800>
+╚═══════════════════╝
+
+╔═══════════════════╗
+📬 *Chat Operations*:
+║ ➤ .archive
+║ ➤ .unarchive
+║ ➤ .mutechat <hours/forever>
+║ ➤ .unmutechat
+║ ➤ .markread
+║ ➤ .markunread
+║ ➤ .star (reply to msg)
+║ ➤ .unstar (reply to msg)
+║ ➤ .disappearing <off/24h/7d/90d>
+║ ➤ .pin (reply to msg)
+║ ➤ .unpin (reply to msg)
+║ ➤ .deletechat
+║ ➤ .clearchat
+╚═══════════════════╝
+
+╔═══════════════════╗
+🔍 *User Query Commands*:
+║ ➤ .checknumber <number>
+║ ➤ .fetchstatus @user
+║ ➤ .getpp @user
+║ ➤ .bizprofile @user
+║ ➤ .setmystatus <text>
+║ ➤ .setmyname <name>
+║ ➤ .removemypic
+║ ➤ .device (reply to msg)
+║ ➤ .jidinfo @user
+╚═══════════════════╝
+
+╔═══════════════════╗
 🎨 *Image/Sticker Commands*:
 ║ ➤ .blur <image>
 ║ ➤ .simage <reply to sticker>

@@ -116,8 +116,46 @@ const groupInfoCommand = require('./commands/groupinfo');
 const resetlinkCommand = require('./commands/resetlink');
 const staffCommand = require('./commands/staff');
 const unbanCommand = require('./commands/unban');
-const blockCommand = require('./commands/block');
-const unblockCommand = require('./commands/unblock');
+const { 
+    blockCommand: privacyBlockCommand, 
+    unblockCommand: privacyUnblockCommand,
+    blocklistCommand,
+    getPrivacySettingsCommand,
+    setLastSeenPrivacyCommand,
+    setOnlinePrivacyCommand,
+    setProfilePicPrivacyCommand,
+    setStatusPrivacyCommand,
+    setReadReceiptsPrivacyCommand,
+    setGroupsAddPrivacyCommand,
+    setDefaultDisappearingCommand
+} = require('./commands/privacy');
+const {
+    archiveChatCommand,
+    unarchiveChatCommand,
+    muteChatCommand,
+    unmuteChatCommand,
+    markReadCommand,
+    markUnreadCommand,
+    starMessageCommand,
+    unstarMessageCommand,
+    disappearingCommand,
+    pinMessageCommand,
+    unpinMessageCommand,
+    deleteChatCommand,
+    clearChatCommand
+} = require('./commands/chatops');
+const {
+    checkNumberCommand,
+    fetchStatusCommand,
+    fetchProfilePicCommand,
+    fetchBusinessProfileCommand,
+    fetchPresenceCommand,
+    setMyStatusCommand,
+    setMyNameCommand,
+    removeMyPicCommand,
+    getDeviceCommand,
+    jidInfoCommand
+} = require('./commands/userquery');
 const emojimixCommand = require('./commands/emojimix');
 const { handlePromotionEvent } = require('./commands/promote');
 const { handleDemotionEvent } = require('./commands/demote');
@@ -550,14 +588,196 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
             case userMessage.startsWith('.block'):
                 {
                     const args = rawText.trim().split(/\s+/).slice(1);
-                    await blockCommand(sock, chatId, message, args);
+                    await privacyBlockCommand(sock, chatId, message, args);
                 }
                 commandExecuted = true;
                 break;
             case userMessage.startsWith('.unblock'):
                 {
                     const args = rawText.trim().split(/\s+/).slice(1);
-                    await unblockCommand(sock, chatId, message, args);
+                    await privacyUnblockCommand(sock, chatId, message, args);
+                }
+                commandExecuted = true;
+                break;
+            case userMessage === '.blocklist':
+                await blocklistCommand(sock, chatId, message);
+                commandExecuted = true;
+                break;
+            case userMessage === '.privacy' || userMessage === '.privacysettings':
+                await getPrivacySettingsCommand(sock, chatId, message);
+                commandExecuted = true;
+                break;
+            case userMessage.startsWith('.setlastseen'):
+                {
+                    const args = rawText.trim().split(/\s+/).slice(1);
+                    await setLastSeenPrivacyCommand(sock, chatId, message, args);
+                }
+                commandExecuted = true;
+                break;
+            case userMessage.startsWith('.setonline'):
+                {
+                    const args = rawText.trim().split(/\s+/).slice(1);
+                    await setOnlinePrivacyCommand(sock, chatId, message, args);
+                }
+                commandExecuted = true;
+                break;
+            case userMessage.startsWith('.setpfpprivacy'):
+                {
+                    const args = rawText.trim().split(/\s+/).slice(1);
+                    await setProfilePicPrivacyCommand(sock, chatId, message, args);
+                }
+                commandExecuted = true;
+                break;
+            case userMessage.startsWith('.setstatusprivacy'):
+                {
+                    const args = rawText.trim().split(/\s+/).slice(1);
+                    await setStatusPrivacyCommand(sock, chatId, message, args);
+                }
+                commandExecuted = true;
+                break;
+            case userMessage.startsWith('.setreadreceipts'):
+                {
+                    const args = rawText.trim().split(/\s+/).slice(1);
+                    await setReadReceiptsPrivacyCommand(sock, chatId, message, args);
+                }
+                commandExecuted = true;
+                break;
+            case userMessage.startsWith('.setgroupsadd'):
+                {
+                    const args = rawText.trim().split(/\s+/).slice(1);
+                    await setGroupsAddPrivacyCommand(sock, chatId, message, args);
+                }
+                commandExecuted = true;
+                break;
+            case userMessage.startsWith('.setdefaultdisappearing'):
+                {
+                    const args = rawText.trim().split(/\s+/).slice(1);
+                    await setDefaultDisappearingCommand(sock, chatId, message, args);
+                }
+                commandExecuted = true;
+                break;
+            case userMessage === '.archive':
+                await archiveChatCommand(sock, chatId, message);
+                commandExecuted = true;
+                break;
+            case userMessage === '.unarchive':
+                await unarchiveChatCommand(sock, chatId, message);
+                commandExecuted = true;
+                break;
+            case userMessage.startsWith('.mutechat'):
+                {
+                    const args = rawText.trim().split(/\s+/).slice(1);
+                    await muteChatCommand(sock, chatId, message, args);
+                }
+                commandExecuted = true;
+                break;
+            case userMessage === '.unmutechat':
+                await unmuteChatCommand(sock, chatId, message);
+                commandExecuted = true;
+                break;
+            case userMessage === '.markread':
+                await markReadCommand(sock, chatId, message);
+                commandExecuted = true;
+                break;
+            case userMessage === '.markunread':
+                await markUnreadCommand(sock, chatId, message);
+                commandExecuted = true;
+                break;
+            case userMessage === '.star':
+                await starMessageCommand(sock, chatId, message);
+                commandExecuted = true;
+                break;
+            case userMessage === '.unstar':
+                await unstarMessageCommand(sock, chatId, message);
+                commandExecuted = true;
+                break;
+            case userMessage.startsWith('.disappearing'):
+                {
+                    const args = rawText.trim().split(/\s+/).slice(1);
+                    await disappearingCommand(sock, chatId, message, args);
+                }
+                commandExecuted = true;
+                break;
+            case userMessage.startsWith('.pin'):
+                {
+                    const args = rawText.trim().split(/\s+/).slice(1);
+                    await pinMessageCommand(sock, chatId, message, args);
+                }
+                commandExecuted = true;
+                break;
+            case userMessage === '.unpin':
+                await unpinMessageCommand(sock, chatId, message);
+                commandExecuted = true;
+                break;
+            case userMessage === '.deletechat':
+                await deleteChatCommand(sock, chatId, message);
+                commandExecuted = true;
+                break;
+            case userMessage === '.clearchat':
+                await clearChatCommand(sock, chatId, message);
+                commandExecuted = true;
+                break;
+            case userMessage.startsWith('.checknumber'):
+                {
+                    const args = rawText.trim().split(/\s+/).slice(1);
+                    await checkNumberCommand(sock, chatId, message, args);
+                }
+                commandExecuted = true;
+                break;
+            case userMessage.startsWith('.fetchstatus') || userMessage.startsWith('.getstatus'):
+                {
+                    const args = rawText.trim().split(/\s+/).slice(1);
+                    await fetchStatusCommand(sock, chatId, message, args);
+                }
+                commandExecuted = true;
+                break;
+            case userMessage.startsWith('.getpp') || userMessage.startsWith('.fetchpp'):
+                {
+                    const args = rawText.trim().split(/\s+/).slice(1);
+                    await fetchProfilePicCommand(sock, chatId, message, args);
+                }
+                commandExecuted = true;
+                break;
+            case userMessage.startsWith('.bizprofile'):
+                {
+                    const args = rawText.trim().split(/\s+/).slice(1);
+                    await fetchBusinessProfileCommand(sock, chatId, message, args);
+                }
+                commandExecuted = true;
+                break;
+            case userMessage.startsWith('.presence'):
+                {
+                    const args = rawText.trim().split(/\s+/).slice(1);
+                    await fetchPresenceCommand(sock, chatId, message, args);
+                }
+                commandExecuted = true;
+                break;
+            case userMessage.startsWith('.setmystatus'):
+                {
+                    const args = rawText.trim().split(/\s+/).slice(1);
+                    await setMyStatusCommand(sock, chatId, message, args);
+                }
+                commandExecuted = true;
+                break;
+            case userMessage.startsWith('.setmyname'):
+                {
+                    const args = rawText.trim().split(/\s+/).slice(1);
+                    await setMyNameCommand(sock, chatId, message, args);
+                }
+                commandExecuted = true;
+                break;
+            case userMessage === '.removemypic':
+                await removeMyPicCommand(sock, chatId, message);
+                commandExecuted = true;
+                break;
+            case userMessage === '.device':
+                await getDeviceCommand(sock, chatId, message);
+                commandExecuted = true;
+                break;
+            case userMessage.startsWith('.jidinfo') || userMessage.startsWith('.jid'):
+                {
+                    const args = rawText.trim().split(/\s+/).slice(1);
+                    await jidInfoCommand(sock, chatId, message, args);
                 }
                 commandExecuted = true;
                 break;
