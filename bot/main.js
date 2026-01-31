@@ -140,7 +140,6 @@ const aiCommand = require('./commands/ai');
 const urlCommand = require('./commands/url');
 const { handleTranslateCommand } = require('./commands/translate');
 const { handleSsCommand } = require('./commands/ss');
-const { addCommandReaction, handleAreactCommand } = require('./lib/reactions');
 const { goodnightCommand } = require('./commands/goodnight');
 const { shayariCommand } = require('./commands/shayari');
 const { rosedayCommand } = require('./commands/roseday');
@@ -287,7 +286,7 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
         const isAdminCommand = adminCommands.some(cmd => userMessage.startsWith(cmd));
 
         // List of owner commands
-        const ownerCommands = ['.mode', '.autostatus', '.antidelete', '.cleartmp', '.setpp', '.clearsession', '.areact', '.autoreact', '.autotyping', '.presence', '.typing', '.recording', '.autoswitch', '.autoread', '.pmblocker'];
+        const ownerCommands = ['.mode', '.autostatus', '.antidelete', '.cleartmp', '.setpp', '.clearsession', '.autotyping', '.presence', '.typing', '.recording', '.autoswitch', '.autoread', '.pmblocker'];
         const isOwnerCommand = ownerCommands.some(cmd => userMessage.startsWith(cmd));
 
         // Group check for admin commands
