@@ -275,6 +275,10 @@ async function startBot() {
 
     const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
     
+    // Load message handlers before starting the socket
+    const main = require('./main');
+    console.log(chalk.green(`✅ [LOADED] Message Handler for ${instanceId} loaded successfully`));
+
     // If registered, it means Baileys loaded the creds.json written by the backend
     if (state.creds && state.creds.registered) {
         console.log(chalk.green(`✅ Session restored from filesystem for ${instanceId}`));
@@ -655,7 +659,6 @@ async function startBot() {
                     }
                 }
 
-                const main = require('./main');
                 if (typeof main === 'function') {
                     await main(sock, chatUpdate);
                 } else if (main.handleMessages) {
@@ -665,7 +668,6 @@ async function startBot() {
                 console.error(chalk.red(`[ERROR] Message Handler Execution Failed: ${e.message}`));
             }
         });
-        console.log(chalk.green(`✅ [LOADED] Message Handler for ${instanceId} loaded successfully`));
 
         return sock;
     } catch (err) {
