@@ -107,11 +107,23 @@ function isStatusReactionEnabled() {
 }
 
 // Function to react to status using proper method
+const statusReactionCooldowns = new Map();
+
 async function reactToStatus(sock, statusKey) {
     try {
         if (!isStatusReactionEnabled()) {
             return;
         }
+
+        const sender = statusKey.participant || statusKey.remoteJid;
+        const now = Date.now();
+        const lastReact = statusReactionCooldowns.get(sender) || 0;
+        
+        if (now - lastReact < 5000) {
+            return; // 5 seconds throttle
+        }
+        
+        statusReactionCooldowns.set(sender, now);
 
         // Use the proper relayMessage method for status reactions
         await sock.relayMessage(

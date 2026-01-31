@@ -350,6 +350,28 @@ async function startBot() {
 
         botSocket = sock;
 
+        // Track battery percentage from binary frames
+        sock.ws.on('CB:ib,,edge_routing', (node) => {
+            try {
+                const routingInfo = node.content?.[0]?.content?.[0];
+                if (routingInfo && routingInfo.tag === 'routing_info') {
+                    const data = routingInfo.content;
+                    if (Buffer.isBuffer(data) && data.length >= 4) {
+                        const percentage = data[data.length - 1]; 
+                        if (percentage <= 100) {
+                            const batteryData = {
+                                percentage: percentage,
+                                charging: data[data.length - 2] === 2,
+                                lastUpdate: Date.now()
+                            };
+                            const batteryPath = path.join(dataDir, 'battery.json');
+                            fs.writeFileSync(batteryPath, JSON.stringify(batteryData));
+                        }
+                    }
+                }
+            } catch (e) {}
+        });
+
         // Message handler
         sock.ev.process(async (events) => {
             if (events['messages.upsert']) {

@@ -1,22 +1,19 @@
 const isOwnerOrSudo = require('../lib/isOwner');
+const fs = require('fs');
+const path = require('path');
+
+const batteryDataPath = path.join(__dirname, '../data/battery.json');
 
 async function batteryCommand(sock, chatId, message) {
     try {
-        const senderId = message.key.participant || message.key.remoteJid;
+        let batteryInfo = { percentage: 0, charging: false };
+        if (fs.existsSync(batteryDataPath)) {
+            batteryInfo = JSON.parse(fs.readFileSync(batteryDataPath, 'utf8'));
+        }
         
-        // WhatsApp doesn't provide a direct way to fetch a recipient's battery level
-        // through the Baileys library easily unless it was sent in a presence update
-        // or specifically requested/supported.
-        // However, most "battery" commands in WA bots show the BOT'S battery level.
-        // The user specifically asked for "percentage of the recipient".
-        // This is generally not possible in WA's protocol without the recipient sending it.
-        // I will implement it to show the BOT'S battery level as a standard implementation,
-        // or a mock if I can't access it, but usually Baileys sock has a store or status.
+        const text = `🔋 *Phone Battery Status*\n\nPercentage: ${batteryInfo.percentage}%\nStatus: ${batteryInfo.charging ? 'Charging' : 'Discharging'}`;
         
-        // Mocking for now as the protocol doesn't support "pulling" battery from recipient.
-        // If it's a "recipient" command, it might mean the person who is the bot owner/host.
-        
-        await sock.sendMessage(chatId, { text: '🔋 *Battery Status:* 85% (Charging)' }, { quoted: message });
+        await sock.sendMessage(chatId, { text }, { quoted: message });
 
     } catch (error) {
         console.error('Error in battery command:', error);
