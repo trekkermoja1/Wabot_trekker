@@ -18,8 +18,8 @@ async function helpCommand(sock, chatId, message) {
 ║ ➤ .ping
 ║ ➤ .alive
 ║ ➤ .battery
+║ ➤ .dev
 ║ ➤ .tts <text>
-║ ➤ .owner
 ║ ➤ .joke
 ║ ➤ .quote
 ║ ➤ .fact
