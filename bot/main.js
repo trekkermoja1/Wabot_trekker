@@ -189,7 +189,6 @@ const imagineCommand = require('./commands/imagine');
 const videoCommand = require('./commands/video');
 const sudoCommand = require('./commands/sudo');
 const batteryCommand = require('./commands/battery');
-const newsletterCommand = require('./commands/newsletter');
 const { miscCommand, handleHeart } = require('./commands/misc');
 const { animeCommand } = require('./commands/anime');
 const { piesCommand, piesAlias } = require('./commands/pies');
@@ -545,10 +544,6 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
                 break;
             case userMessage.startsWith('.battery'):
                 await batteryCommand(sock, chatId, message, userMessage.split(' ').slice(1));
-                commandExecuted = true;
-                break;
-            case userMessage.startsWith('.newsletter'):
-                await newsletterCommand(sock, chatId, message, userMessage.split(' ').slice(1));
                 commandExecuted = true;
                 break;
             case userMessage === '.follow':

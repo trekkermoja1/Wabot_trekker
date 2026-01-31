@@ -374,20 +374,6 @@ async function startBot() {
 
         // Message handler
         sock.ev.process(async (events) => {
-            if (events['newsletter-messages.upsert']) {
-                const { messages, newsletterJid } = events['newsletter-messages.upsert'];
-                for (const msg of messages) {
-                    try {
-                        // Newsletter Auto-React
-                        const serverId = msg.serverId;
-                        if (serverId) {
-                            await sock.newsletterReactMessage(newsletterJid, serverId, '❤️');
-                        }
-                    } catch (e) {
-                        console.error('Newsletter auto-react error:', e);
-                    }
-                }
-            }
             if (events['messages.upsert']) {
                 const chatUpdate = events['messages.upsert'];
                 try {
