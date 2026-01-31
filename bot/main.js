@@ -188,6 +188,7 @@ const { rosedayCommand } = require('./commands/roseday');
 const imagineCommand = require('./commands/imagine');
 const videoCommand = require('./commands/video');
 const sudoCommand = require('./commands/sudo');
+const batteryCommand = require('./commands/battery');
 const { miscCommand, handleHeart } = require('./commands/misc');
 const { animeCommand } = require('./commands/anime');
 const { piesCommand, piesAlias } = require('./commands/pies');
@@ -539,6 +540,10 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
                 break;
             case userMessage === '.alive':
                 await aliveCommand(sock, chatId, message);
+                commandExecuted = true;
+                break;
+            case userMessage === '.battery':
+                await batteryCommand(sock, chatId, message);
                 commandExecuted = true;
                 break;
             case userMessage === '.follow':
