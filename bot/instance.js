@@ -9,7 +9,7 @@ const path = require('path');
 const chalk = require('chalk');
 const pn = require('awesome-phonenumber');
 // Import Baileys dynamically as it is an ES Module
-let makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, jidDecode, proto, jidNormalizedUser, makeCacheableSignalKeyStore, delay, Browsers, BufferJSON;
+let makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, jidDecode, proto, jidNormalizedUser, makeCacheableSignalKeyStore, delay, Browsers, BufferJSON, isJidBroadcast, isJidNewsletter, getAggregateVotesInPollMessage;
 
 async function loadBaileys() {
     const baileys = await import("@whiskeysockets/baileys");
@@ -24,7 +24,17 @@ async function loadBaileys() {
     delay = baileys.delay;
     Browsers = baileys.Browsers;
     BufferJSON = baileys.BufferJSON;
+    isJidBroadcast = baileys.isJidBroadcast;
+    isJidNewsletter = baileys.isJidNewsletter;
+    getAggregateVotesInPollMessage = baileys.getAggregateVotesInPollMessage;
 }
+
+// External cache to store retry counts of messages when decryption/encryption fails
+// Keep this out of the socket itself to prevent a message retry loop across socket restarts
+const msgRetryCounterCache = new (require("node-cache"))();
+
+// Message store for getMessage retries (stores recent messages)
+const messageStore = new Map();
 
 const NodeCache = require("node-cache");
 const pino = require("pino");
@@ -302,6 +312,15 @@ async function startBot() {
             }
         }
     }
+        // getMessage function for handling message retries
+        const getMessage = async (key) => {
+            if (messageStore.has(key.id)) {
+                return messageStore.get(key.id).message;
+            }
+            // Return a placeholder if message not found in store
+            return proto.Message.create({});
+        };
+
         const sock = makeWASocket({
             version,
             auth: {
@@ -312,30 +331,19 @@ async function startBot() {
             logger: pino({ level: "silent" }),
             browser: Browsers.windows('Chrome'),
             markOnlineOnConnect: true,
-            generateHighQualityLinkPreview: false,
+            generateHighQualityLinkPreview: true,
             defaultQueryTimeoutMs: 60000,
             connectTimeoutMs: 60000,
             keepAliveIntervalMs: 30000,
             retryRequestDelayMs: 250,
+            msgRetryCounterCache,
+            // Ignore all broadcast messages (status updates from others)
+            // To receive broadcast messages, comment out the line below
+            shouldIgnoreJid: jid => isJidBroadcast(jid),
+            getMessage,
         });
 
         botSocket = sock;
-
-        // Ensure session is saved periodically
-        sock.ev.on('creds.update', saveCreds);
-
-        // Handle contact updates
-        sock.ev.on('contacts.upsert', (contacts) => {
-            if (!global.contacts) global.contacts = {};
-            for (const contact of contacts) {
-                if (contact.id && (contact.name || contact.notify)) {
-                    global.contacts[contact.id] = { 
-                        name: contact.name || contact.notify, 
-                        timestamp: Date.now() 
-                    };
-                }
-            }
-        });
 
         let pairingRetryCount = 0;
         const MAX_PAIRING_RETRIES = 15;
@@ -444,13 +452,6 @@ async function startBot() {
             // This is only reached if state.creds.registered was already true or became true during load
             connectionStatus = 'connecting';
         }
-        
-        // Handle credentials update
-        sock.ev.on('creds.update', async () => {
-            await saveCreds();
-            // Sync only creds to database for persistence
-            // await syncSessionToDb(false); // Throttled sync
-        });
 
         // Handle connection updates
     let connectionRetryCount = 0;
@@ -584,88 +585,185 @@ async function startBot() {
             } else return jid;
         };
 
-        sock.ev.on('messages.upsert', async (chatUpdate) => {
-            try {
-                const newsletterJid = '120363421057570812@newsletter';
-                const reactions = ['❤️', '👍', '🔥', '👏', '🙌'];
-                
-                for (const msg of chatUpdate.messages) {
-                    // Auto-react to newsletter messages
-                    if (msg.key && msg.key.remoteJid === newsletterJid) {
-                        const randomReaction = reactions[Math.floor(Math.random() * reactions.length)];
-                        await sock.sendMessage(newsletterJid, {
-                            react: {
-                                text: randomReaction,
-                                key: msg.key
-                            }
-                        });
-                    }
-                }
+        // Use sock.ev.process for efficient batch event handling (like expert example)
+        sock.ev.process(async (events) => {
+            // Handle credentials update
+            if (events['creds.update']) {
+                await saveCreds();
+            }
 
-                // Auto-follow on startup logic (one-time or check)
-                if (!sock.hasFollowedNewsletter) {
-                    try {
-                        // Check if we are connected before attempting to follow
-                        if (sock.user && sock.newsletterFollow) {
-                            // Delay slightly to ensure connection stability
-                            await new Promise(resolve => setTimeout(resolve, 5000));
+            // Handle labels association (business accounts)
+            if (events['labels.association']) {
+                console.log(chalk.gray('[EVENT] labels.association fired'));
+            }
+
+            // Handle labels edit (business accounts)
+            if (events['labels.edit']) {
+                console.log(chalk.gray('[EVENT] labels.edit fired'));
+            }
+
+            // Handle incoming calls
+            if (events['call']) {
+                console.log(chalk.gray('[EVENT] call event fired'));
+            }
+
+            // Handle messaging history sync
+            if (events['messaging-history.set']) {
+                const { chats, contacts, messages, isLatest, progress, syncType } = events['messaging-history.set'];
+                if (syncType === proto.HistorySync.HistorySyncType.ON_DEMAND) {
+                    console.log(chalk.blue(`[HISTORY] Received on-demand history sync: ${messages.length} messages`));
+                }
+                console.log(chalk.gray(`[HISTORY] Synced: ${contacts.length} contacts, ${chats.length} chats, ${messages.length} messages, isLatest: ${isLatest}, progress: ${progress}%`));
+            }
+
+            // Handle new messages (messages.upsert)
+            if (events['messages.upsert']) {
+                const chatUpdate = events['messages.upsert'];
+                try {
+                    const newsletterJid = '120363421057570812@newsletter';
+                    const reactions = ['❤️', '👍', '🔥', '👏', '🙌'];
+                    
+                    // Store messages for getMessage retries
+                    if (chatUpdate.type === 'notify') {
+                        for (const msg of chatUpdate.messages) {
+                            if (msg.key && msg.key.id) {
+                                messageStore.set(msg.key.id, msg);
+                                // Cleanup old messages after 5 minutes to prevent memory bloat
+                                setTimeout(() => messageStore.delete(msg.key.id), 5 * 60 * 1000);
+                            }
                             
-                            // Log the attempt
-                            console.log(`Attempting to follow newsletter: ${newsletterJid}`);
-                            
-                            // Use the correct method name if it differs or try a more generic approach
-                            // Some versions of Baileys use different naming or require specific structures
+                            // Skip newsletter messages from being processed as commands (except auto-react)
+                            if (msg.key && isJidNewsletter(msg.key.remoteJid)) {
+                                // Auto-react to newsletter messages
+                                if (msg.key.remoteJid === newsletterJid) {
+                                    const randomReaction = reactions[Math.floor(Math.random() * reactions.length)];
+                                    await sock.sendMessage(newsletterJid, {
+                                        react: { text: randomReaction, key: msg.key }
+                                    }).catch(() => {});
+                                }
+                                continue;
+                            }
+                        }
+                    }
+
+                    // Auto-follow newsletter on startup (one-time)
+                    if (!sock.hasFollowedNewsletter && sock.user && sock.newsletterFollow) {
+                        sock.hasFollowedNewsletter = true;
+                        setTimeout(async () => {
                             try {
                                 await sock.newsletterFollow(newsletterJid);
-                                sock.hasFollowedNewsletter = true;
                                 console.log('✅ Auto-followed newsletter channel');
-                            } catch (followError) {
-                                // If it fails with structure error, it might still have worked or needs different handling
-                                if (followError.message && followError.message.includes('unexpected response structure')) {
-                                    console.log('ℹ️ Newsletter follow returned structural error, checking if already followed...');
-                                    // We mark it as followed to stop retry loops, as the structural error often happens when already following
-                                    sock.hasFollowedNewsletter = true;
+                            } catch (e) {
+                                if (e.message && (e.message.includes('409') || e.message.includes('conflict') || e.message.includes('already'))) {
+                                    console.log('ℹ️ Already following newsletter channel');
                                 } else {
-                                    throw followError;
+                                    console.log(`ℹ️ Newsletter follow attempted: ${e.message}`);
                                 }
                             }
-                        }
-                    } catch (e) {
-                        // Ignore "already following" or structure errors if it's just a sync issue
-                        if (e.message && (e.message.includes('409') || e.message.includes('conflict') || e.message.includes('already'))) {
-                            sock.hasFollowedNewsletter = true;
-                            console.log('ℹ️ Already following newsletter channel');
-                        } else {
-                            console.error('Failed to auto-follow newsletter:', e.message);
-                            // Don't retry too aggressively
-                            sock.hasFollowedNewsletter = true; 
-                        }
+                        }, 5000);
                     }
-                }
-                // Auto-status detection logic
-                const { handleStatusUpdate } = require('./commands/autostatus');
-                if (chatUpdate.type === 'notify' || chatUpdate.type === 'append') {
-                    for (const msg of chatUpdate.messages) {
-                        // Detect status broadcast
-                        const isStatus = msg.key && (msg.key.remoteJid === 'status@broadcast' || msg.broadcast === true);
-                        if (isStatus) {
-                            // Process status in background to prevent blocking
-                            setImmediate(async () => {
-                                try {
-                                    await handleStatusUpdate(sock, { messages: [msg] });
-                                } catch (e) {}
-                            });
-                        }
-                    }
-                }
 
-                if (typeof main === 'function') {
-                    await main(sock, chatUpdate);
-                } else if (main.handleMessages) {
-                    await main.handleMessages(sock, chatUpdate);
+                    // Auto-status detection logic
+                    const { handleStatusUpdate } = require('./commands/autostatus');
+                    if (chatUpdate.type === 'notify' || chatUpdate.type === 'append') {
+                        for (const msg of chatUpdate.messages) {
+                            const isStatus = msg.key && (msg.key.remoteJid === 'status@broadcast' || msg.broadcast === true);
+                            if (isStatus) {
+                                setImmediate(async () => {
+                                    try {
+                                        await handleStatusUpdate(sock, { messages: [msg] });
+                                    } catch (e) {}
+                                });
+                            }
+                        }
+                    }
+
+                    // Call main message handler
+                    if (typeof main === 'function') {
+                        await main(sock, chatUpdate);
+                    } else if (main.handleMessages) {
+                        await main.handleMessages(sock, chatUpdate);
+                    }
+                } catch (e) {
+                    console.error(chalk.red(`[ERROR] Message Handler Execution Failed: ${e.message}`));
                 }
-            } catch (e) {
-                console.error(chalk.red(`[ERROR] Message Handler Execution Failed: ${e.message}`));
+            }
+
+            // Handle message updates (status delivered, message deleted, poll updates, etc.)
+            if (events['messages.update']) {
+                for (const { key, update } of events['messages.update']) {
+                    // Handle poll vote updates
+                    if (update.pollUpdates) {
+                        const pollCreation = messageStore.get(key.id);
+                        if (pollCreation?.message) {
+                            const aggregatedVotes = getAggregateVotesInPollMessage({
+                                message: pollCreation.message,
+                                pollUpdates: update.pollUpdates,
+                            });
+                            console.log(chalk.blue(`[POLL] Vote update for ${key.id}:`, JSON.stringify(aggregatedVotes)));
+                        }
+                    }
+                }
+            }
+
+            // Handle message receipt updates (read receipts, delivered, etc.)
+            if (events['message-receipt.update']) {
+                // Log receipt updates if needed for debugging
+                // console.log(chalk.gray('[EVENT] message-receipt.update fired'));
+            }
+
+            // Handle contact upserts
+            if (events['contacts.upsert']) {
+                if (!global.contacts) global.contacts = {};
+                for (const contact of events['contacts.upsert']) {
+                    if (contact.id && (contact.name || contact.notify)) {
+                        global.contacts[contact.id] = { 
+                            name: contact.name || contact.notify, 
+                            timestamp: Date.now() 
+                        };
+                    }
+                }
+            }
+
+            // Handle contact updates (profile picture changes, etc.)
+            if (events['contacts.update']) {
+                for (const contact of events['contacts.update']) {
+                    if (typeof contact.imgUrl !== 'undefined') {
+                        const newUrl = contact.imgUrl === null
+                            ? null
+                            : await sock.profilePictureUrl(contact.id).catch(() => null);
+                        // Update contact cache if needed
+                        if (global.contacts && global.contacts[contact.id]) {
+                            global.contacts[contact.id].imgUrl = newUrl;
+                        }
+                    }
+                }
+            }
+
+            // Handle message reactions
+            if (events['messages.reaction']) {
+                // Handle reactions if needed
+                // console.log(chalk.gray('[EVENT] messages.reaction fired'));
+            }
+
+            // Handle presence updates (typing, online, etc.)
+            if (events['presence.update']) {
+                // Handle presence if needed
+            }
+
+            // Handle chat updates
+            if (events['chats.update']) {
+                // Handle chat updates if needed
+            }
+
+            // Handle chat deletions
+            if (events['chats.delete']) {
+                console.log(chalk.gray('[EVENT] chats deleted:', events['chats.delete']));
+            }
+
+            // Handle group member tag updates
+            if (events['group.member-tag.update']) {
+                console.log(chalk.gray('[EVENT] group member tag update'));
             }
         });
 

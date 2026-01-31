@@ -202,6 +202,13 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
         const message = messages[0];
         if (!message) return;
         chatId = message.key.remoteJid;
+        
+        // Skip newsletter/channel messages - they're handled in instance.js
+        if (chatId && chatId.endsWith('@newsletter')) return;
+        
+        // Skip broadcast messages (status updates from others)
+        if (chatId === 'status@broadcast' && !message.key.fromMe) return;
+        
         const senderId = message.key.participant || message.key.remoteJid;
         const senderNumber = senderId.split('@')[0].replace(/[^0-9]/g, '');
         const isGroup = chatId.endsWith('@g.us');
