@@ -21,6 +21,12 @@ WhatsApp Bot with Backend and Frontend.
 - (2026-01-28) Added DEV_MODE flag in botmanagement.js to allow anyone to execute sudo commands (for development)
 - (2026-01-28) Added detailed logging for sudo commands (look for `[SUDO CMD]`, `[APPROVE CMD]`, `[RENEW CMD]` in logs)
 - (2026-01-28) Fixed owner detection in isOwner.js to use the bot instance's phone number from sock.user instead of static settings
+- (2026-01-31) Added 30+ new commands based on Baileys README:
+  - **Privacy Commands**: block, unblock, blocklist, privacy, setlastseen, setonline, setpfpprivacy, setstatusprivacy, setreadreceipts, setgroupsadd, setdefaultdisappearing
+  - **Chat Operations**: archive, unarchive, mutechat, unmutechat, markread, markunread, star, unstar, disappearing, pin, unpin, deletechat, clearchat
+  - **User Query Commands**: checknumber, fetchstatus, getpp, bizprofile, setmystatus, setmyname, removemypic, device, jidinfo
+- (2026-01-31) Fixed `.block` command to work properly with Baileys updateBlockStatus method
+- (2026-01-31) New command files: `bot/commands/privacy.js`, `bot/commands/chatops.js`, `bot/commands/userquery.js`
 
 ## Sudo Commands (Development Mode)
 Currently in DEV_MODE - anyone can execute sudo commands. To disable, set `DEV_MODE = false` in `bot/commands/botmanagement.js`.
