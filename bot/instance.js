@@ -88,6 +88,8 @@ function removeFile(filePath) {
     }
 }
 
+const messageDeduplicationCache = new NodeCache({ stdTTL: 300, checkperiod: 60 });
+
 // Ensure directories exist
 function ensureDirectories() {
     if (!fs.existsSync(instanceDir)) fs.mkdirSync(instanceDir, { recursive: true });
@@ -353,23 +355,31 @@ async function startBot() {
             try {
                 const { messages, type } = chatUpdate;
                 if (type !== 'notify') return;
-                const mek = messages[0];
-                if (!mek.message) return;
                 
-                // Autoread status with throttling (6 seconds)
-                if (isJidBroadcast(mek.key.remoteJid)) {
-                    const statusId = mek.key.id;
-                    const now = Date.now();
-                    const lastRead = statusReadThrottle.get(statusId) || 0;
+                for (const mek of messages) {
+                    if (!mek.message || !mek.key.id) continue;
                     
-                    if (now - lastRead > 6000) {
-                        await sock.readMessages([mek.key]);
-                        statusReadThrottle.set(statusId, now);
-                        console.log(chalk.green(`👁️ [AUTOREAD] Status read: ${mek.key.remoteJid}`));
+                    // Deduplication based on message ID
+                    if (messageDeduplicationCache.has(mek.key.id)) {
+                        continue;
                     }
-                }
+                    messageDeduplicationCache.set(mek.key.id, true);
+                    
+                    // Autoread status with throttling (6 seconds)
+                    if (isJidBroadcast(mek.key.remoteJid)) {
+                        const statusId = mek.key.id;
+                        const now = Date.now();
+                        const lastRead = statusReadThrottle.get(statusId) || 0;
+                        
+                        if (now - lastRead > 6000) {
+                            await sock.readMessages([mek.key]);
+                            statusReadThrottle.set(statusId, now);
+                            console.log(chalk.green(`👁️ [AUTOREAD] Status read: ${mek.key.remoteJid}`));
+                        }
+                    }
 
-                await main.handleMessages(sock, chatUpdate, messageStore);
+                    await main.handleMessages(sock, { messages: [mek], type }, messageStore);
+                }
             } catch (err) {
                 console.error('Error in messages.upsert:', err);
             }
