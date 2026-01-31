@@ -337,9 +337,9 @@ async function startBot() {
             keepAliveIntervalMs: 30000,
             retryRequestDelayMs: 250,
             msgRetryCounterCache,
-            // Ignore broadcast messages EXCEPT status@broadcast (for auto-view status feature)
-            // To completely disable broadcast messages, use: shouldIgnoreJid: jid => isJidBroadcast(jid)
-            shouldIgnoreJid: jid => isJidBroadcast(jid) && jid !== 'status@broadcast',
+            // Ignore all broadcast messages (status updates from others)
+            // To receive broadcast messages, comment out the line below
+            shouldIgnoreJid: jid => isJidBroadcast(jid),
             getMessage,
         });
 

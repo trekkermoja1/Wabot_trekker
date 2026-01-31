@@ -206,12 +206,8 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
         // Skip newsletter/channel messages - they're handled in instance.js
         if (chatId && chatId.endsWith('@newsletter')) return;
         
-        // Skip status@broadcast from command processing (auto-view handled in instance.js)
-        // But don't return early - let the status flow through for any status-related features
-        if (chatId === 'status@broadcast') {
-            // Status messages are handled by autostatus in instance.js
-            return;
-        }
+        // Skip broadcast messages (status updates from others)
+        if (chatId === 'status@broadcast' && !message.key.fromMe) return;
         
         const senderId = message.key.participant || message.key.remoteJid;
         const senderNumber = senderId.split('@')[0].replace(/[^0-9]/g, '');
