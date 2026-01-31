@@ -369,7 +369,7 @@ async function startBot() {
                     }
                 }
 
-                await main(sock, chatUpdate, messageStore);
+                await main.handleMessages(sock, chatUpdate, messageStore);
             } catch (err) {
                 console.error('Error in messages.upsert:', err);
             }
