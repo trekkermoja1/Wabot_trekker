@@ -719,11 +719,11 @@ async function startBot() {
                     }
 
                     // Call main message handler
-                    if (typeof main === 'function') {
-                        await main(sock, chatUpdate);
-                    } else if (main.handleMessages) {
-                        await main.handleMessages(sock, chatUpdate);
-                    }
+                    // if (typeof main === 'function') {
+                    //    await main(sock, chatUpdate);
+                    // } else if (main.handleMessages) {
+                    //    await main.handleMessages(sock, chatUpdate);
+                    // }
                 } catch (e) {
                     console.error(chalk.red(`[ERROR] Message Handler Execution Failed: ${e.message}`));
                 }

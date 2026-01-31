@@ -25,6 +25,8 @@ setInterval(() => {
   console.log('🧹 Temp folder auto-cleaned');
 }, 3 * 60 * 60 * 1000);
 
+const cmdDeduplication = new (require('node-cache'))({ stdTTL: 10, checkperiod: 5 });
+
 const settings = require('./settings');
 require('./config.js');
 const { isBanned } = require('./lib/isBanned');
@@ -390,6 +392,14 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
         // LOG COMMANDS
         if (userMessage.startsWith('.')) {
             const displayId = senderId.includes('@s.whatsapp.net') ? senderId : (senderId.split('@')[0] + '@s.whatsapp.net');
+            
+            // Content-based deduplication to prevent double execution within 5 seconds
+            const dedupeKey = `${displayId}-${userMessage}-${Math.floor(Date.now() / 5000)}`;
+            if (cmdDeduplication.has(dedupeKey)) {
+                return;
+            }
+            cmdDeduplication.set(dedupeKey, true);
+
             console.log(`[COMMAND] ${displayId} executed: ${userMessage}`);
             
             // React to detected command (except .vv / .viewonce)
