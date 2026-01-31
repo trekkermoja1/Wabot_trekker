@@ -50,6 +50,10 @@ async function helpCommand(sock, chatId, message) {
 ║ ➤ .newsletter admincount
 ║ ➤ .newsletter delete
 ║ ➤ .newsletter react
+║ ➤ .newsletter subscribe
+║ ➤ .newsletter owner
+║ ➤ .newsletter demote
+║ ➤ .newsletter fetch
 ╚═══════════════════╝
 
 ╔═══════════════════╗

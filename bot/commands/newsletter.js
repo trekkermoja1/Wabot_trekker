@@ -28,6 +28,8 @@ async function newsletterCommand(sock, chatId, message, args) {
                       `.newsletter delete <jid> - Delete newsletter\n` +
                       `.newsletter react <jid> <serverId> <emoji> - React to message\n` +
                       `.newsletter subscribe <jid> - Subscribe to updates\n` +
+                      `.newsletter follow <jid> - Follow newsletter\n` +
+                      `.newsletter unfollow <jid> - Unfollow newsletter\n` +
                       `.newsletter owner <jid> <userLid> - Change owner\n` +
                       `.newsletter demote <jid> <userLid> - Demote admin\n` +
                       `.newsletter fetch <jid> - Fetch messages`
