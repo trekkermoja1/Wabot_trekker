@@ -65,28 +65,29 @@ jobs:
           mkdir -p /tmp/repos
           cd /tmp/repos
 
-          # Process each repository
-          echo "$REPOS" | while read -r repo; do
-            if [ -z "$repo" ]; then
+          # Process each repository - FIXED LOOP
+          while IFS= read -r repo; do
+            # Skip empty lines
+            if [ -z "$repo" ] || [ "$repo" = "null" ]; then
               continue
             fi
 
             echo "Processing repository: $repo"
 
             # Clone repository with PAT
-            git clone "https://${PAT_TOKEN}@github.com/${repo}.git" "${repo##*/}" 2>/dev/null || {
+            if ! git clone "https://${PAT_TOKEN}@github.com/${repo}.git" "${repo##*/}" 2>/dev/null; then
               echo "Failed to clone $repo"
               continue
-            }
+            fi
 
-            cd "${repo##*/}"
+            cd "${repo##*/}" || continue
 
-            # Get default branch - FIXED VERSION
-            DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | cut -d' ' -f5)
+            # Get default branch - IMPROVED METHOD
+            DEFAULT_BRANCH=$(git remote show origin 2>/dev/null | grep 'HEAD branch' | cut -d' ' -f5)
             
             # Fallback if above command fails
             if [ -z "$DEFAULT_BRANCH" ]; then
-              DEFAULT_BRANCH=$(git branch -r | grep -v '\->' | sed 's/origin\///' | head -n1 | xargs)
+              DEFAULT_BRANCH=$(git branch -r 2>/dev/null | grep -v '\->' | sed 's/.*origin\///' | head -n1 | xargs)
             fi
             
             # Final fallback
@@ -96,71 +97,53 @@ jobs:
             
             echo "Using branch: $DEFAULT_BRANCH"
             
-            git checkout "$DEFAULT_BRANCH" 2>/dev/null || {
-              echo "Failed to checkout $DEFAULT_BRANCH, trying alternatives"
-              git checkout main 2>/dev/null || git checkout master 2>/dev/null || {
+            # Checkout the branch
+            if ! git checkout "$DEFAULT_BRANCH" 2>/dev/null; then
+              if ! git checkout main 2>/dev/null && ! git checkout master 2>/dev/null; then
                 echo "Could not checkout any branch for $repo"
-                cd ..
+                cd /tmp/repos
                 rm -rf "${repo##*/}"
                 continue
-              }
+              fi
               DEFAULT_BRANCH=$(git branch --show-current)
-            }
+            fi
 
-            # Create or update activity log file (force add to bypass .gitignore)
+            # Create or update activity log file
             echo "$TIMESTAMP - Automated activity commit" >> activity-log.txt
 
-            # Add and commit changes (force add to bypass .gitignore)
+            # Add and commit changes
             git add -f activity-log.txt
 
             # Check if there are changes to commit
             if git diff --staged --quiet; then
               echo "No changes to commit for $repo"
-              cd ..
+              cd /tmp/repos
               rm -rf "${repo##*/}"
               continue
             fi
 
-            git commit -m "$COMMIT_MESSAGE" || {
+            if ! git commit -m "$COMMIT_MESSAGE"; then
               echo "Failed to commit to $repo"
-              cd ..
+              cd /tmp/repos
               rm -rf "${repo##*/}"
               continue
-            }
+            fi
 
             # Configure git to use PAT for push
             git remote set-url origin "https://${PAT_TOKEN}@github.com/${repo}.git"
 
-            # Push changes with verbose output
+            # Push changes
             if git push origin "$DEFAULT_BRANCH" 2>&1; then
               echo "Successfully committed and pushed to $repo"
             else
-              echo "Failed to push to $repo - checking if branch protection is enabled"
+              echo "Failed to push to $repo - branch may be protected"
             fi
 
-            cd ..
-
-            # Clean up
+            # Return to temp directory and clean up
+            cd /tmp/repos
             rm -rf "${repo##*/}"
-          done
+          done <<< "$REPOS"
 
-      - name: Cleanup
-        if: always()
-        run: |
-          rm -rf /tmp/repos            
-            # Push changes with verbose output
-            if git push origin "$DEFAULT_BRANCH" 2>&1; then
-              echo "Successfully committed and pushed to $repo"
-            else
-              echo "Failed to push to $repo - checking if branch protection is enabled"
-            fi
-            
-            cd ..
-            
-            # Clean up
-            rm -rf "${repo##*/}"
-          done
-      
       - name: Cleanup
         if: always()
         run: |
