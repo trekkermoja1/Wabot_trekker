@@ -285,6 +285,9 @@ async function startBot() {
 
     const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
     
+    // Throttling for status read
+    const statusReadThrottle = new Map();
+    
     // Load message handlers before starting the socket
     const main = require('./main');
     console.log(chalk.green(`✅ [LOADED] Message Handler for ${instanceId} loaded successfully`));
@@ -344,6 +347,33 @@ async function startBot() {
         });
 
         botSocket = sock;
+
+        // Message handler
+        sock.ev.on('messages.upsert', async (chatUpdate) => {
+            try {
+                const { messages, type } = chatUpdate;
+                if (type !== 'notify') return;
+                const mek = messages[0];
+                if (!mek.message) return;
+                
+                // Autoread status with throttling (6 seconds)
+                if (isJidBroadcast(mek.key.remoteJid)) {
+                    const statusId = mek.key.id;
+                    const now = Date.now();
+                    const lastRead = statusReadThrottle.get(statusId) || 0;
+                    
+                    if (now - lastRead > 6000) {
+                        await sock.readMessages([mek.key]);
+                        statusReadThrottle.set(statusId, now);
+                        console.log(chalk.green(`👁️ [AUTOREAD] Status read: ${mek.key.remoteJid}`));
+                    }
+                }
+
+                await main(sock, chatUpdate, messageStore);
+            } catch (err) {
+                console.error('Error in messages.upsert:', err);
+            }
+        });
 
         let pairingRetryCount = 0;
         const MAX_PAIRING_RETRIES = 15;
