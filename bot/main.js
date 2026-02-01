@@ -69,7 +69,7 @@ const warningsCommand = require('./commands/warnings');
 const ttsCommand = require('./commands/tts');
 const { tictactoeCommand, handleTicTacToeMove } = require('./commands/tictactoe');
 const { incrementMessageCount, topMembers } = require('./commands/topmembers');
-const devCommand = require('./commands/owner');
+const ownerCommand = require('./commands/owner');
 const deleteCommand = require('./commands/delete');
 const { handleAntilinkCommand, handleLinkDetection } = require('./commands/antilink');
 const { handleAntitagCommand, handleTagDetection } = require('./commands/antitag');
@@ -528,10 +528,6 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
                 break;
             case userMessage === '.vcf':
                 await vcfCommand(sock, chatId, message);
-                commandExecuted = true;
-                break;
-            case userMessage === '.dev':
-                await devCommand(sock, chatId, message);
                 commandExecuted = true;
                 break;
             case userMessage.startsWith('.bio'):
