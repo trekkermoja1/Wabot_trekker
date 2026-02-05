@@ -1,0 +1,63 @@
+Copying blob sha256:905294f05a3d6aeed9e20726af6bb39eb3d057d025ef1738fec675ffcfb2b4f8
+Copying blob sha256:1883854a1c2073510cb44d149993761e6dd869b53755813c64af78105caa9c36
+Copying blob sha256:831b75755d45793a1d222f9195e6b8c5f317fae1193648478f2b299e69cadc88
+Copying config sha256:456f7446368b903f920a982cf669f07aefc874b81ca986fb9e514c1285a98e2f
+Writing manifest to image destination
+Warning: PACK_VOLUME_KEY is unset; set this environment variable to a secret value to avoid creating a new volume cache on every build
+===> ANALYZING
+[analyzer] Image with name "imageblueprint" not found
+===> DETECTING
+[detector] Timer: Detector started at 2026-01-20T19:58:52Z
+[detector] google.utils.label-image 0.0.2
+[detector] 3 of 5 buildpacks participating
+[detector] Timer: Detector ran for 54.236875ms and ended at 2026-01-20T19:58:52Z
+[detector] google.nodejs.runtime    1.0.0
+[detector] google.nodejs.yarn       2.1.0
+===> RESTORING
+time="2026-01-20T19:58:53Z" level=warning msg="IdleTracker: StateClosed transition by connection marked un-managed" X-Reference-Id=0xc00019c498
+===> BUILDING
+[builder] Timer: Builder started at 2026-01-20T19:58:54Z
+[builder] === Node.js - Runtime (google.nodejs.runtime@1.0.0) ===
+[builder] Using runtime version from GOOGLE_NODEJS_VERSION: 20.x.x
+[builder] 2026/01/20 19:58:54 [DEBUG] GET https://dl.google.com/runtimes/ubuntu2204/nodejs/version.json
+[builder] Installing Node.js v20.19.6.
+[builder] 2026/01/20 19:58:55 [DEBUG] GET https://dl.google.com/runtimes/ubuntu2204/nodejs/nodejs-20.19.6.tar.gz
+[builder] ***** CACHE MISS: "nodejs"
+[builder] === Node.js - Yarn (google.nodejs.yarn@2.1.0) ===
+[builder] 2026/01/20 19:58:57 [DEBUG] GET https://registry.npmjs.org/yarn
+[builder] 2026/01/20 19:58:57 [DEBUG] GET https://yarnpkg.com/downloads/1.22.22/yarn-v1.22.22.tar.gz
+[builder] ***** CACHE MISS: "yarn_engine"
+[builder] Installing Yarn v1.22.22
+[builder] Setting environment variable PATH=/layers/google.nodejs.yarn/yarn_engine/bin:/layers/google.nodejs.runtime/node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+[builder] --------------------------------------------------------------------------------
+[builder] ***** CACHE MISS: "yarn_modules"
+[builder] Running "yarn install --non-interactive --prefer-offline --modules-folder=/layers/google.nodejs.yarn/yarn_modules/node_modules --frozen-lockfile (PATH=/layers/google.nodejs.yarn/yarn_engine/bin:/layers/google.nodejs.runtime/node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/layers/google.nodejs.yarn/yarn_modules/node_modules/.bin)"
+[builder] yarn install v1.22.22
+[builder] [1/5] Validating package.json...
+[builder] [2/5] Resolving packages...
+[builder] info Visit https://yarnpkg.com/en/docs/cli/install for documentation about this command.
+[builder] error Your lockfile needs to be updated, but yarn was run with `--frozen-lockfile`.
+[builder] yarn install v1.22.22
+[builder] [2/5] Resolving packages...
+[builder] info Visit https://yarnpkg.com/en/docs/cli/install for documentation about this command.
+[builder]  -> https://cloud.google.com/docs/buildpacks/overview
+[builder] [1/5] Validating package.json...
+[builder] --------------------------------------------------------------------------------
+[builder] Our documentation explains ways to configure Buildpacks to better recognise your project:
+[builder] Done "yarn install --non-interactive --prefer-offline --modules-fo..." (1.101422514s)
+[builder] --------------------------------------------------------------------------------
+[builder] failed to build: (error ID: 12c8ef4a):
+[builder] error Your lockfile needs to be updated, but yarn was run with `--frozen-lockfile`.
+[builder] Sorry your project couldn't be built.
+[builder]  -> https://github.com/GoogleCloudPlatform/buildpacks/issues/new
+[builder] If you think you've found an issue, please report it:
+[builder] --------------------------------------------------------------------------------
+[builder] Timer: Builder ran for 4.053236992s and ended at 2026-01-20T19:58:58Z
+[builder] ERROR: failed to build: exit status 1
+ERROR: failed to build: executing lifecycle: failed with status code: 51
+time="2026-01-20T19:59:01.310Z" level=info msg="sub-process exited" argo=true error="<nil>"
+time="2026-01-20T19:59:01.310Z" level=info msg="not saving outputs - not main container" argo=true
+Error: exit status 1
+Terms of Use
+Privacy Policy
+Support

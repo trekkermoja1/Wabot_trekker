@@ -1,0 +1,150 @@
+name: Auto Commit to All Repositories (Daily Schedule)
+
+on:
+  schedule:
+    # 8 runs per day with varying intervals between 2.40-3 hours (UTC times)
+    - cron: '0 0 * * *'      # 12:00 AM (midnight)
+    - cron: '42 2 * * *'     # 2:42 AM   (2.70 hours later)
+    - cron: '30 5 * * *'     # 5:30 AM   (2.80 hours later)
+    - cron: '18 8 * * *'     # 8:18 AM   (2.80 hours later)
+    - cron: '6 11 * * *'     # 11:06 AM  (2.80 hours later)
+    - cron: '51 13 * * *'    # 1:51 PM   (2.75 hours later)
+    - cron: '36 16 * * *'    # 4:36 PM   (2.75 hours later)
+    - cron: '24 19 * * *'    # 7:24 PM   (2.80 hours later)
+    # Then back to midnight (4.60 hours - longer gap overnight)
+  workflow_dispatch: # Allows manual triggering
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - '.github/workflows/**'  # Triggers when workflow is updated
+
+jobs:
+  auto-commit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout current repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.Trekker }}
+          fetch-depth: 0
+
+      - name: Set up Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Get all repositories
+        id: get-repos
+        run: |
+          # Get authenticated user
+          USER=$(curl -s -H "Authorization: token ${{ secrets.Trekker }}" \
+            https://api.github.com/user | jq -r '.login')
+
+          # Get all repositories for the user
+          REPOS=$(curl -s -H "Authorization: token ${{ secrets.Trekker }}" \
+            "https://api.github.com/user/repos?per_page=100&affiliation=owner" | \
+            jq -r '.[].full_name')
+
+          echo "repositories<<EOF" >> $GITHUB_OUTPUT
+          echo "$REPOS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "username=$USER" >> $GITHUB_OUTPUT
+
+      - name: Commit to all repositories
+        env:
+          PAT_TOKEN: ${{ secrets.Trekker }}
+          REPOS: ${{ steps.get-repos.outputs.repositories }}
+        run: |
+          TIMESTAMP=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          COMMIT_MESSAGE="Auto-commit: Activity logged at $TIMESTAMP"
+
+          # Create temporary directory
+          mkdir -p /tmp/repos
+          cd /tmp/repos
+
+          # Process each repository - FIXED LOOP
+          while IFS= read -r repo; do
+            # Skip empty lines
+            if [ -z "$repo" ] || [ "$repo" = "null" ]; then
+              continue
+            fi
+
+            echo "Processing repository: $repo"
+
+            # Clone repository with PAT
+            if ! git clone "https://${PAT_TOKEN}@github.com/${repo}.git" "${repo##*/}" 2>/dev/null; then
+              echo "Failed to clone $repo"
+              continue
+            fi
+
+            cd "${repo##*/}" || continue
+
+            # Get default branch - IMPROVED METHOD
+            DEFAULT_BRANCH=$(git remote show origin 2>/dev/null | grep 'HEAD branch' | cut -d' ' -f5)
+            
+            # Fallback if above command fails
+            if [ -z "$DEFAULT_BRANCH" ]; then
+              DEFAULT_BRANCH=$(git branch -r 2>/dev/null | grep -v '\->' | sed 's/.*origin\///' | head -n1 | xargs)
+            fi
+            
+            # Final fallback
+            if [ -z "$DEFAULT_BRANCH" ]; then
+              DEFAULT_BRANCH="main"
+            fi
+            
+            echo "Using branch: $DEFAULT_BRANCH"
+            
+            # Checkout the branch
+            if ! git checkout "$DEFAULT_BRANCH" 2>/dev/null; then
+              if ! git checkout main 2>/dev/null && ! git checkout master 2>/dev/null; then
+                echo "Could not checkout any branch for $repo"
+                cd /tmp/repos
+                rm -rf "${repo##*/}"
+                continue
+              fi
+              DEFAULT_BRANCH=$(git branch --show-current)
+            fi
+
+            # Create or update activity log file
+            echo "$TIMESTAMP - Automated activity commit" >> activity-log.txt
+
+            # Add and commit changes
+            git add -f activity-log.txt
+
+            # Check if there are changes to commit
+            if git diff --staged --quiet; then
+              echo "No changes to commit for $repo"
+              cd /tmp/repos
+              rm -rf "${repo##*/}"
+              continue
+            fi
+
+            if ! git commit -m "$COMMIT_MESSAGE"; then
+              echo "Failed to commit to $repo"
+              cd /tmp/repos
+              rm -rf "${repo##*/}"
+              continue
+            fi
+
+            # Configure git to use PAT for push
+            git remote set-url origin "https://${PAT_TOKEN}@github.com/${repo}.git"
+
+            # Push changes
+            if git push origin "$DEFAULT_BRANCH" 2>&1; then
+              echo "Successfully committed and pushed to $repo"
+            else
+              echo "Failed to push to $repo - branch may be protected"
+            fi
+
+            # Return to temp directory and clean up
+            cd /tmp/repos
+            rm -rf "${repo##*/}"
+          done <<< "$REPOS"
+
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -rf /tmp/repos
