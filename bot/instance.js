@@ -342,7 +342,7 @@ async function startBot() {
             msgRetryCounterCache,
             // ignore all broadcast messages -- to receive the same
             // comment the line below out
-            // shouldIgnoreJid: jid => isJidBroadcast(jid),
+            shouldIgnoreJid: jid => isJidNewsletter(jid),
             // implement to handle retries & poll updates
             getMessage,
         });

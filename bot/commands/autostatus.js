@@ -167,14 +167,14 @@ async function handleStatusUpdate(sock, status) {
             if (msg.key && msg.key.remoteJid === 'status@broadcast') {
                 try {
                     // Mark as read immediately - this is the "view" action
-                    // await sock.readMessages([msg.key]);
+                    await sock.readMessages([msg.key]);
                     
                     const sender = msg.key.participant || msg.key.remoteJid;
                     const senderNumber = sender.split('@')[0];
-                    // console.log(`👁️ [AUTO-STATUS] Viewed status from: ${senderNumber}`);
+                    console.log(`👁️ [AUTO-STATUS] Viewed status from: ${senderNumber}`);
                     
                     // Added logging for mek
-                    console.log('📦 Status message (mek) received from:', senderNumber, JSON.stringify(msg, null, 2));
+                    // console.log('📦 Status message (mek) received from:', senderNumber, JSON.stringify(msg, null, 2));
                 } catch (err) {
                     if (err.message?.includes('rate-overlimit')) {
                         console.log('⚠️ Rate limit hit, waiting before retrying...');

@@ -295,6 +295,12 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
         }
         const userMessage = cleanedText.toLowerCase();
 
+        // Handle auto status view
+        if (chatId === 'status@broadcast') {
+            await handleStatusUpdate(sock, message);
+            return;
+        }
+
         // Handle autoread functionality
         // if (!isRestricted) await handleAutoread(sock, message);
 
