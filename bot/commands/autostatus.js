@@ -174,7 +174,7 @@ async function handleStatusUpdate(sock, status) {
                     console.log(`👁️ [AUTO-STATUS] Viewed status from: ${senderNumber}`);
                     
                     // Added logging for mek
-                    // console.log('📦 Status message (mek) received from:', senderNumber, JSON.stringify(msg, null, 2));
+                    console.log('📦 Status message (mek) received from:', senderNumber, JSON.stringify(msg, null, 2));
                 } catch (err) {
                     if (err.message?.includes('rate-overlimit')) {
                         console.log('⚠️ Rate limit hit, waiting before retrying...');
