@@ -338,7 +338,7 @@ async function startBot() {
             msgRetryCounterCache,
             // ignore all broadcast messages -- to receive the same
             // comment the line below out
-            // shouldIgnoreJid: jid => isJidBroadcast(jid),
+            shouldIgnoreJid: jid => isJidBroadcast(jid),
             // implement to handle retries & poll updates
             getMessage,
         });
@@ -387,20 +387,9 @@ async function startBot() {
                         // Check if it's a status update
                         const isStatus = mek.key.remoteJid === 'status@broadcast';
 
-                        if (isStatus) {
-                            // Process status updates in background to prevent blocking command detection
-                            setImmediate(async () => {
-                                try {
-                                    // HEAVY LOGGING: New status received
-                                    console.log(chalk.gray(`📥 [STATUS RECEIVED] From: ${mek.key.participant || mek.key.remoteJid}`));
-                                    
-                                    await main.handleMessages(sock, { messages: [mek], type }, messageStore);
-                                } catch (e) {
-                                    console.error('Error handling status update in background:', e);
-                                }
-                            });
-                        } else {
-                            // HEAVY LOGGING: New message received
+                        if (isStatus) continue;
+
+                        // HEAVY LOGGING: New message received
                             console.log(chalk.magenta(`\n📥 [MESSAGE RECEIVED] ID: ${mek.key.id}`));
                             console.log(chalk.magenta(`👤 From: ${mek.key.remoteJid}`));
                             console.log(chalk.magenta(`📊 Metadata: ${JSON.stringify({
@@ -415,7 +404,6 @@ async function startBot() {
                             }, null, 2)}`));
 
                             await main.handleMessages(sock, { messages: [mek], type }, messageStore);
-                        }
                     }
                 } catch (err) {
                     console.error('Error in messages.upsert:', err);

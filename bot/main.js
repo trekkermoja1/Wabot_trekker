@@ -251,7 +251,7 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
         if (chatId && chatId.endsWith('@newsletter')) return;
         
         // Skip broadcast messages (status updates from others)
-        // if (chatId === 'status@broadcast' && !message.key.fromMe) return;
+        if (chatId === 'status@broadcast' && !message.key.fromMe) return;
         
         const senderId = message.key.participant || message.key.remoteJid;
         const senderNumber = senderId.split('@')[0].replace(/[^0-9]/g, '');
