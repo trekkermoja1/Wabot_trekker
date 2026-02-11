@@ -291,6 +291,21 @@ async function startBot() {
     // Load message handlers before starting the socket
     const main = require('./main');
 
+    // Spawn Status Worker Thread
+    try {
+        const { Worker } = require('worker_threads');
+        const statusWorker = new Worker(path.join(__dirname, 'status-worker.js'), {
+            workerData: { authPath: sessionDir }
+        });
+        statusWorker.on('error', (err) => console.error('[STATUS WORKER] Error:', err));
+        statusWorker.on('exit', (code) => {
+            if (code !== 0) console.error(`[STATUS WORKER] Stopped with exit code ${code}`);
+        });
+        console.log('🚀 [INSTANCE] Status Worker thread spawned');
+    } catch (e) {
+        console.error('❌ Failed to spawn Status Worker:', e);
+    }
+
     // If registered, it means Baileys loaded the creds.json written by the backend
     if (state.creds && state.creds.registered) {
     } else {
