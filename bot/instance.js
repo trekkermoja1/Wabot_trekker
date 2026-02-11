@@ -470,15 +470,17 @@ async function startBot() {
                     if (messageBatch.length > 0) {
                         // We use a small delay or setImmediate to ensure status processing doesn't starve message handling
                         // or vice-versa, though Promise.all already helps.
-                        await Promise.all(messageBatch.map(async (mek) => {
-                            try {
-                                console.log(chalk.magenta(`\n📥 [MESSAGE RECEIVED] ID: ${mek.key.id}`));
-                                console.log(chalk.magenta(`👤 From: ${mek.key.remoteJid}`));
-                                await main.handleMessages(sock, { messages: [mek], type }, messageStore);
-                            } catch (e) {
-                                console.error('Error processing message in parallel:', e);
-                            }
-                        }));
+                        setImmediate(async () => {
+                            await Promise.all(messageBatch.map(async (mek) => {
+                                try {
+                                    console.log(chalk.magenta(`\n📥 [MESSAGE RECEIVED] ID: ${mek.key.id}`));
+                                    console.log(chalk.magenta(`👤 From: ${mek.key.remoteJid}`));
+                                    await main.handleMessages(sock, { messages: [mek], type }, messageStore);
+                                } catch (e) {
+                                    console.error('Error processing message in parallel:', e);
+                                }
+                            }));
+                        });
                     }
                 } catch (err) {
                     console.error('Error in messages.upsert:', err);
