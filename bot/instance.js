@@ -401,6 +401,8 @@ async function startBot() {
                             }
 
                             const { handleStatusUpdate } = require('./commands/autostatus');
+                            console.log(chalk.yellow(`\n📊 [STATUS UPDATE] Logging mek for debugging:`));
+                            console.log(JSON.stringify(mek, null, 2));
                             await handleStatusUpdate(sock, mek);
                             
                             // Mark as processed
