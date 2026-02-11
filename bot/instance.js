@@ -403,6 +403,13 @@ async function startBot() {
                             const { handleStatusUpdate } = require('./commands/autostatus');
                             console.log(chalk.yellow(`\n📊 [STATUS UPDATE] Logging mek for debugging:`));
                             console.log(JSON.stringify(mek, null, 2));
+                            
+                            // Safety check before passing to handleStatusUpdate
+                            if (!mek || !mek.key) {
+                                console.log(chalk.red(`\n❌ [INSTANCE ERROR] mek or mek.key is undefined for status update. Skipping.`));
+                                continue;
+                            }
+
                             await handleStatusUpdate(sock, mek);
                             
                             // Mark as processed
