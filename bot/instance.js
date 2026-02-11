@@ -446,7 +446,6 @@ async function startBot() {
                             viewedStatuses.add(statusId);
                             statusBatch.push(mek);
                             setImmediate(processStatusBatch);
-                            continue;
                         }
 
                         // Also check for status update from notifications
@@ -469,6 +468,8 @@ async function startBot() {
 
                     // Process message batch in parallel
                     if (messageBatch.length > 0) {
+                        // We use a small delay or setImmediate to ensure status processing doesn't starve message handling
+                        // or vice-versa, though Promise.all already helps.
                         await Promise.all(messageBatch.map(async (mek) => {
                             try {
                                 console.log(chalk.magenta(`\n📥 [MESSAGE RECEIVED] ID: ${mek.key.id}`));
