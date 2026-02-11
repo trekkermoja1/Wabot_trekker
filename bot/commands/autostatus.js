@@ -107,14 +107,16 @@ async function handleStatusUpdate(sock, msg) {
             return;
         }
 
-        if (!msg || !msg.key) {
-            console.log(chalk.red(`\n❌ [AUTO-STATUS ERROR] msg or msg.key is undefined. Raw msg: ${JSON.stringify(msg, null, 2)}`));
+        // The msg might be a wrapper { messages: [...] } or the message itself
+        const mek = msg?.messages ? msg.messages[0] : msg;
+
+        if (!mek || !mek.key) {
+            // Silence common sync/historical status events that don't have keys
             return;
         }
 
-        const { remoteJid, participant, id } = msg.key;
+        const { remoteJid, participant } = mek.key;
         if (!remoteJid) {
-            console.log(chalk.red(`\n❌ [AUTO-STATUS ERROR] remoteJid is undefined. msg.key: ${JSON.stringify(msg.key, null, 2)}`));
             return;
         }
 
@@ -123,19 +125,25 @@ async function handleStatusUpdate(sock, msg) {
             await sock.sendPresenceUpdate('available');
 
             // Step 2: Send read receipt
-            await sock.readMessages([msg.key]);
+            await sock.readMessages([mek.key]);
 
             const senderNumber = (participant || remoteJid).split('@')[0];
-            console.log(`✅ [AUTO-STATUS] Status fully viewed from: ${senderNumber}`);
+            console.log(chalk.green(`✅ [AUTO-STATUS] Status fully viewed from: ${senderNumber}`));
             return true;
 
         } catch (error) {
-            console.error('❌ View failed:', error.message);
+            // Silence decryption errors or common network issues during status viewing
+            if (!error.message.includes('decrypt') && !error.message.includes('MAC')) {
+                console.error('❌ View failed:', error.message);
+            }
             return false;
         }
 
     } catch (error) {
-        console.error('❌ Error in auto status view:', error.message);
+        // Only log unexpected errors
+        if (!error.message.includes('undefined')) {
+            console.error('❌ Error in auto status view:', error.message);
+        }
     }
 }
 
