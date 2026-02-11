@@ -118,14 +118,14 @@ async function handleStatusUpdate(sock, mek) {
         }
 
         try {
-            // Step 1: Update presence
-            await sock.sendPresenceUpdate('available');
+            // Step 1: Update presence (optional, maybe skip if too frequent)
+            // await sock.sendPresenceUpdate('available');
 
-            // Step 2: Send read receipt
-            await sock.readMessages([mek.key]);
+            // Step 2: Read receipt is already handled in batch in instance.js
+            // await sock.readMessages([mek.key]);
 
             const senderNumber = (participant || remoteJid).split('@')[0];
-            console.log(chalk.green(`✅ [AUTO-STATUS] Status fully viewed from: ${senderNumber}`));
+            // console.log(chalk.green(`✅ [AUTO-STATUS] Status fully viewed from: ${senderNumber}`));
             return true;
 
         } catch (error) {

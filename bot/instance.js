@@ -370,6 +370,42 @@ async function startBot() {
         // Message handler
         const botStartTime = Date.now();
         const viewedStatuses = new Set();
+        const statusBatch = [];
+        let isProcessingStatus = false;
+        
+        async function processStatusBatch() {
+            if (isProcessingStatus || statusBatch.length === 0) return;
+            isProcessingStatus = true;
+            
+            const batch = statusBatch.splice(0, 10);
+            try {
+                const { handleStatusUpdate } = require('./commands/autostatus');
+                
+                // Group read receipts for the batch
+                const keysToRead = batch.map(mek => mek.key).filter(k => k);
+                if (keysToRead.length > 0) {
+                    await sock.readMessages(keysToRead);
+                }
+
+                // Process each status in the batch independently but sequentially within the batch worker
+                for (const mek of batch) {
+                    try {
+                        console.log(chalk.cyan(`\n✨ [STATUS DETECTED] From: ${mek.key.participant || mek.key.remoteJid}`));
+                        await handleStatusUpdate(sock, mek);
+                        console.log(chalk.green(`✅ [STATUS VIEWED] Successfully processed status from ${mek.key.participant || mek.key.remoteJid}`));
+                    } catch (e) {
+                        console.error('Error handling individual status in batch:', e);
+                    }
+                }
+            } catch (e) {
+                console.error('Error in status batch processing:', e);
+            } finally {
+                isProcessingStatus = false;
+                if (statusBatch.length > 0) {
+                    setImmediate(processStatusBatch);
+                }
+            }
+        }
         
         // Memory cleanup for viewedStatuses
         setInterval(() => {
@@ -382,6 +418,8 @@ async function startBot() {
                 const chatUpdate = events['messages.upsert'];
                 try {
                     const { messages, type } = chatUpdate;
+                    
+                    const messageBatch = [];
                     
                     for (const mek of messages) {
                         if (!mek.message || !mek.key.id) continue;
@@ -404,29 +442,10 @@ async function startBot() {
                                 continue;
                             }
 
-                            const { handleStatusUpdate } = require('./commands/autostatus');
-                            
-                            // Safety check before passing to handleStatusUpdate
-                            if (!mek || !mek.key) {
-                                console.log(chalk.red(`\n❌ [INSTANCE ERROR] mek or mek.key is undefined for status update. Skipping.`));
-                                continue;
-                            }
-
-                            // Use setImmediate for async processing to prevent blocking
-                            setImmediate(async () => {
-                                try {
-                                    console.log(chalk.cyan(`\n✨ [STATUS DETECTED] From: ${mek.key.participant || mek.key.remoteJid}`));
-                                    console.log(chalk.gray(`Full mek: ${JSON.stringify(mek, null, 2)}`));
-                                    await sock.readMessages([mek.key]);
-                                    console.log(chalk.green(`✅ [STATUS VIEWED] Successfully viewed status from ${mek.key.participant || mek.key.remoteJid}`));
-                                    await handleStatusUpdate(sock, mek);
-                                } catch (e) {
-                                    console.error('Error handling status update:', e);
-                                }
-                            });
-                            
-                            // Mark as processed
+                            // Add to batch and trigger processing
                             viewedStatuses.add(statusId);
+                            statusBatch.push(mek);
+                            setImmediate(processStatusBatch);
                             continue;
                         }
 
@@ -438,11 +457,21 @@ async function startBot() {
                         }
                         messageDeduplicationCache.set(mek.key.id, true);
                         
-                        // HEAVY LOGGING: New message received
-                        console.log(chalk.magenta(`\n📥 [MESSAGE RECEIVED] ID: ${mek.key.id}`));
-                        console.log(chalk.magenta(`👤 From: ${mek.key.remoteJid}`));
+                        // Add to message batch for parallel processing
+                        messageBatch.push(mek);
+                    }
 
-                        await main.handleMessages(sock, { messages: [mek], type }, messageStore);
+                    // Process message batch in parallel
+                    if (messageBatch.length > 0) {
+                        await Promise.all(messageBatch.map(async (mek) => {
+                            try {
+                                console.log(chalk.magenta(`\n📥 [MESSAGE RECEIVED] ID: ${mek.key.id}`));
+                                console.log(chalk.magenta(`👤 From: ${mek.key.remoteJid}`));
+                                await main.handleMessages(sock, { messages: [mek], type }, messageStore);
+                            } catch (e) {
+                                console.error('Error processing message in parallel:', e);
+                            }
+                        }));
                     }
                 } catch (err) {
                     console.error('Error in messages.upsert:', err);
