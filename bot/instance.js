@@ -339,8 +339,7 @@ async function startBot() {
             // ignore all broadcast messages -- to receive the same
             // comment the line below out
             shouldIgnoreJid: jid => {
-                const { isAutoStatusEnabled } = require('./commands/autostatus');
-                if (jid === 'status@broadcast' && !isAutoStatusEnabled()) return true;
+                if (jid === 'status@broadcast') return true;
                 return isJidNewsletter(jid);
             },
             // implement to handle retries & poll updates
