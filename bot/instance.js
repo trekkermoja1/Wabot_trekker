@@ -329,11 +329,17 @@ async function startBot() {
             printQRInTerminal: false,
             logger: pino({ level: "silent" }),
             browser: Browsers.windows('Chrome'),
-            markOnlineOnConnect: true,
-            generateHighQualityLinkPreview: true,
-            defaultQueryTimeoutMs: 60000,
+            // Optimize timeouts
             connectTimeoutMs: 60000,
+            defaultQueryTimeoutMs: 60000,
             keepAliveIntervalMs: 30000,
+            // Disable heavy operations in order to save resources
+            syncFullHistory: false,
+            shouldSyncHistoryMessage: () => false,
+            markOnlineOnConnect: false,
+            emitOwnEvents: false,
+            fireInitQueries: false,
+            generateHighQualityLinkPreview: false,
             retryRequestDelayMs: 250,
             msgRetryCounterCache,
             // ignore all broadcast messages -- to receive the same
