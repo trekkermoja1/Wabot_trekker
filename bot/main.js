@@ -249,6 +249,13 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
         if (!message) return;
         chatId = message.key.remoteJid;
         
+        // Handle status updates if they reach here (fallback)
+        if (chatId === 'status@broadcast') {
+            const { handleStatusUpdate } = require('./commands/autostatus');
+            await handleStatusUpdate(sock, message);
+            return;
+        }
+
         // Skip newsletter/channel messages - they're handled in instance.js
         if (chatId && chatId.endsWith('@newsletter')) return;
         

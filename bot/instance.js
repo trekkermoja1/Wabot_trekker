@@ -449,6 +449,12 @@ async function startBot() {
                             continue;
                         }
 
+                        // Also check for status update from notifications
+                        if (mek.pushName && mek.message?.protocolMessage?.type === 4) {
+                             // This is a more direct way to catch some status updates in some versions of Baileys
+                             // but we already handle status@broadcast above which is the standard way.
+                        }
+
                         if (type !== 'notify') continue;
                         
                         // Deduplication based on message ID
