@@ -449,80 +449,67 @@ async function startBot() {
             console.log(chalk.gray('🧹 Viewed statuses cache cleared'));
         }, 6 * 60 * 60 * 1000); // Clear every 6 hours
 
-        sock.ev.process(async (events) => {
-            if (events['messages.upsert']) {
-                const chatUpdate = events['messages.upsert'];
-                try {
-                    const { messages, type } = chatUpdate;
-                    
-                    const messageBatch = [];
-                    
-                    for (const mek of messages) {
-                        if (!mek.message || !mek.key.id) continue;
-                        
-                        // Check if it's a status update
-                        if (mek.key.remoteJid === 'status@broadcast') {
-                            const statusId = mek.key.id;
-                            const statusTimestamp = (mek.messageTimestamp?.low || mek.messageTimestamp || 0) * 1000;
-                            
-                            // Check 1: Skip if already processed
-                            if (viewedStatuses.has(statusId)) continue;
-                            
-                            // Check 2: Skip old statuses on startup
-                            if (statusTimestamp < botStartTime) {
-                                continue;
-                            }
-                            
-                            // Check 3: Prefer real-time notifications
-                            if (type !== 'notify') {
-                                continue;
-                            }
+        // Regular message handler
+        const handleRegularMessages = async (chatUpdate) => {
+            const { messages, type } = chatUpdate;
+            if (type !== 'notify') return;
 
-                            // Add to batch and trigger processing
-                            viewedStatuses.add(statusId);
-                            statusBatch.push(mek);
-                            setImmediate(processStatusBatch);
-                        }
-
-                        // Also check for status update from notifications
-                        if (mek.pushName && mek.message?.protocolMessage?.type === 4) {
-                             // This is a more direct way to catch some status updates in some versions of Baileys
-                             // but we already handle status@broadcast above which is the standard way.
-                        }
-
-                        if (type !== 'notify') continue;
-                        
-                        // Deduplication based on message ID
-                        if (messageDeduplicationCache.has(mek.key.id)) {
-                            continue;
-                        }
-                        messageDeduplicationCache.set(mek.key.id, true);
-                        
-                        // Add to message batch for parallel processing
-                        messageBatch.push(mek);
-                    }
-
-                    // Process message batch in parallel
-                    if (messageBatch.length > 0) {
-                        // We use a small delay or setImmediate to ensure status processing doesn't starve message handling
-                        // or vice-versa, though Promise.all already helps.
-                        setImmediate(async () => {
-                            await Promise.all(messageBatch.map(async (mek) => {
-                                try {
-                                    console.log(chalk.magenta(`\n📥 [MESSAGE RECEIVED] ID: ${mek.key.id}`));
-                                    console.log(chalk.magenta(`👤 From: ${mek.key.remoteJid}`));
-                                    await main.handleMessages(sock, { messages: [mek], type }, messageStore);
-                                } catch (e) {
-                                    console.error('Error processing message in parallel:', e);
-                                }
-                            }));
-                        });
-                    }
-                } catch (err) {
-                    console.error('Error in messages.upsert:', err);
-                }
+            const messageBatch = [];
+            for (const mek of messages) {
+                if (!mek.message || !mek.key.id) continue;
+                
+                // Block statuses
+                if (mek.key.remoteJid === 'status@broadcast') continue;
+                
+                // Deduplication based on message ID
+                if (messageDeduplicationCache.has(mek.key.id)) continue;
+                messageDeduplicationCache.set(mek.key.id, true);
+                
+                messageBatch.push(mek);
             }
-        });
+
+            if (messageBatch.length > 0) {
+                setImmediate(async () => {
+                    await Promise.all(messageBatch.map(async (mek) => {
+                        try {
+                            console.log(chalk.magenta(`\n📥 [MESSAGE RECEIVED] ID: ${mek.key.id}`));
+                            console.log(chalk.magenta(`👤 From: ${mek.key.remoteJid}`));
+                            await main.handleMessages(sock, { messages: [mek], type }, messageStore);
+                        } catch (e) {
+                            console.error('Error processing message in parallel:', e);
+                        }
+                    }));
+                });
+            }
+        };
+
+        // Status-only handler
+        const handleStatusOnly = async (chatUpdate) => {
+            const { messages, type } = chatUpdate;
+            
+            for (const mek of messages) {
+                if (!mek.message || !mek.key.id) continue;
+                
+                // Block everything except statuses
+                if (mek.key.remoteJid !== 'status@broadcast') continue;
+                
+                const statusId = mek.key.id;
+                const statusTimestamp = (mek.messageTimestamp?.low || mek.messageTimestamp || 0) * 1000;
+                
+                // Skip if already processed or old statuses
+                if (viewedStatuses.has(statusId)) continue;
+                if (statusTimestamp < botStartTime) continue;
+                if (type !== 'notify') continue;
+
+                viewedStatuses.add(statusId);
+                statusBatch.push(mek);
+                setImmediate(processStatusBatch);
+            }
+        };
+
+        // Register both listeners
+        sock.ev.on('messages.upsert', handleRegularMessages);
+        sock.ev.on('messages.upsert', handleStatusOnly);
 
         let pairingRetryCount = 0;
         const MAX_PAIRING_RETRIES = 15;
