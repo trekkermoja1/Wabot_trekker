@@ -95,135 +95,32 @@ function isAutoStatusEnabled() {
     }
 }
 
-// Function to check if status reactions are enabled
-function isStatusReactionEnabled() {
-    try {
-        const config = JSON.parse(fs.readFileSync(configPath));
-        return config.reactOn;
-    } catch (error) {
-        console.error('Error checking status reaction config:', error);
-        return false;
-    }
-}
-
-// Function to react to status using proper method
-const statusReactionCooldowns = new Map();
-
-async function reactToStatus(sock, statusKey) {
-    try {
-        if (!isStatusReactionEnabled()) {
-            return;
-        }
-
-        const sender = statusKey.participant || statusKey.remoteJid;
-        const now = Date.now();
-        const lastReact = statusReactionCooldowns.get(sender) || 0;
-        
-        if (now - lastReact < 5000) {
-            return; // 5 seconds throttle
-        }
-        
-        statusReactionCooldowns.set(sender, now);
-
-        // Use the proper relayMessage method for status reactions
-        await sock.relayMessage(
-            'status@broadcast',
-            {
-                reactionMessage: {
-                    key: {
-                        remoteJid: 'status@broadcast',
-                        id: statusKey.id,
-                        participant: statusKey.participant || statusKey.remoteJid,
-                        fromMe: false
-                    },
-                    text: '💚'
-                }
-            },
-            {
-                messageId: statusKey.id,
-                statusJidList: [statusKey.remoteJid, statusKey.participant || statusKey.remoteJid]
-            }
-        );
-        
-        // Removed success log - only keep errors
-    } catch (error) {
-        console.error('❌ Error reacting to status:', error.message);
-    }
-}
-
 // Function to handle status updates
-async function handleStatusUpdate(sock, status) {
+async function handleStatusUpdate(sock, msg) {
     try {
         if (!isAutoStatusEnabled()) {
             return;
         }
 
-        // Add delay to prevent rate limiting
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        const { remoteJid, participant, id } = msg.key;
 
-        // Handle status from messages.upsert
-        if (status.messages && status.messages.length > 0) {
-            const msg = status.messages[0];
-            if (msg.key && msg.key.remoteJid === 'status@broadcast') {
-                try {
-                    // Mark as read immediately - this is the "view" action
-                    // await sock.readMessages([msg.key]);
-                    
-                    const sender = msg.key.participant || msg.key.remoteJid;
-                    const senderNumber = sender.split('@')[0];
-                    // console.log(`👁️ [AUTO-STATUS] Viewed status from: ${senderNumber}`);
-                    
-                    // Added logging for mek
-                    console.log('📦 Status message (mek) received from:', senderNumber, JSON.stringify(msg, null, 2));
-                } catch (err) {
-                    if (err.message?.includes('rate-overlimit')) {
-                        console.log('⚠️ Rate limit hit, waiting before retrying...');
-                        await new Promise(resolve => setTimeout(resolve, 2000));
-                        await sock.readMessages([msg.key]);
-                    } else {
-                        throw err;
-                    }
-                }
-                return;
-            }
-        }
+        try {
+            // Step 1: Update presence
+            await sock.sendPresenceUpdate('available');
 
-        // Handle direct status updates
-        if (status.key && status.key.remoteJid === 'status@broadcast') {
-            try {
-                await sock.readMessages([status.key]);
-                const sender = status.key.participant || status.key.remoteJid;
-                const senderNumber = sender.split('@')[0];
-                console.log(`👁️ [AUTO-STATUS] Viewed status from: ${senderNumber}`);
-            } catch (err) {
-                if (err.message?.includes('rate-overlimit')) {
-                    console.log('⚠️ Rate limit hit, waiting before retrying...');
-                    await new Promise(resolve => setTimeout(resolve, 2000));
-                    await sock.readMessages([status.key]);
-                } else {
-                    throw err;
-                }
-            }
-            return;
-        }
+            // Step 2: Send read receipt
+            await sock.sendReceipt(remoteJid, participant, [id], 'read');
 
-        // Handle status in reactions
-        if (status.reaction && status.reaction.key.remoteJid === 'status@broadcast') {
-            try {
-                await sock.readMessages([status.reaction.key]);
-                const sender = status.reaction.key.participant || status.reaction.key.remoteJid;
-                const senderNumber = sender.split('@')[0];
-                console.log(`👁️ [AUTO-STATUS] Viewed status from: ${senderNumber}`);
-            } catch (err) {
-                if (err.message?.includes('rate-overlimit')) {
-                    console.log('⚠️ Rate limit hit, waiting before retrying...');
-                    await new Promise(resolve => setTimeout(resolve, 2000));
-                    await sock.readMessages([status.reaction.key]);
-                } else {
-                    throw err;
-                }
-            }
-            return;
+            // Step 3: Also mark chat as read (belt and suspenders)
+            await sock.chatModify({ markRead: true }, remoteJid);
+
+            const senderNumber = (participant || remoteJid).split('@')[0];
+            console.log(`✅ [AUTO-STATUS] Status fully viewed from: ${senderNumber}`);
+            return true;
+
+        } catch (error) {
+            console.error('❌ View failed:', error.message);
+            return false;
         }
 
     } catch (error) {
@@ -234,4 +131,4 @@ async function handleStatusUpdate(sock, status) {
 module.exports = {
     autoStatusCommand,
     handleStatusUpdate
-}; 
+};
