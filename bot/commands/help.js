@@ -281,6 +281,8 @@ async function helpCommand(sock, chatId, message) {
 ║ ➤ .startbot <id>
 ║ ➤ .stopbot <id>
 ║ ➤ .deletebot <id>
+║ ➤ .findbot <number>
+║ ➤ .altbot <number>
 ╚═══════════════════╝
 
 Join our channel for updates:`;

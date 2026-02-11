@@ -564,6 +564,105 @@ async function startBotCommand(sock, chatId, message, args) {
     }
 }
 
+/**
+ * .findbot command - Find bot information by phone number
+ * Usage: .findbot <phone_number>
+ */
+async function findBotCommand(sock, chatId, message, args) {
+    const senderId = message.key.participant || message.key.remoteJid;
+    if (!await sudoOnly(sock, chatId, message, senderId)) return;
+    
+    if (args.length < 1) {
+        await sock.sendMessage(chatId, {
+            text: `*Find Bot*\n\nUsage: .findbot <phone_number>\n\nExample: .findbot 254704897825`
+        }, { quoted: message });
+        return;
+    }
+    
+    const phoneNumber = args[0].replace(/[^0-9]/g, '');
+    
+    try {
+        const response = await callBackend('get', `/api/instances/by-phone/${phoneNumber}`);
+        const bot = response.data;
+        
+        if (!bot || !bot.id) {
+            await sock.sendMessage(chatId, {
+                text: `❌ No bot found with phone number: ${phoneNumber}`
+            }, { quoted: message });
+            return;
+        }
+        
+        const expiresAt = bot.expires_at ? new Date(bot.expires_at).toLocaleString() : 'N/A';
+        const createdAt = bot.created_at ? new Date(bot.created_at).toLocaleString() : 'N/A';
+        
+        await sock.sendMessage(chatId, {
+            text: `🔍 *Bot Information*\n\n` +
+                  `*Name:* ${bot.name || 'N/A'}\n` +
+                  `*Phone:* ${bot.phone_number}\n` +
+                  `*ID:* \`${bot.id}\`\n` +
+                  `*Status:* ${bot.status}\n` +
+                  `*Server:* ${bot.server_name}\n` +
+                  `*Created:* ${createdAt}\n` +
+                  `*Expires:* ${expiresAt}`
+        }, { quoted: message });
+    } catch (error) {
+        console.error('Error finding bot:', error);
+        const errorMsg = error.response?.data?.detail || error.message;
+        await sock.sendMessage(chatId, {
+            text: `❌ *Find Failed*\n\n${errorMsg}`
+        }, { quoted: message });
+    }
+}
+
+/**
+ * .altbot command - Alternate a bot to an active server
+ * Usage: .altbot <phone_number>
+ */
+async function altBotCommand(sock, chatId, message, args) {
+    const senderId = message.key.participant || message.key.remoteJid;
+    if (!await sudoOnly(sock, chatId, message, senderId)) return;
+    
+    if (args.length < 1) {
+        await sock.sendMessage(chatId, {
+            text: `*Alternate Bot*\n\nUsage: .altbot <phone_number>\n\nExample: .altbot 254704897825`
+        }, { quoted: message });
+        return;
+    }
+    
+    const phoneNumber = args[0].replace(/[^0-9]/g, '');
+    
+    try {
+        // Find the bot first
+        const lookupResponse = await callBackend('get', `/api/instances/by-phone/${phoneNumber}`);
+        const bot = lookupResponse.data;
+        
+        if (!bot || !bot.id) {
+            await sock.sendMessage(chatId, {
+                text: `❌ No bot found with phone number: ${phoneNumber}`
+            }, { quoted: message });
+            return;
+        }
+
+        // Call alternate endpoint (backend needs to handle server selection based on heartbeat)
+        const response = await callBackend('post', `/api/instances/${bot.id}/alternate`);
+        const data = response.data;
+        
+        await sock.sendMessage(chatId, {
+            text: `🔄 *Bot Server Alternated*\n\n` +
+                  `*Bot:* ${bot.phone_number}\n` +
+                  `*Old Server:* ${bot.server_name}\n` +
+                  `*New Server:* ${data.server_name}\n\n` +
+                  `✅ Bot successfully reassigned.`
+        }, { quoted: message });
+    } catch (error) {
+        console.error('Error alternating bot:', error);
+        const errorMsg = error.response?.data?.detail || error.message;
+        await sock.sendMessage(chatId, {
+            text: `❌ *Alternation Failed*\n\n${errorMsg}`
+        }, { quoted: message });
+    }
+}
+
 module.exports = {
     approveCommand,
     renewCommand,
@@ -574,5 +673,7 @@ module.exports = {
     deleteBotCommand,
     stopBotCommand,
     startBotCommand,
+    findBotCommand,
+    altBotCommand,
     isSudo
 };

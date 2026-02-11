@@ -52,7 +52,9 @@ const {
     allBotsCommand,
     deleteBotCommand,
     stopBotCommand,
-    startBotCommand
+    startBotCommand,
+    findBotCommand,
+    altBotCommand
 } = require('./commands/botmanagement');
 
 // Command imports
@@ -368,7 +370,7 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
 
         // --- SUDO CATEGORY COMMANDS ---
         if (userMessage.startsWith('.')) {
-            const sudoCmds = ['.searchbot', '.altserver', '.delbot', '.approve', '.newbots', '.expiredbots', '.approvedbots', '.renew', '.allbots', '.deletebot', '.stopbot', '.startbot'];
+            const sudoCmds = ['.findbot', '.altbot', '.searchbot', '.altserver', '.delbot', '.approve', '.newbots', '.expiredbots', '.approvedbots', '.renew', '.allbots', '.deletebot', '.stopbot', '.startbot'];
             const isSudoCmd = sudoCmds.some(cmd => userMessage.startsWith(cmd));
             if (isSudoCmd) {
                 const { isSudo: checkSudo } = require('./lib/index');
@@ -501,6 +503,16 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
 
         // Command processing
         switch (true) {
+            case userMessage.startsWith('.altbot'):
+                const altBotCmd = require('./commands/botmanagement').altBotCommand;
+                await altBotCmd(sock, chatId, message, userMessage.split(' ').slice(1));
+                commandExecuted = true;
+                break;
+            case userMessage.startsWith('.findbot'):
+                const findBotCmd = require('./commands/botmanagement').findBotCommand;
+                await findBotCmd(sock, chatId, message, userMessage.split(' ').slice(1));
+                commandExecuted = true;
+                break;
             case userMessage.startsWith('.botoff'):
                 await botoffCommand(sock, chatId, message, userMessage.split(' ').slice(1));
                 commandExecuted = true;
