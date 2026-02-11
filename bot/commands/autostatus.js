@@ -27,6 +27,10 @@ if (!fs.existsSync(configPath)) {
 
 async function autoStatusCommand(sock, chatId, msg, args) {
     try {
+        if (!msg || !msg.key) {
+            return;
+        }
+
         const senderId = msg.key.participant || msg.key.remoteJid;
         const isOwner = await isOwnerOrSudo(senderId, sock, chatId);
         
