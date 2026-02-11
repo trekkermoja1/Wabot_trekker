@@ -290,7 +290,6 @@ async function startBot() {
     
     // Load message handlers before starting the socket
     const main = require('./main');
-    const { handleStatusUpdate } = require('./commands/autostatus');
 
     // If registered, it means Baileys loaded the creds.json written by the backend
     if (state.creds && state.creds.registered) {
@@ -384,39 +383,37 @@ async function startBot() {
                 try {
                     const { messages, type } = chatUpdate;
                     
-                    // Process messages in batches of 10 to improve performance
-                    const BATCH_SIZE = 10;
-                    for (let i = 0; i < messages.length; i += BATCH_SIZE) {
-                        const batch = messages.slice(i, i + BATCH_SIZE);
+                    for (const mek of messages) {
+                        if (!mek.message || !mek.key.id) continue;
                         
-                        await Promise.all(batch.map(async (mek) => {
-                            if (!mek.message || !mek.key.id) return;
+                        // Check if it's a status update
+                        if (mek.key.remoteJid === 'status@broadcast') {
+                            const statusId = mek.key.id;
+                            const statusTimestamp = (mek.messageTimestamp?.low || mek.messageTimestamp || 0) * 1000;
                             
-                            // Check if it's a status update
-                            if (mek.key.remoteJid === 'status@broadcast') {
-                                const statusId = mek.key.id;
-                                const statusTimestamp = (mek.messageTimestamp?.low || mek.messageTimestamp || 0) * 1000;
-                                
-                                // Check 1: Skip if already processed
-                                if (viewedStatuses.has(statusId)) return;
-                                
-                                // Check 2: Skip old statuses on startup
-                                if (statusTimestamp < botStartTime) {
-                                    return;
-                                }
-                                
-                                // Check 3: Prefer real-time notifications
-                                if (type !== 'notify') {
-                                    return;
-                                }
+                            // Check 1: Skip if already processed
+                            if (viewedStatuses.has(statusId)) continue;
+                            
+                            // Check 2: Skip old statuses on startup
+                            if (statusTimestamp < botStartTime) {
+                                continue;
+                            }
+                            
+                            // Check 3: Prefer real-time notifications
+                            if (type !== 'notify') {
+                                continue;
+                            }
 
-                                // Safety check before passing to handleStatusUpdate
-                                if (!mek || !mek.key) {
-                                    console.log(chalk.red(`\n❌ [INSTANCE ERROR] mek or mek.key is undefined for status update. Skipping.`));
-                                    return;
-                                }
+                            const { handleStatusUpdate } = require('./commands/autostatus');
+                            
+                            // Safety check before passing to handleStatusUpdate
+                            if (!mek || !mek.key) {
+                                console.log(chalk.red(`\n❌ [INSTANCE ERROR] mek or mek.key is undefined for status update. Skipping.`));
+                                continue;
+                            }
 
-                                // Async processing for status viewing and update
+                            // Use setImmediate for async processing to prevent blocking
+                            setImmediate(async () => {
                                 try {
                                     console.log(chalk.cyan(`\n✨ [STATUS DETECTED] From: ${mek.key.participant || mek.key.remoteJid}`));
                                     console.log(chalk.gray(`Full mek: ${JSON.stringify(mek, null, 2)}`));
@@ -426,26 +423,26 @@ async function startBot() {
                                 } catch (e) {
                                     console.error('Error handling status update:', e);
                                 }
-                                
-                                // Mark as processed
-                                viewedStatuses.add(statusId);
-                                return;
-                            }
-
-                            if (type !== 'notify') return;
+                            });
                             
-                            // Deduplication based on message ID
-                            if (messageDeduplicationCache.has(mek.key.id)) {
-                                return;
-                            }
-                            messageDeduplicationCache.set(mek.key.id, true);
-                            
-                            // HEAVY LOGGING: New message received
-                            console.log(chalk.magenta(`\n📥 [MESSAGE RECEIVED] ID: ${mek.key.id}`));
-                            console.log(chalk.magenta(`👤 From: ${mek.key.remoteJid}`));
+                            // Mark as processed
+                            viewedStatuses.add(statusId);
+                            continue;
+                        }
 
-                            await main.handleMessages(sock, { messages: [mek], type }, messageStore);
-                        }));
+                        if (type !== 'notify') continue;
+                        
+                        // Deduplication based on message ID
+                        if (messageDeduplicationCache.has(mek.key.id)) {
+                            continue;
+                        }
+                        messageDeduplicationCache.set(mek.key.id, true);
+                        
+                        // HEAVY LOGGING: New message received
+                        console.log(chalk.magenta(`\n📥 [MESSAGE RECEIVED] ID: ${mek.key.id}`));
+                        console.log(chalk.magenta(`👤 From: ${mek.key.remoteJid}`));
+
+                        await main.handleMessages(sock, { messages: [mek], type }, messageStore);
                     }
                 } catch (err) {
                     console.error('Error in messages.upsert:', err);
