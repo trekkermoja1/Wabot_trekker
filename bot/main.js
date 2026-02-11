@@ -531,7 +531,7 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
                     try {
                         const { Pool } = require('pg');
                         if (process.env.DATABASE_URL) {
-                            const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { sslrootcert: 'system' } });
+                            const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
                             await pool.query('UPDATE bot_instances SET autoview = $1 WHERE id = $2', [enabled, instanceId]);
                             await pool.end();
                         }

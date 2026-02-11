@@ -254,7 +254,9 @@ async function startBot() {
     try {
         const { Pool } = require('pg');
         if (process.env.DATABASE_URL) {
-            const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { sslrootcert: 'system' } });
+            const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+            // Ensure column exists as a safety measure
+            await pool.query('ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS autoview BOOLEAN DEFAULT TRUE');
             const result = await pool.query('SELECT autoview FROM bot_instances WHERE id = $1', [instanceId]);
             if (result.rows.length > 0 && result.rows[0].autoview !== null) {
                 global.autoviewState = result.rows[0].autoview;
