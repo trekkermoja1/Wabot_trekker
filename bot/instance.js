@@ -336,7 +336,7 @@ async function startBot() {
             // Disable heavy operations in order to save resources
             syncFullHistory: false,
             shouldSyncHistoryMessage: () => false,
-            markOnlineOnConnect: false,
+            markOnlineOnConnect: true,
             emitOwnEvents: false,
             fireInitQueries: false,
             generateHighQualityLinkPreview: false,
