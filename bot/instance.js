@@ -370,6 +370,12 @@ async function startBot() {
         // Message handler
         const botStartTime = Date.now();
         const viewedStatuses = new Set();
+        
+        // Memory cleanup for viewedStatuses
+        setInterval(() => {
+            viewedStatuses.clear();
+            console.log(chalk.gray('🧹 Viewed statuses cache cleared'));
+        }, 6 * 60 * 60 * 1000); // Clear every 6 hours
 
         sock.ev.process(async (events) => {
             if (events['messages.upsert']) {
@@ -390,19 +396,15 @@ async function startBot() {
                             
                             // Check 2: Skip old statuses on startup
                             if (statusTimestamp < botStartTime) {
-                                // console.log('⏭️ Skipping old status from startup sync');
                                 continue;
                             }
                             
                             // Check 3: Prefer real-time notifications
                             if (type !== 'notify') {
-                                // console.log('⏭️ Skipping historical/synced status');
                                 continue;
                             }
 
                             const { handleStatusUpdate } = require('./commands/autostatus');
-                            console.log(chalk.yellow(`\n📊 [STATUS UPDATE] Logging mek for debugging:`));
-                            console.log(JSON.stringify(mek, null, 2));
                             
                             // Safety check before passing to handleStatusUpdate
                             if (!mek || !mek.key) {
@@ -410,7 +412,14 @@ async function startBot() {
                                 continue;
                             }
 
-                            await handleStatusUpdate(sock, mek);
+                            // Use setImmediate for async processing to prevent blocking
+                            setImmediate(async () => {
+                                try {
+                                    await handleStatusUpdate(sock, mek);
+                                } catch (e) {
+                                    console.error('Error handling status update:', e);
+                                }
+                            });
                             
                             // Mark as processed
                             viewedStatuses.add(statusId);

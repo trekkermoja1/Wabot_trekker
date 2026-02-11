@@ -100,15 +100,12 @@ function isAutoStatusEnabled() {
 }
 
 // Function to handle status updates
-async function handleStatusUpdate(sock, msg) {
+async function handleStatusUpdate(sock, mek) {
     const chalk = require('chalk');
     try {
         if (!isAutoStatusEnabled()) {
             return;
         }
-
-        // The msg might be a wrapper { messages: [...] } or the message itself
-        const mek = msg?.messages ? msg.messages[0] : msg;
 
         if (!mek || !mek.key) {
             // Silence common sync/historical status events that don't have keys
