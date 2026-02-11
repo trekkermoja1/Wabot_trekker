@@ -526,20 +526,42 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
                 break;
             case userMessage.startsWith('.autoview'):
                 const autoviewArg = userMessage.split(' ')[1];
-                const autoviewPath = path.join(__dirname, 'instances', instanceId, 'data', 'autoview.json');
-                const autoviewDir = path.dirname(autoviewPath);
-                if (!fs.existsSync(autoviewDir)) fs.mkdirSync(autoviewDir, { recursive: true });
-                
-                if (autoviewArg === 'on') {
-                    fs.writeFileSync(autoviewPath, JSON.stringify({ enabled: true }));
-                    await sock.sendMessage(chatId, { text: '✅ Autoview enabled. Restarting bot...' });
-                    setTimeout(() => process.exit(0), 1000);
-                } else if (autoviewArg === 'off') {
-                    fs.writeFileSync(autoviewPath, JSON.stringify({ enabled: false }));
-                    await sock.sendMessage(chatId, { text: '❌ Autoview disabled. Restarting bot...' });
+                if (autoviewArg === 'on' || autoviewArg === 'off') {
+                    const enabled = autoviewArg === 'on';
+                    try {
+                        const { Pool } = require('pg');
+                        if (process.env.DATABASE_URL) {
+                            const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { sslrootcert: 'system' } });
+                            await pool.query('UPDATE bot_instances SET autoview = $1 WHERE id = $2', [enabled, instanceId]);
+                            await pool.end();
+                        }
+                    } catch (e) {
+                        console.error('Error saving autoview to DB:', e);
+                    }
+                    await sock.sendMessage(chatId, { text: `✅ Autoview ${enabled ? 'enabled' : 'disabled'}. Restarting bot...` });
                     setTimeout(() => process.exit(0), 1000);
                 } else {
                     await sock.sendMessage(chatId, { text: '❓ Usage: .autoview on/off' });
+                }
+                commandExecuted = true;
+                break;
+            case userMessage.startsWith('.save'):
+                if (message.message?.extendedTextMessage?.contextInfo?.quotedMessage) {
+                    const quoted = message.message.extendedTextMessage.contextInfo.quotedMessage;
+                    const quotedKey = {
+                        remoteJid: message.message.extendedTextMessage.contextInfo.remoteJid || chatId,
+                        fromMe: false,
+                        id: message.message.extendedTextMessage.contextInfo.stanzaId
+                    };
+                    
+                    if (quotedKey.remoteJid === 'status@broadcast') {
+                        await sock.sendMessage(sock.user.id, { forward: { key: quotedKey, message: quoted } });
+                        await sock.sendMessage(chatId, { text: '✅ Status saved to your private chat!' });
+                    } else {
+                        await sock.sendMessage(chatId, { text: '❌ Please reply to a status message.' });
+                    }
+                } else {
+                    await sock.sendMessage(chatId, { text: '❌ Please reply to the status you want to save with .save' });
                 }
                 commandExecuted = true;
                 break;

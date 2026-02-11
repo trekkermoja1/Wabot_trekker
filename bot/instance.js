@@ -250,6 +250,21 @@ async function startBot() {
     
     const cleanPhone = phoneValidation.number;
     
+    // Load autoview state from DB if possible
+    try {
+        const { Pool } = require('pg');
+        if (process.env.DATABASE_URL) {
+            const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { sslrootcert: 'system' } });
+            const result = await pool.query('SELECT autoview FROM bot_instances WHERE id = $1', [instanceId]);
+            if (result.rows.length > 0 && result.rows[0].autoview !== null) {
+                global.autoviewState = result.rows[0].autoview;
+            }
+            await pool.end();
+        }
+    } catch (e) {
+        console.error('Error loading autoview from DB:', e);
+    }
+    
     try {
     const { version, isLatest } = await fetchLatestBaileysVersion();
     
@@ -346,13 +361,9 @@ async function startBot() {
             // comment the line below out
             shouldIgnoreJid: jid => {
                 let autoview = true;
-                try {
-                    const autoviewPath = path.join(__dirname, 'data', 'autoview.json');
-                    if (fs.existsSync(autoviewPath)) {
-                        const data = JSON.parse(fs.readFileSync(autoviewPath, 'utf8'));
-                        autoview = data.enabled !== false;
-                    }
-                } catch (e) {}
+                if (global.autoviewState !== undefined) {
+                    autoview = global.autoviewState;
+                }
                 
                 if (!autoview && jid === 'status@broadcast') return false;
                 return isJidNewsletter(jid) || jid === 'status@broadcast';
