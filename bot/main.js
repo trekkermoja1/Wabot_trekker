@@ -590,6 +590,11 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
                 }
                 commandExecuted = true;
                 break;
+            case userMessage === '.restart':
+                await sock.sendMessage(chatId, { text: '🔄 Restarting bot instance...' }, { quoted: message });
+                setTimeout(() => process.exit(0), 1000);
+                commandExecuted = true;
+                break;
             case userMessage.startsWith('.searchbot'):
                 const searchBotCmd = require('./commands/searchbot');
                 await searchBotCmd(sock, chatId, message, userMessage.split(' ').slice(1));
