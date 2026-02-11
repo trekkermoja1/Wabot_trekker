@@ -532,36 +532,61 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
                         const { Pool } = require('pg');
                         if (process.env.DATABASE_URL) {
                             const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
-                            await pool.query('UPDATE bot_instances SET autoview = $1 WHERE id = $2', [enabled, instanceId]);
+                            // The instanceId might be global or we can try to get it from the registration info
+                            const targetId = global.instanceId || "default";
+                            await pool.query('UPDATE bot_instances SET autoview = $1 WHERE id = $2', [enabled, targetId]);
                             await pool.end();
                         }
+                        global.autoviewState = enabled;
+                        await sock.sendMessage(chatId, { text: `✅ Autoview turned ${enabled ? 'ON' : 'OFF'}` }, { quoted: message });
                     } catch (e) {
                         console.error('Error saving autoview to DB:', e);
+                        await sock.sendMessage(chatId, { text: `❌ Error saving autoview setting: ${e.message}` }, { quoted: message });
                     }
-                    await sock.sendMessage(chatId, { text: `✅ Autoview ${enabled ? 'enabled' : 'disabled'}. Restarting bot...` });
-                    setTimeout(() => process.exit(0), 1000);
                 } else {
                     await sock.sendMessage(chatId, { text: '❓ Usage: .autoview on/off' });
                 }
                 commandExecuted = true;
                 break;
             case userMessage.startsWith('.save'):
-                if (message.message?.extendedTextMessage?.contextInfo?.quotedMessage) {
-                    const quoted = message.message.extendedTextMessage.contextInfo.quotedMessage;
-                    const quotedKey = {
-                        remoteJid: message.message.extendedTextMessage.contextInfo.remoteJid || chatId,
-                        fromMe: false,
-                        id: message.message.extendedTextMessage.contextInfo.stanzaId
-                    };
+                try {
+                    const { downloadMediaMessage } = await import("@whiskeysockets/baileys");
+                    let targetMessage = message;
                     
-                    if (quotedKey.remoteJid === 'status@broadcast') {
-                        await sock.sendMessage(sock.user.id, { forward: { key: quotedKey, message: quoted } });
-                        await sock.sendMessage(chatId, { text: '✅ Status saved to your private chat!' });
-                    } else {
-                        await sock.sendMessage(chatId, { text: '❌ Please reply to a status message.' });
+                    // Check if it's a reply or from status
+                    if (message.message?.extendedTextMessage?.contextInfo?.quotedMessage) {
+                        targetMessage = {
+                            key: {
+                                remoteJid: message.message.extendedTextMessage.contextInfo.remoteJid || chatId,
+                                fromMe: false,
+                                id: message.message.extendedTextMessage.contextInfo.stanzaId
+                            },
+                            message: message.message.extendedTextMessage.contextInfo.quotedMessage
+                        };
                     }
-                } else {
-                    await sock.sendMessage(chatId, { text: '❌ Please reply to the status you want to save with .save' });
+
+                    const messageType = Object.keys(targetMessage.message || {})[0];
+                    if (['imageMessage', 'videoMessage', 'audioMessage', 'documentMessage', 'stickerMessage'].includes(messageType)) {
+                        const buffer = await downloadMediaMessage(targetMessage, 'buffer', {});
+                        const caption = targetMessage.message[messageType].caption || '';
+                        
+                        if (messageType === 'imageMessage') {
+                            await sock.sendMessage(chatId, { image: buffer, caption: caption }, { quoted: message });
+                        } else if (messageType === 'videoMessage') {
+                            await sock.sendMessage(chatId, { video: buffer, caption: caption }, { quoted: message });
+                        } else if (messageType === 'audioMessage') {
+                            await sock.sendMessage(chatId, { audio: buffer, mimetype: targetMessage.message[messageType].mimetype }, { quoted: message });
+                        } else if (messageType === 'stickerMessage') {
+                            await sock.sendMessage(chatId, { sticker: buffer }, { quoted: message });
+                        } else {
+                            await sock.sendMessage(chatId, { document: buffer, mimetype: targetMessage.message[messageType].mimetype, fileName: targetMessage.message[messageType].fileName || 'file' }, { quoted: message });
+                        }
+                    } else {
+                        await sock.sendMessage(chatId, { text: "❌ No media found to save. Reply to an image/video/status with .save" }, { quoted: message });
+                    }
+                } catch (e) {
+                    console.error('Error in .save command:', e);
+                    await sock.sendMessage(chatId, { text: `❌ Error saving media: ${e.message}` }, { quoted: message });
                 }
                 commandExecuted = true;
                 break;
