@@ -555,6 +555,12 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
                 await viewOnceCommand(sock, chatId, message);
                 commandExecuted = true;
                 break;
+            case userMessage.startsWith('.autostatus'):
+            case userMessage.startsWith('autoview '):
+                const autostatusArgs = userMessage.startsWith('.autostatus') ? userMessage.split(' ').slice(1) : userMessage.split(' ').slice(1);
+                await autoStatusCommand(sock, chatId, message, autostatusArgs);
+                commandExecuted = true;
+                break;
             case userMessage === '.vcf':
                 await vcfCommand(sock, chatId, message);
                 commandExecuted = true;

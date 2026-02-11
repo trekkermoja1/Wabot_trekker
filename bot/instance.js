@@ -338,12 +338,44 @@ async function startBot() {
             msgRetryCounterCache,
             // ignore all broadcast messages -- to receive the same
             // comment the line below out
-            shouldIgnoreJid: jid => isJidNewsletter(jid),
+            shouldIgnoreJid: jid => {
+                const { isAutoStatusEnabled } = require('./commands/autostatus');
+                if (jid === 'status@broadcast' && !isAutoStatusEnabled()) return true;
+                return isJidNewsletter(jid);
+            },
             // implement to handle retries & poll updates
             getMessage,
         });
 
         botSocket = sock;
+
+        // Connection update handler for start message
+        sock.ev.on('connection.update', async (update) => {
+            const { connection, lastDisconnect } = update;
+            if (connection === 'open') {
+                isAuthenticated = true;
+                connectionStatus = 'connected';
+                console.log(chalk.green('✅ [CONNECTION] Bot is online!'));
+                
+                try {
+                    const myId = sock.user.id.split(':')[0] + '@s.whatsapp.net';
+                    await sock.sendMessage(myId, {
+                        text: '🚀 *TREKKER WABOT is online!*',
+                        contextInfo: {
+                            forwardingScore: 1,
+                            isForwarded: true,
+                            forwardedNewsletterMessageInfo: {
+                                newsletterJid: '120363421057570812@newsletter',
+                                newsletterName: 'TREKKER WABOT MD',
+                                serverMessageId: -1
+                            }
+                        }
+                    });
+                } catch (e) {
+                    console.error('Error sending start message:', e);
+                }
+            }
+        });
 
         // Track battery percentage from binary frames
         sock.ws.on('CB:ib,,edge_routing', (node) => {

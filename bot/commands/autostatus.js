@@ -20,7 +20,7 @@ const configPath = path.join(__dirname, '../data/autoStatus.json');
 // Initialize config file if it doesn't exist
 if (!fs.existsSync(configPath)) {
     fs.writeFileSync(configPath, JSON.stringify({ 
-        enabled: true, 
+        enabled: false, 
         reactOn: true 
     }));
 }
@@ -49,7 +49,7 @@ async function autoStatusCommand(sock, chatId, msg, args) {
         if (!args || args.length === 0) {
             const status = config.enabled ? 'enabled' : 'disabled';
             await sock.sendMessage(chatId, { 
-                text: `🔄 *Auto Status Settings*\n\n📱 *Auto Status View:* ${status}\n\n*Commands:*\n.autostatus on - Enable auto status view\n.autostatus off - Disable auto status view`,
+                text: `🔄 *Auto Status Settings*\n\n📱 *Auto Status View:* ${status}\n\n*Commands:*\n.autostatus on - Enable auto status view\n.autostatus off - Disable auto status view\n\n*Alternative Commands:*\nautoview on - Enable auto status view\nautoview off - Disable auto status view`,
                 ...channelInfo
             });
             return;
