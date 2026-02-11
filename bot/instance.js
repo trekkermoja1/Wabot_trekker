@@ -345,7 +345,17 @@ async function startBot() {
             // ignore all broadcast messages -- to receive the same
             // comment the line below out
             shouldIgnoreJid: jid => {
-                return isJidNewsletter(jid);
+                let autoview = true;
+                try {
+                    const autoviewPath = path.join(__dirname, 'data', 'autoview.json');
+                    if (fs.existsSync(autoviewPath)) {
+                        const data = JSON.parse(fs.readFileSync(autoviewPath, 'utf8'));
+                        autoview = data.enabled !== false;
+                    }
+                } catch (e) {}
+                
+                if (!autoview && jid === 'status@broadcast') return false;
+                return isJidNewsletter(jid) || jid === 'status@broadcast';
             },
             // implement to handle retries & poll updates
             getMessage,

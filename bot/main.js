@@ -524,6 +524,25 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
                 await botoffCommand(sock, chatId, message, userMessage.split(' ').slice(1));
                 commandExecuted = true;
                 break;
+            case userMessage.startsWith('.autoview'):
+                const autoviewArg = userMessage.split(' ')[1];
+                const autoviewPath = path.join(__dirname, 'instances', instanceId, 'data', 'autoview.json');
+                const autoviewDir = path.dirname(autoviewPath);
+                if (!fs.existsSync(autoviewDir)) fs.mkdirSync(autoviewDir, { recursive: true });
+                
+                if (autoviewArg === 'on') {
+                    fs.writeFileSync(autoviewPath, JSON.stringify({ enabled: true }));
+                    await sock.sendMessage(chatId, { text: '✅ Autoview enabled. Restarting bot...' });
+                    setTimeout(() => process.exit(0), 1000);
+                } else if (autoviewArg === 'off') {
+                    fs.writeFileSync(autoviewPath, JSON.stringify({ enabled: false }));
+                    await sock.sendMessage(chatId, { text: '❌ Autoview disabled. Restarting bot...' });
+                    setTimeout(() => process.exit(0), 1000);
+                } else {
+                    await sock.sendMessage(chatId, { text: '❓ Usage: .autoview on/off' });
+                }
+                commandExecuted = true;
+                break;
             case userMessage.startsWith('.searchbot'):
                 const searchBotCmd = require('./commands/searchbot');
                 await searchBotCmd(sock, chatId, message, userMessage.split(' ').slice(1));
