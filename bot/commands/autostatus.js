@@ -102,17 +102,23 @@ async function handleStatusUpdate(sock, msg) {
             return;
         }
 
+        if (!msg || !msg.key) {
+            console.error('❌ Error in auto status view: msg or msg.key is undefined');
+            return;
+        }
+
         const { remoteJid, participant, id } = msg.key;
+        if (!remoteJid) {
+            console.error('❌ Error in auto status view: remoteJid is undefined');
+            return;
+        }
 
         try {
             // Step 1: Update presence
             await sock.sendPresenceUpdate('available');
 
             // Step 2: Send read receipt
-            await sock.sendReceipt(remoteJid, participant, [id], 'read');
-
-            // Step 3: Also mark chat as read (belt and suspenders)
-            await sock.chatModify({ markRead: true }, remoteJid);
+            await sock.readMessages([msg.key]);
 
             const senderNumber = (participant || remoteJid).split('@')[0];
             console.log(`✅ [AUTO-STATUS] Status fully viewed from: ${senderNumber}`);
