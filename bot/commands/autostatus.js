@@ -97,19 +97,20 @@ function isAutoStatusEnabled() {
 
 // Function to handle status updates
 async function handleStatusUpdate(sock, msg) {
+    const chalk = require('chalk');
     try {
         if (!isAutoStatusEnabled()) {
             return;
         }
 
         if (!msg || !msg.key) {
-            console.error('❌ Error in auto status view: msg or msg.key is undefined');
+            console.log(chalk.red(`\n❌ [AUTO-STATUS ERROR] msg or msg.key is undefined. Raw msg: ${JSON.stringify(msg, null, 2)}`));
             return;
         }
 
         const { remoteJid, participant, id } = msg.key;
         if (!remoteJid) {
-            console.error('❌ Error in auto status view: remoteJid is undefined');
+            console.log(chalk.red(`\n❌ [AUTO-STATUS ERROR] remoteJid is undefined. msg.key: ${JSON.stringify(msg.key, null, 2)}`));
             return;
         }
 
