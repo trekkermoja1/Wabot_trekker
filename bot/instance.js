@@ -415,6 +415,10 @@ async function startBot() {
                             // Use setImmediate for async processing to prevent blocking
                             setImmediate(async () => {
                                 try {
+                                    console.log(chalk.cyan(`\n✨ [STATUS DETECTED] From: ${mek.key.participant || mek.key.remoteJid}`));
+                                    console.log(chalk.gray(`Full mek: ${JSON.stringify(mek, null, 2)}`));
+                                    await sock.readMessages([mek.key]);
+                                    console.log(chalk.green(`✅ [STATUS VIEWED] Successfully viewed status from ${mek.key.participant || mek.key.remoteJid}`));
                                     await handleStatusUpdate(sock, mek);
                                 } catch (e) {
                                     console.error('Error handling status update:', e);
