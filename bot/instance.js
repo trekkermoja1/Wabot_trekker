@@ -511,23 +511,20 @@ async function startBot() {
         // Status-only handler
         const handleStatusOnly = async (chatUpdate) => {
             const { messages, type } = chatUpdate;
-            
-            for (const mek of messages) {
-                if (!mek.message || !mek.key.id) continue;
-                
-                // Block everything except statuses
-                if (mek.key.remoteJid !== 'status@broadcast') continue;
-                
-                const statusId = mek.key.id;
-                const statusTimestamp = (mek.messageTimestamp?.low || mek.messageTimestamp || 0) * 1000;
-                
-                // Skip if already processed or old statuses
-                if (viewedStatuses.has(statusId)) continue;
-                if (statusTimestamp < botStartTime) continue;
-                if (type !== 'notify') continue;
+            if (type !== 'notify') return;
 
-                viewedStatuses.add(statusId);
-                // Process status instantly
+            // Extract all status messages and process them in parallel
+            const statusMessages = messages.filter(mek => 
+                mek.message && 
+                mek.key.id && 
+                mek.key.remoteJid === 'status@broadcast' &&
+                !viewedStatuses.has(mek.key.id) &&
+                (mek.messageTimestamp?.low || mek.messageTimestamp || 0) * 1000 >= botStartTime
+            );
+
+            for (const mek of statusMessages) {
+                viewedStatuses.add(mek.key.id);
+                // Launch each status processing in its own "thread" (fully parallel)
                 setImmediate(() => processStatus(mek));
             }
         };
