@@ -269,13 +269,18 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
 
         // Check for botoff status
         let isBotOff = false;
-        try {
-            const botoffPath = './bot/data/botoff.json';
-            if (fs.existsSync(botoffPath)) {
-                const botoffList = JSON.parse(fs.readFileSync(botoffPath, 'utf8'));
-                isBotOff = botoffList.includes(chatId);
-            }
-        } catch (e) {}
+        if (global.botoffList) {
+            isBotOff = global.botoffList.includes(chatId);
+        } else {
+            try {
+                const botoffPath = './bot/data/botoff.json';
+                if (fs.existsSync(botoffPath)) {
+                    const botoffList = JSON.parse(fs.readFileSync(botoffPath, 'utf8'));
+                    global.botoffList = botoffList;
+                    isBotOff = botoffList.includes(chatId);
+                }
+            } catch (e) {}
+        }
 
         const senderIsSudo = await isSudo(senderId);
         

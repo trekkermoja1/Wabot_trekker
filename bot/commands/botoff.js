@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const settings = require('../settings');
+const { Pool } = require('pg');
 
 async function botoffCommand(sock, chatId, message, args) {
     const senderId = message.key.participant || message.key.remoteJid;
@@ -18,29 +19,39 @@ async function botoffCommand(sock, chatId, message, args) {
         return await sock.sendMessage(chatId, { text: '❌ This command is for groups only.' }, { quoted: message });
     }
 
-    const dataPath = path.join(__dirname, '../data/botoff.json');
-    let botoffList = [];
-    
-    if (fs.existsSync(dataPath)) {
-        try {
-            botoffList = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
-        } catch (e) {
-            botoffList = [];
-        }
-    }
-
+    // Get current botoff list from global or DB
+    let botoffList = global.botoffList || [];
     const isOff = botoffList.includes(chatId);
     
+    const updateDB = async (newList) => {
+        global.botoffList = newList;
+        if (process.env.DATABASE_URL) {
+            try {
+                const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+                const instanceId = global.instanceId || 'default';
+                await pool.query('UPDATE bot_instances SET botoff_list = $1 WHERE id = $2', [JSON.stringify(newList), instanceId]);
+                await pool.end();
+            } catch (e) {
+                console.error('Error updating botoff_list in DB:', e);
+            }
+        }
+        // Fallback to local file
+        try {
+            const dataPath = path.join(__dirname, '../data/botoff.json');
+            fs.writeFileSync(dataPath, JSON.stringify(newList, null, 2));
+        } catch (e) {}
+    };
+
     if (args[0] === 'on') {
         if (!isOff) {
             botoffList.push(chatId);
-            fs.writeFileSync(dataPath, JSON.stringify(botoffList, null, 2));
+            await updateDB(botoffList);
         }
         await sock.sendMessage(chatId, { text: '✅ Bot is now OFF in this group for everyone except owner.' }, { quoted: message });
     } else if (args[0] === 'off') {
         if (isOff) {
             botoffList = botoffList.filter(id => id !== chatId);
-            fs.writeFileSync(dataPath, JSON.stringify(botoffList, null, 2));
+            await updateDB(botoffList);
         }
         await sock.sendMessage(chatId, { text: '✅ Bot is now ON in this group.' }, { quoted: message });
     } else {

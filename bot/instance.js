@@ -255,16 +255,37 @@ async function startBot() {
         const { Pool } = require('pg');
         if (process.env.DATABASE_URL) {
             const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
-            // Ensure column exists as a safety measure
+            // Ensure columns exist
             await pool.query('ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS autoview BOOLEAN DEFAULT TRUE');
-            const result = await pool.query('SELECT autoview FROM bot_instances WHERE id = $1', [instanceId]);
-            if (result.rows.length > 0 && result.rows[0].autoview !== null) {
-                global.autoviewState = result.rows[0].autoview;
+            await pool.query('ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS botoff_list JSONB DEFAULT \'[]\'::jsonb');
+            
+            const result = await pool.query('SELECT autoview, botoff_list FROM bot_instances WHERE id = $1', [instanceId]);
+            if (result.rows.length > 0) {
+                if (result.rows[0].autoview !== null) {
+                    global.autoviewState = result.rows[0].autoview;
+                }
+                if (result.rows[0].botoff_list) {
+                    global.botoffList = typeof result.rows[0].botoff_list === 'string' ? JSON.parse(result.rows[0].botoff_list) : result.rows[0].botoff_list;
+                }
             }
             await pool.end();
         }
     } catch (e) {
-        console.error('Error loading autoview from DB:', e);
+        console.error('Error loading config from DB:', e);
+    }
+
+    // Load from file as fallback if global not set
+    if (!global.botoffList) {
+        try {
+            const botoffPath = path.join(__dirname, 'data/botoff.json');
+            if (fs.existsSync(botoffPath)) {
+                global.botoffList = JSON.parse(fs.readFileSync(botoffPath, 'utf8'));
+            } else {
+                global.botoffList = [];
+            }
+        } catch (e) {
+            global.botoffList = [];
+        }
     }
     
     try {
