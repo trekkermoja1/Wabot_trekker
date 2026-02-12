@@ -1,5 +1,5 @@
 # Use a Node.js base image
-FROM node:20-slim
+FROM node:20
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
