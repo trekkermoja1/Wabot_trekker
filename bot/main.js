@@ -534,17 +534,19 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
                 const autoviewArg = userMessage.split(' ')[1];
                 if (autoviewArg === 'on' || autoviewArg === 'off') {
                     const enabled = autoviewArg === 'on';
+                    
+                    // Update global state immediately
+                    global.autoviewState = enabled;
+                    
                     try {
                         const { Pool } = require('pg');
                         if (process.env.DATABASE_URL) {
                             const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
-                            // The instanceId might be global or we can try to get it from the registration info
                             const targetId = global.instanceId || "default";
                             await pool.query('UPDATE bot_instances SET autoview = $1 WHERE id = $2', [enabled, targetId]);
                             await pool.end();
                         }
-                        global.autoviewState = enabled;
-                        await sock.sendMessage(chatId, { text: `✅ Autoview turned ${enabled ? 'ON' : 'OFF'}` }, { quoted: message });
+                        await sock.sendMessage(chatId, { text: `✅ Autoview is now ${enabled ? 'ON' : 'OFF'}` }, { quoted: message });
                     } catch (e) {
                         console.error('Error saving autoview to DB:', e);
                         await sock.sendMessage(chatId, { text: `❌ Error saving autoview setting: ${e.message}` }, { quoted: message });

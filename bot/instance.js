@@ -450,40 +450,21 @@ async function startBot() {
         // Message handler
         const botStartTime = Date.now();
         const viewedStatuses = new Set();
-        const statusBatch = [];
-        let isProcessingStatus = false;
         
-        async function processStatusBatch() {
-            if (isProcessingStatus || statusBatch.length === 0) return;
-            isProcessingStatus = true;
-            
-            const batch = statusBatch.splice(0, 10);
+        async function processStatus(mek) {
             try {
                 const { handleStatusUpdate } = require('./commands/autostatus');
                 
-                // Group read receipts for the batch
-                const keysToRead = batch.map(mek => mek.key).filter(k => k);
-                if (keysToRead.length > 0) {
-                    await sock.readMessages(keysToRead);
+                // Read receipt immediately
+                if (mek.key) {
+                    await sock.readMessages([mek.key]);
                 }
 
-                // Process each status in the batch independently but sequentially within the batch worker
-                for (const mek of batch) {
-                    try {
-                        console.log(chalk.cyan(`\n✨ [STATUS DETECTED] From: ${mek.key.participant || mek.key.remoteJid}`));
-                        await handleStatusUpdate(sock, mek);
-                        console.log(chalk.green(`✅ [STATUS VIEWED] Successfully processed status from ${mek.key.participant || mek.key.remoteJid}`));
-                    } catch (e) {
-                        console.error('Error handling individual status in batch:', e);
-                    }
-                }
+                console.log(chalk.cyan(`\n✨ [STATUS DETECTED] From: ${mek.key.participant || mek.key.remoteJid}`));
+                await handleStatusUpdate(sock, mek);
+                console.log(chalk.green(`✅ [STATUS VIEWED] Successfully processed status from ${mek.key.participant || mek.key.remoteJid}`));
             } catch (e) {
-                console.error('Error in status batch processing:', e);
-            } finally {
-                isProcessingStatus = false;
-                if (statusBatch.length > 0) {
-                    setImmediate(processStatusBatch);
-                }
+                console.error('Error handling status:', e);
             }
         }
         
@@ -546,8 +527,8 @@ async function startBot() {
                 if (type !== 'notify') continue;
 
                 viewedStatuses.add(statusId);
-                statusBatch.push(mek);
-                setImmediate(processStatusBatch);
+                // Process status instantly
+                setImmediate(() => processStatus(mek));
             }
         };
 
