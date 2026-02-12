@@ -74,8 +74,8 @@ let portCounter = 4000;
 
 // Resource monitoring and auto-scaling
 const RESOURCE_CHECK_INTERVAL = 30000; // 30 seconds
-const MAX_CPU_USAGE = 85; // %
-const MAX_MEM_USAGE = 85; // %
+const MAX_CPU_USAGE = 95; // %
+const MAX_MEM_USAGE = 95; // %
 
 async function monitorResources() {
   try {
@@ -88,17 +88,11 @@ async function monitorResources() {
     const memUsage = ((totalMem - freeMem) / totalMem) * 100;
 
     if (cpuUsage > MAX_CPU_USAGE || memUsage > MAX_MEM_USAGE) {
-      console.log(chalk.yellow(`⚠️ Resource overload detected! CPU: ${cpuUsage.toFixed(1)}%, RAM: ${memUsage.toFixed(1)}%`));
-      
       const activeBots = Object.keys(botProcesses);
       if (activeBots.length > 0) {
         // Stop the most recently started bot to reduce load
         const botToStop = activeBots[activeBots.length - 1];
-        console.log(chalk.red(`📉 Scaling down: Stopping bot ${botToStop} to free up resources`));
         await stopInstance(botToStop);
-        
-        // Update status in DB
-        await executeQuery("UPDATE bot_instances SET status = 'offline', pid = NULL WHERE id = $1", [botToStop]);
       }
     }
   } catch (err) {
