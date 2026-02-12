@@ -127,6 +127,7 @@ async function helpCommand(sock, chatId, message) {
 ║ ➤ .fetchstatus @user
 ║ ➤ .getpp @user
 ║ ➤ .bizprofile @user
+║ ➤ .userstatus @user
 ║ ➤ .setmystatus <text>
 ║ ➤ .setmyname <name>
 ║ ➤ .removemypic
