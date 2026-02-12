@@ -91,6 +91,9 @@ async function autoStatusCommand(sock, chatId, msg, args) {
 // Function to check if auto status is enabled
 function isAutoStatusEnabled() {
     try {
+        if (global.autoviewState !== undefined) {
+            return global.autoviewState;
+        }
         const config = JSON.parse(fs.readFileSync(configPath));
         return config.enabled;
     } catch (error) {

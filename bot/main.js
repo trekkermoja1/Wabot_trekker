@@ -538,6 +538,19 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
                     // Update global state immediately
                     global.autoviewState = enabled;
                     
+                    // Update config file
+                    try {
+                        const configPath = './bot/data/autoStatus.json';
+                        let config = { enabled: false, reactOn: true };
+                        if (fs.existsSync(configPath)) {
+                            config = JSON.parse(fs.readFileSync(configPath));
+                        }
+                        config.enabled = enabled;
+                        fs.writeFileSync(configPath, JSON.stringify(config));
+                    } catch (e) {
+                        console.error('Error updating status config file:', e);
+                    }
+                    
                     try {
                         const { Pool } = require('pg');
                         if (process.env.DATABASE_URL) {
