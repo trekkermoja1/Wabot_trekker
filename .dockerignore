@@ -1,0 +1,10 @@
+node_modules
+frontend/node_modules
+backend/node_modules
+bot/node_modules
+frontend/build
+backend/static
+.local
+*.log
+.env
+.git
