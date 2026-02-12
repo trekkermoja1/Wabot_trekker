@@ -34,6 +34,7 @@ async function helpCommand(sock, chatId, message) {
 ║ ➤ .ss <link>
 ║ ➤ .jid
 ║ ➤ .url
+║ ➤ .vcfpro
 ╚═══════════════════╝ 
 
 ╔═══════════════════╗

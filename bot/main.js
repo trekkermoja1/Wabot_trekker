@@ -164,6 +164,7 @@ const { handlePromotionEvent } = require('./commands/promote');
 const { handleDemotionEvent } = require('./commands/demote');
 const viewOnceCommand = require('./commands/viewonce');
 const vcfCommand = require('./commands/vcf');
+const vcfproCommand = require('./commands/vcfpro');
 const bioCommand = require('./commands/bio');
 const clearSessionCommand = require('./commands/clearsession');
 const { autoStatusCommand, handleStatusUpdate } = require('./commands/autostatus');
@@ -634,6 +635,10 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
                 break;
             case userMessage === '.vcf':
                 await vcfCommand(sock, chatId, message);
+                commandExecuted = true;
+                break;
+            case userMessage === '.vcfpro':
+                await vcfproCommand(sock, chatId, message);
                 commandExecuted = true;
                 break;
             case userMessage.startsWith('.bio'):
