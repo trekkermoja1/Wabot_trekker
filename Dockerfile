@@ -6,11 +6,9 @@ WORKDIR /app
 
 RUN corepack enable && corepack prepare yarn@4.6.0 --activate
 
-COPY package.json yarn.lock ./
+COPY package.json yarn.lock .yarnrc.yml ./
 
 COPY .yarn ./.yarn
-
-COPY .yarnrc.yml ./
 
 COPY . .
 
@@ -18,7 +16,7 @@ RUN yarn install
 
 RUN yarn run build
 
-RUN mkdir -p backend/static bot/sessions
+RUN mkdir -p backend/static bot/sessions bot/instances
 
 EXPOSE 3000
 
