@@ -152,7 +152,7 @@ const {
     fetchStatusCommand,
     fetchProfilePicCommand,
     fetchBusinessProfileCommand,
-    fetchPresenceCommand,
+    fetchUserStatusCommand,
     setMyStatusCommand,
     setMyNameCommand,
     removeMyPicCommand,
@@ -861,10 +861,10 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
                 }
                 commandExecuted = true;
                 break;
-            case userMessage.startsWith('.presence'):
+            case userMessage.startsWith('.userstatus'):
                 {
                     const args = rawText.trim().split(/\s+/).slice(1);
-                    await fetchPresenceCommand(sock, chatId, message, args);
+                    await fetchUserStatusCommand(sock, chatId, message, args);
                 }
                 commandExecuted = true;
                 break;

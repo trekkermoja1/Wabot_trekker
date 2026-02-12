@@ -162,7 +162,7 @@ async function fetchBusinessProfileCommand(sock, chatId, message, args) {
     }
 }
 
-async function fetchPresenceCommand(sock, chatId, message, args) {
+async function fetchUserStatusCommand(sock, chatId, message, args) {
     const senderId = message.key.participant || message.key.remoteJid;
     if (!await checkOwnerPermission(sock, chatId, message, senderId)) return;
 
@@ -170,7 +170,7 @@ async function fetchPresenceCommand(sock, chatId, message, args) {
     
     if (!targetJid) {
         return await sock.sendMessage(chatId, { 
-            text: '❌ Usage: .presence @user or .presence <number>', 
+            text: '❌ Usage: .userstatus @user or .userstatus <number>', 
             ...channelInfo 
         }, { quoted: message });
     }
@@ -289,7 +289,7 @@ module.exports = {
     fetchStatusCommand,
     fetchProfilePicCommand,
     fetchBusinessProfileCommand,
-    fetchPresenceCommand,
+    fetchUserStatusCommand,
     setMyStatusCommand,
     setMyNameCommand,
     removeMyPicCommand,
