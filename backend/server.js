@@ -65,10 +65,48 @@ if (!fs.existsSync(botInstancesDir)) {
     fs.mkdirSync(botInstancesDir, { recursive: true });
 }
 
+const os = require('os');
+
 // Bot instances tracking
 const botProcesses = {};
 const instancePorts = {};
 let portCounter = 4000;
+
+// Resource monitoring and auto-scaling
+const RESOURCE_CHECK_INTERVAL = 30000; // 30 seconds
+const MAX_CPU_USAGE = 85; // %
+const MAX_MEM_USAGE = 85; // %
+
+async function monitorResources() {
+  try {
+    const cpus = os.cpus();
+    const load = os.loadavg()[0]; // 1-minute load average
+    const cpuUsage = (load / cpus.length) * 100;
+    
+    const totalMem = os.totalmem();
+    const freeMem = os.freemem();
+    const memUsage = ((totalMem - freeMem) / totalMem) * 100;
+
+    if (cpuUsage > MAX_CPU_USAGE || memUsage > MAX_MEM_USAGE) {
+      console.log(chalk.yellow(`⚠️ Resource overload detected! CPU: ${cpuUsage.toFixed(1)}%, RAM: ${memUsage.toFixed(1)}%`));
+      
+      const activeBots = Object.keys(botProcesses);
+      if (activeBots.length > 0) {
+        // Stop the most recently started bot to reduce load
+        const botToStop = activeBots[activeBots.length - 1];
+        console.log(chalk.red(`📉 Scaling down: Stopping bot ${botToStop} to free up resources`));
+        await stopInstance(botToStop);
+        
+        // Update status in DB
+        await executeQuery("UPDATE bot_instances SET status = 'offline', pid = NULL WHERE id = $1", [botToStop]);
+      }
+    }
+  } catch (err) {
+    console.error('Error in resource monitor:', err.message);
+  }
+}
+
+setInterval(monitorResources, RESOURCE_CHECK_INTERVAL);
 
 // Database configuration
 let dbPool;
