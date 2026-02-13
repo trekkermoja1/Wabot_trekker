@@ -383,8 +383,8 @@ async function startBot() {
             syncFullHistory: false,
             shouldSyncHistoryMessage: () => false,
             markOnlineOnConnect: true,
-            emitOwnEvents: false,
-            fireInitQueries: false,
+            emitOwnEvents: true, // Changed from false to true
+            fireInitQueries: true, // Changed from false to true
             generateHighQualityLinkPreview: false,
             retryRequestDelayMs: 250,
             msgRetryCounterCache,
@@ -499,12 +499,18 @@ async function startBot() {
                 // Block statuses
                 if (mek.key.remoteJid === 'status@broadcast') continue;
                 
-                // Deduplication based on message ID
-                if (messageDeduplicationCache.has(mek.key.id)) {
-                    console.log(chalk.yellow(`🛡️ [DEDUPE] Skipping duplicate message: ${mek.key.id}`));
+                // LOG: Incoming vs Outgoing
+                const isIncoming = !mek.key.fromMe;
+                const direction = isIncoming ? '📥 INCOMING' : '📤 OUTGOING';
+                const sender = mek.key.participant || mek.key.remoteJid;
+                console.log(chalk.cyan(`\n${direction} | ID: ${mek.key.id} | From: ${sender} | Type: ${Object.keys(mek.message)[0]}`));
+                
+                // Deduplication based on message ID (allow outgoing messages to bypass for logging)
+                if (isIncoming && messageDeduplicationCache.has(mek.key.id)) {
+                    console.log(chalk.yellow(`🛡️ [DEDUPE] Skipping duplicate incoming message: ${mek.key.id}`));
                     continue;
                 }
-                messageDeduplicationCache.set(mek.key.id, true);
+                if (isIncoming) messageDeduplicationCache.set(mek.key.id, true);
                 
                 messageBatch.push(mek);
             }
@@ -513,9 +519,10 @@ async function startBot() {
                 setImmediate(async () => {
                     await Promise.all(messageBatch.map(async (mek) => {
                         try {
-                            const sender = mek.key.participant || mek.key.remoteJid;
-                            console.log(chalk.magenta(`📥 [MESSAGE RECEIVED] ID: ${mek.key.id} | From: ${sender} | Type: ${Object.keys(mek.message)[0]}`));
-                            await main.handleMessages(sock, { messages: [mek], type }, messageStore);
+                            // Only handle incoming messages for command processing
+                            if (!mek.key.fromMe) {
+                                await main.handleMessages(sock, { messages: [mek], type }, messageStore);
+                            }
                         } catch (e) {
                             console.error('Error processing message in parallel:', e);
                         }
