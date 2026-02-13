@@ -22,6 +22,7 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
 const DATABASE_URL = process.env.DATABASE_URL;
 const SERVERNAME = (process.env.SERVER_NAME || process.env.SERVERNAME || 'server1').toLowerCase();
 const PORT = process.env.PORT || 5000;
+const BOT_LIMIT = parseInt(process.env.BOTCOUNT) || 7;
 
 // Dynamic URL detection
 app.use((req, res, next) => {
@@ -160,7 +161,7 @@ async function initDatabase() {
         id ${useSQLite ? 'INTEGER PRIMARY KEY' : 'SERIAL PRIMARY KEY'},
         server_name VARCHAR(50) UNIQUE NOT NULL,
         bot_count INTEGER DEFAULT 0,
-        max_limit INTEGER DEFAULT 20,
+        max_limit INTEGER DEFAULT ${BOT_LIMIT},
         last_heartbeat TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         status VARCHAR(20) DEFAULT 'active'
       )`,
@@ -189,16 +190,16 @@ async function initDatabase() {
 
     if (useSQLite) {
       await executeQuery(`
-        INSERT OR REPLACE INTO server_manager (server_name, last_heartbeat)
-        VALUES ($1, CURRENT_TIMESTAMP)
-      `, [SERVERNAME]);
+        INSERT OR REPLACE INTO server_manager (server_name, max_limit, last_heartbeat)
+        VALUES ($1, $2, CURRENT_TIMESTAMP)
+      `, [SERVERNAME, BOT_LIMIT]);
     } else {
       await executeQuery(`
-        INSERT INTO server_manager (server_name, last_heartbeat)
-        VALUES ($1, NOW())
+        INSERT INTO server_manager (server_name, max_limit, last_heartbeat)
+        VALUES ($1, $2, NOW())
         ON CONFLICT (server_name) DO UPDATE 
-        SET last_heartbeat = NOW()
-      `, [SERVERNAME]);
+        SET max_limit = EXCLUDED.max_limit, last_heartbeat = NOW()
+      `, [SERVERNAME, BOT_LIMIT]);
     }
 
     await executeQuery(`CREATE INDEX IF NOT EXISTS idx_bot_instances_server_name ON bot_instances(server_name)`);
