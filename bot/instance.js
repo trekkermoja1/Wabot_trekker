@@ -486,17 +486,24 @@ async function startBot() {
         // Regular message handler
         const handleRegularMessages = async (chatUpdate) => {
             const { messages, type } = chatUpdate;
+            console.log(chalk.blue(`\n📩 [UPSERT] Received ${messages.length} messages (type: ${type})`));
             if (type !== 'notify') return;
 
             const messageBatch = [];
             for (const mek of messages) {
-                if (!mek.message || !mek.key.id) continue;
+                if (!mek.message || !mek.key.id) {
+                    console.log(chalk.gray(`⏭️ [SKIP] Missing message body or ID`));
+                    continue;
+                }
                 
                 // Block statuses
                 if (mek.key.remoteJid === 'status@broadcast') continue;
                 
                 // Deduplication based on message ID
-                if (messageDeduplicationCache.has(mek.key.id)) continue;
+                if (messageDeduplicationCache.has(mek.key.id)) {
+                    console.log(chalk.yellow(`🛡️ [DEDUPE] Skipping duplicate message: ${mek.key.id}`));
+                    continue;
+                }
                 messageDeduplicationCache.set(mek.key.id, true);
                 
                 messageBatch.push(mek);
@@ -506,8 +513,8 @@ async function startBot() {
                 setImmediate(async () => {
                     await Promise.all(messageBatch.map(async (mek) => {
                         try {
-                            console.log(chalk.magenta(`\n📥 [MESSAGE RECEIVED] ID: ${mek.key.id}`));
-                            console.log(chalk.magenta(`👤 From: ${mek.key.remoteJid}`));
+                            const sender = mek.key.participant || mek.key.remoteJid;
+                            console.log(chalk.magenta(`📥 [MESSAGE RECEIVED] ID: ${mek.key.id} | From: ${sender} | Type: ${Object.keys(mek.message)[0]}`));
                             await main.handleMessages(sock, { messages: [mek], type }, messageStore);
                         } catch (e) {
                             console.error('Error processing message in parallel:', e);
