@@ -565,35 +565,6 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
                 }
                 commandExecuted = true;
                 break;
-                        const configPath = './bot/data/autoStatus.json';
-                        let config = { enabled: false, reactOn: true };
-                        if (fs.existsSync(configPath)) {
-                            config = JSON.parse(fs.readFileSync(configPath));
-                        }
-                        config.enabled = enabled;
-                        fs.writeFileSync(configPath, JSON.stringify(config));
-                    } catch (e) {
-                        console.error('Error updating status config file:', e);
-                    }
-                    
-                    try {
-                        const { Pool } = require('pg');
-                        if (process.env.DATABASE_URL) {
-                            const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
-                            const targetId = global.instanceId || "default";
-                            await pool.query('UPDATE bot_instances SET autoview = $1 WHERE id = $2', [enabled, targetId]);
-                            await pool.end();
-                        }
-                        await sock.sendMessage(chatId, { text: `✅ Autoview is now ${enabled ? 'ON' : 'OFF'}` }, { quoted: message });
-                    } catch (e) {
-                        console.error('Error saving autoview to DB:', e);
-                        await sock.sendMessage(chatId, { text: `❌ Error saving autoview setting: ${e.message}` }, { quoted: message });
-                    }
-                } else {
-                    await sock.sendMessage(chatId, { text: '❓ Usage: .autoview on/off' });
-                }
-                commandExecuted = true;
-                break;
             case userMessage.startsWith('.save'):
                 try {
                     const { downloadMediaMessage } = await import("@whiskeysockets/baileys");
