@@ -258,14 +258,18 @@ async function startBot() {
             // Ensure columns exist
             await pool.query('ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS autoview BOOLEAN DEFAULT TRUE');
             await pool.query('ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS botoff_list JSONB DEFAULT \'[]\'::jsonb');
+            await pool.query('ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS ignore_status BOOLEAN DEFAULT TRUE');
             
-            const result = await pool.query('SELECT autoview, botoff_list FROM bot_instances WHERE id = $1', [instanceId]);
+            const result = await pool.query('SELECT autoview, botoff_list, ignore_status FROM bot_instances WHERE id = $1', [instanceId]);
             if (result.rows.length > 0) {
                 if (result.rows[0].autoview !== null) {
                     global.autoviewState = result.rows[0].autoview;
                 }
                 if (result.rows[0].botoff_list) {
                     global.botoffList = typeof result.rows[0].botoff_list === 'string' ? JSON.parse(result.rows[0].botoff_list) : result.rows[0].botoff_list;
+                }
+                if (result.rows[0].ignore_status !== null) {
+                    global.ignoreStatusState = result.rows[0].ignore_status;
                 }
             }
             await pool.end();
@@ -384,12 +388,19 @@ async function startBot() {
             // comment the line below out
             shouldIgnoreJid: jid => {
                 let autoview = true;
+                let ignoreStatus = true;
                 if (global.autoviewState !== undefined) {
                     autoview = global.autoviewState;
                 }
+                if (global.ignoreStatusState !== undefined) {
+                    ignoreStatus = global.ignoreStatusState;
+                }
                 
-                if (!autoview && jid === 'status@broadcast') return false;
-                return isJidNewsletter(jid) || jid === 'status@broadcast';
+                if (jid === 'status@broadcast') {
+                    if (!autoview) return false;
+                    return ignoreStatus;
+                }
+                return isJidNewsletter(jid);
             },
             // implement to handle retries & poll updates
             getMessage,
