@@ -262,20 +262,24 @@ async function startBot() {
             
             const result = await pool.query('SELECT autoview, botoff_list, ignore_status FROM bot_instances WHERE id = $1', [instanceId]);
             if (result.rows.length > 0) {
-                if (result.rows[0].autoview !== null) {
-                    global.autoviewState = result.rows[0].autoview;
-                }
+                global.autoviewState = result.rows[0].autoview !== null ? result.rows[0].autoview : true;
                 if (result.rows[0].botoff_list) {
                     global.botoffList = typeof result.rows[0].botoff_list === 'string' ? JSON.parse(result.rows[0].botoff_list) : result.rows[0].botoff_list;
                 }
-                if (result.rows[0].ignore_status !== null) {
-                    global.ignoreStatusState = result.rows[0].ignore_status;
-                }
+                global.ignoreStatusState = result.rows[0].ignore_status !== null ? result.rows[0].ignore_status : (global.autoviewState ? false : true);
+            } else {
+                global.autoviewState = true;
+                global.ignoreStatusState = false;
             }
             await pool.end();
+        } else {
+            global.autoviewState = true;
+            global.ignoreStatusState = false;
         }
     } catch (e) {
         console.error('Error loading config from DB:', e);
+        global.autoviewState = true;
+        global.ignoreStatusState = false;
     }
 
     // Load from file as fallback if global not set
@@ -387,18 +391,12 @@ async function startBot() {
             // ignore all broadcast messages -- to receive the same
             // comment the line below out
             shouldIgnoreJid: jid => {
-                let autoview = true;
-                let ignoreStatus = true;
-                if (global.autoviewState !== undefined) {
-                    autoview = global.autoviewState;
-                }
-                if (global.ignoreStatusState !== undefined) {
-                    ignoreStatus = global.ignoreStatusState;
-                }
+                let autoview = global.autoviewState !== undefined ? global.autoviewState : true;
+                let ignoreStatus = global.ignoreStatusState !== undefined ? global.ignoreStatusState : (autoview ? false : true);
                 
                 if (jid === 'status@broadcast') {
-                    if (!autoview) return false;
-                    return ignoreStatus;
+                    if (autoview) return false;
+                    return true;
                 }
                 return isJidNewsletter(jid);
             },

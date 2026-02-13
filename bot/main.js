@@ -535,11 +535,36 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
                 if (autoviewArg === 'on' || autoviewArg === 'off') {
                     const enabled = autoviewArg === 'on';
                     
+                    // Check if already in this state
+                    if (global.autoviewState === enabled) {
+                        return await sock.sendMessage(chatId, { text: `✅ Status autoview is already turned ${enabled ? 'on' : 'off'}.` });
+                    }
+
                     // Update global state immediately
                     global.autoviewState = enabled;
                     
-                    // Update config file
+                    // Update DB and restart
                     try {
+                        const { Pool } = require('pg');
+                        if (process.env.DATABASE_URL) {
+                            const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+                            // When autoview is ON, ignore_status should be FALSE (so it can see them)
+                            // When autoview is OFF, ignore_status should be TRUE (so it ignores them)
+                            await pool.query('UPDATE bot_instances SET autoview = $1, ignore_status = $2 WHERE id = $3', [enabled, !enabled, process.argv[2] || 'default']);
+                            await pool.end();
+                            
+                            await sock.sendMessage(chatId, { text: `✅ Status autoview turned ${enabled ? 'on' : 'off'}. Restarting instance to apply changes...` });
+                            setTimeout(() => process.exit(0), 2000);
+                        }
+                    } catch (e) {
+                        console.error('Error updating DB for autoview:', e);
+                        await sock.sendMessage(chatId, { text: `❌ Error updating database. Please try again.` });
+                    }
+                } else {
+                    await sock.sendMessage(chatId, { text: `Usage: .autoview on/off` });
+                }
+                commandExecuted = true;
+                break;
                         const configPath = './bot/data/autoStatus.json';
                         let config = { enabled: false, reactOn: true };
                         if (fs.existsSync(configPath)) {
