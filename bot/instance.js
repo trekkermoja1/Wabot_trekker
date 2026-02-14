@@ -271,10 +271,12 @@ async function startBot() {
                 global.autoviewState = true;
                 global.ignoreStatusState = false;
             }
+            console.log(chalk.cyan(`👀 [CONFIG] Status Autoview: ${global.autoviewState ? 'ENABLED' : 'DISABLED'}`));
             await pool.end();
         } else {
             global.autoviewState = true;
             global.ignoreStatusState = false;
+            console.log(chalk.cyan(`👀 [CONFIG] Status Autoview: ENABLED (Default)`));
         }
     } catch (e) {
         console.error('Error loading config from DB:', e);
