@@ -81,5 +81,9 @@
   "engines": {
     "node": ">=20.0.0"
   },
-  "packageManager": "yarn@4.6.0"
+  "packageManager": "yarn@4.6.0",
+  "ampt": {
+    "org": "nmakuthi9843685",
+    "app": "trekker"
+  }
 }
