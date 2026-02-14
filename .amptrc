@@ -1,0 +1,11 @@
+cat > .amptrc << 'EOF'
+{
+  "build": {
+    "skipProductionDependencies": true
+  }
+}
+EOF
+
+git add .amptrc
+git commit -m "Skip production dependency install"
+git push
