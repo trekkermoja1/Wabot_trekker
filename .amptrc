@@ -1,11 +1,19 @@
-cat > .amptrc << 'EOF'
 {
-  "build": {
-    "skipProductionDependencies": true
+  "userId": "usr01kh9bzxb193wb3rpkk4t5rdxy",
+  "meta": {
+    "created_at": 1771048621,
+    "updated_at": 1771065358,
+    "last_update_check": 1771048615
+  },
+  "sessions": {
+    "usr01kh9bzxb193wb3rpkk4t5rdxy": {
+      "userId": "usr01kh9bzxb193wb3rpkk4t5rdxy",
+      "username": "nmakuthi9843685",
+      "name": "Nicholas Makuthi",
+      "email": "nmakuthi9@gmail.com",
+      "refreshToken": "Mq3ow1xTlRRwRF2di9ibU4HNrFpMtXq4_D9qbrUqdRFec",
+      "accessToken": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImVMcDRUYXVRV3M5VnBKYXlRbldPVCJ9.eyJpc3MiOiJodHRwczovL2FtcHQudXMuYXV0aDAuY29tLyIsInN1YiI6Imdvb2dsZS1vYXV0aDJ8MTAyNjA0MjY4Njk5Njk5MDc4ODc2IiwiYXVkIjpbImh0dHBzOi8vYXBpLmFtcHQuZGV2IiwiaHR0cHM6Ly9hbXB0LnVzLmF1dGgwLmNvbS91c2VyaW5mbyJdLCJpYXQiOjE3NzEwNjUzNTgsImV4cCI6MTc3MTA2NjI1OCwic2NvcGUiOiJvcGVuaWQgcHJvZmlsZSBlbWFpbCBvZmZsaW5lX2FjY2VzcyIsImF6cCI6InNWVlJ6U1dNNk9Wd1dCbm5PdjNpZFBxa1p2Z3FLTEdtIn0.LSKO04iiOBgayKRNlSIfjAU-sN_4o0QLscw6SWot4VTXjf9Hqv1xGYOOM_39anQ5cBp42mLcN3JoEe20nc-KM7bNLBPpSSUS6tNlzp3f04zgRZJ2iS-L6rkyT0EQYr81vCU4mbSGEHjO81kvEBulW4K5c0mVLPiZIBhxhAezoO8BqqKlJY44Ol-F2POWiV47lUmjRVDNKMYDmICOnpwYtsAC54EC44olg8IEJzyCbwzoduAac0hTVxGPDXCqh3oDOWFFo102XhrtQZNiRFVK1kV4XzRdyZqDO8qBsl4ucGwgusf-R0Ix3i3btyYAeAFdxZgtcDBwrfDZBW44prD9rw",
+      "expiresAt": 1771066258352
+    }
   }
 }
-EOF
-
-git add .amptrc
-git commit -m "Skip production dependency install"
-git push

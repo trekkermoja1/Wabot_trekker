@@ -486,13 +486,10 @@ async function startBot() {
         // Regular message handler
         const handleRegularMessages = async (chatUpdate) => {
             const { messages, type } = chatUpdate;
-            console.log(chalk.blue(`\n📩 [UPSERT] Received ${messages.length} messages (type: ${type})`));
             if (type !== 'notify') return;
 
-            const messageBatch = [];
             for (const mek of messages) {
                 if (!mek.message || !mek.key.id) {
-                    console.log(chalk.gray(`⏭️ [SKIP] Missing message body or ID`));
                     continue;
                 }
                 
@@ -501,33 +498,22 @@ async function startBot() {
                 
                 // LOG: Incoming vs Outgoing
                 const isIncoming = !mek.key.fromMe;
-                const direction = isIncoming ? '📥 INCOMING' : '📤 OUTGOING';
                 const sender = mek.key.participant || mek.key.remoteJid;
-                console.log(chalk.cyan(`\n${direction} | ID: ${mek.key.id} | From: ${sender} | Type: ${Object.keys(mek.message)[0]}`));
                 
-                // Deduplication based on message ID (allow outgoing messages to bypass for logging)
+                // Deduplication based on message ID
                 if (isIncoming && messageDeduplicationCache.has(mek.key.id)) {
-                    console.log(chalk.yellow(`🛡️ [DEDUPE] Skipping duplicate incoming message: ${mek.key.id}`));
                     continue;
                 }
                 if (isIncoming) messageDeduplicationCache.set(mek.key.id, true);
                 
-                messageBatch.push(mek);
-            }
-
-            if (messageBatch.length > 0) {
-                setImmediate(async () => {
-                    await Promise.all(messageBatch.map(async (mek) => {
-                        try {
-                            // Only handle incoming messages for command processing
-                            if (!mek.key.fromMe) {
-                                await main.handleMessages(sock, { messages: [mek], type }, messageStore);
-                            }
-                        } catch (e) {
-                            console.error('Error processing message in parallel:', e);
-                        }
-                    }));
-                });
+                // Process message immediately and await it to ensure it completes
+                try {
+                    if (isIncoming) {
+                        await main.handleMessages(sock, { messages: [mek], type }, messageStore);
+                    }
+                } catch (e) {
+                    console.error('Error processing message:', e);
+                }
             }
         };
 
@@ -536,7 +522,7 @@ async function startBot() {
             const { messages, type } = chatUpdate;
             if (type !== 'notify') return;
 
-            // Extract all status messages and process them in parallel
+            // Extract all status messages and process them
             const statusMessages = messages.filter(mek => 
                 mek.message && 
                 mek.key.id && 
@@ -547,8 +533,8 @@ async function startBot() {
 
             for (const mek of statusMessages) {
                 viewedStatuses.add(mek.key.id);
-                // Launch each status processing in its own "thread" (fully parallel)
-                setImmediate(() => processStatus(mek));
+                // Status processing can stay backgrounded as it's secondary
+                processStatus(mek).catch(e => console.error('Error processing status:', e));
             }
         };
 

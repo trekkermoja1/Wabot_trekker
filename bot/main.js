@@ -231,22 +231,13 @@ const { handleFunCommand } = require('./commands/fun/reactions');
 async function handleMessages(sock, messageUpdate, printLog, isRestricted = false) {
     let chatId;
     try {
-        const { messages, type } = messageUpdate;
-        // Prioritize notify events, handle append in background if needed
-        if (type === 'append') {
-            // Background process for appends to keep queue clear
-            setImmediate(async () => {
-                try {
-                    for (const msg of messages) {
-                        await storeMessage(msg.key.remoteJid, msg);
-                    }
-                } catch (e) {}
-            });
-            return;
-        }
-        if (type !== 'notify') return;
+    const { messages, type } = messageUpdate;
+    // Prioritize notify events, ignore append and other types
+    if (type !== 'notify') {
+        return;
+    }
 
-        const message = messages[0];
+    const message = messages[0];
         if (!message) return;
         chatId = message.key.remoteJid;
         
