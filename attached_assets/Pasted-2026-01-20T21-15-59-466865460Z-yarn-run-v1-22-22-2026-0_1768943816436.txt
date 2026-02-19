@@ -1,0 +1,33 @@
+2026-01-20T21:15:59.466865460Z yarn run v1.22.22
+
+2026-01-20T21:15:59.535254064Z $ node backend/server.js
+2026-01-20T21:15:59.855857832Z ???? TREKKER MAX WABOT Backend Starting on server1...
+2026-01-20T21:15:59.921573860Z ??? Database initialization failed: 
+2026-01-20T21:15:59.924240147Z AggregateError [ECONNREFUSED]: 
+2026-01-20T21:15:59.924252920Z     at /layers/google.nodejs.yarn/yarn_modules/node_modules/pg-pool/index.js:45:11
+2026-01-20T21:15:59.924256102Z     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+2026-01-20T21:15:59.924259136Z     at async initDatabase (/workspace/backend/server.js:39:20)
+2026-01-20T21:15:59.924262235Z     at async start (/workspace/backend/server.js:770:3) {
+2026-01-20T21:15:59.924265136Z   code: 'ECONNREFUSED',
+2026-01-20T21:15:59.924267895Z   [errors]: [
+2026-01-20T21:15:59.924271075Z     Error: connect ECONNREFUSED ::1:5432
+2026-01-20T21:15:59.924274057Z         at createConnectionError (node:net:1652:14)
+2026-01-20T21:15:59.924276829Z         at afterConnectMultiple (node:net:1682:16) {
+2026-01-20T21:15:59.924279908Z       errno: -111,
+2026-01-20T21:15:59.924282761Z       code: 'ECONNREFUSED',
+2026-01-20T21:15:59.924285440Z       syscall: 'connect',
+2026-01-20T21:15:59.924288141Z       address: '::1',
+2026-01-20T21:15:59.924290874Z       port: 5432
+2026-01-20T21:15:59.924293632Z     },
+2026-01-20T21:15:59.924296583Z     Error: connect ECONNREFUSED 127.0.0.1:5432
+2026-01-20T21:15:59.924299422Z         at createConnectionError (node:net:1652:14)
+2026-01-20T21:15:59.924302164Z         at afterConnectMultiple (node:net:1682:16) {
+2026-01-20T21:15:59.924305253Z       errno: -111,
+2026-01-20T21:15:59.924307969Z       code: 'ECONNREFUSED',
+2026-01-20T21:15:59.924310609Z       syscall: 'connect',
+2026-01-20T21:15:59.924313300Z       address: '127.0.0.1',
+2026-01-20T21:15:59.924316079Z       port: 5432
+2026-01-20T21:15:59.924318879Z     }
+2026-01-20T21:15:59.924321629Z   ]
+2026-01-20T21:15:59.924324512Z }
+2026-01-20T21:15:59.930270645Z Done in 0.47s.

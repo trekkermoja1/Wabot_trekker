@@ -1,0 +1,52 @@
+name: Delete Git History
+
+on:
+  workflow_dispatch:  # Manual trigger only for safety
+
+permissions:
+  contents: write  # Required for pushing changes
+
+jobs:
+  delete-history:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+      
+      - name: Delete all history and commits
+        run: |
+          # Create orphan branch with current files
+          git checkout --orphan temp_branch
+          
+          # Add all current files
+          git add -A
+          
+          # Commit the current state
+          git commit -m "©️🔥TREKKER_WABOT"
+          
+          # Delete the old main/master branch
+          git branch -D main || git branch -D master || true
+          
+          # Rename temp branch to main
+          git branch -m main
+      
+      - name: Force push to remote
+        run: |
+          git push -f origin main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Summary
+        run: |
+          echo "✅ History deleted successfully!"
+          echo "📁 All current files preserved"
+          echo "🔄 Repository now has only 1 commit"

@@ -1,0 +1,95 @@
+modules = ["nodejs-20", "web"]
+[agent]
+expertMode = true
+
+[nix]
+channel = "stable-25_05"
+packages = ["cacert", "ffmpeg", "libxcrypt", "postgresql", "git"]
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "yarn install && yarn start"
+waitForPort = 5000
+
+[[ports]]
+localPort = 4001
+externalPort = 3001
+
+[[ports]]
+localPort = 4002
+externalPort = 3003
+
+[[ports]]
+localPort = 4003
+externalPort = 8080
+
+[[ports]]
+localPort = 4004
+externalPort = 8000
+
+[[ports]]
+localPort = 4005
+externalPort = 3002
+
+[[ports]]
+localPort = 4006
+externalPort = 3000
+
+[[ports]]
+localPort = 4007
+externalPort = 4200
+
+[[ports]]
+localPort = 4008
+externalPort = 5000
+
+[[ports]]
+localPort = 4009
+externalPort = 5173
+
+[[ports]]
+localPort = 4010
+externalPort = 6000
+
+[[ports]]
+localPort = 4011
+externalPort = 6800
+
+[[ports]]
+localPort = 4012
+externalPort = 8008
+
+[[ports]]
+localPort = 4015
+externalPort = 8081
+
+[[ports]]
+localPort = 4016
+externalPort = 8099
+
+[[ports]]
+localPort = 4022
+externalPort = 9000
+
+[[ports]]
+localPort = 5000
+externalPort = 80
