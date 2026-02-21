@@ -281,6 +281,13 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
             } catch (e) {}
         }
 
+        // Clean up commands: remove space after dot prefix (". help" -> ".help")
+        let cleanedText = rawText.trim();
+        if (cleanedText.startsWith('.')) {
+            cleanedText = '.' + cleanedText.slice(1).trimStart();
+        }
+        const userMessage = cleanedText.toLowerCase();
+
         const senderIsSudo = await isSudo(senderId);
         
         // Ensure isOwnerOrSudo is defined
@@ -298,17 +305,17 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
 
         // Check if bot is OFF in this group, ignore everyone except owner
         if (isGroup && isBotOff && !senderIsOwnerOrSudo) {
-            console.log(chalk.yellow(`🚫 [BOT OFF] Ignoring message from ${senderId} in group ${chatId}`));
+            // console.log(chalk.yellow(`🚫 [BOT OFF] Ignoring message from ${senderId} in group ${chatId}`));
             return;
         }
 
         // rawText already declared above
         // Log the message being processed for commands
-        console.log(chalk.blue(`🔍 [CMD CHECK] UserMessage: "${userMessage}", Restricted: ${isRestricted}`));
+        // console.log(chalk.blue(`🔍 [CMD CHECK] UserMessage: "${userMessage}", Restricted: ${isRestricted}`));
 
         // restricted bot logic
         if (isRestricted) {
-            console.log(chalk.yellow(`⚠️ [RESTRICTED] Bot is not activated for ${chatId}. isRestricted value: ${isRestricted}`));
+            // console.log(chalk.yellow(`⚠️ [RESTRICTED] Bot is not activated for ${chatId}. isRestricted value: ${isRestricted}`));
             // Only allow .pair or pair (with or without prefix)
             if (userMessage.startsWith('.pair') || userMessage.startsWith('pair')) {
                 const pairCommand = require('./commands/pair');
@@ -1425,10 +1432,6 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
             }, {
                 quoted: message
             });
-        }
-
-        if (userMessage.startsWith('.')) {
-            // After command is processed successfully
         }
     } catch (error) {
         console.error('❌ Error in message handler:', error.message);

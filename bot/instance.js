@@ -709,12 +709,12 @@ async function startBot() {
                 const { messages, type } = m;
                 if (type === 'notify') {
                     for (const msg of messages) {
-                        console.log(chalk.cyan(`📥 [MSG RECEIVED] From: ${msg.key.remoteJid}, Me: ${msg.key.fromMe}`));
+                        // console.log(chalk.cyan(`📥 [MSG RECEIVED] From: ${msg.key.remoteJid}, Me: ${msg.key.fromMe}`));
                         
                         try {
                             // bot/instance.js: state.creds is used here
                             const isRestricted = !(state.creds && state.creds.registered);
-                            console.log(chalk.cyan(`🔍 [DEBUG] Calling handleMessages for ${msg.key.remoteJid}. isRestricted: ${isRestricted}`));
+                            // console.log(chalk.cyan(`🔍 [DEBUG] Calling handleMessages for ${msg.key.remoteJid}. isRestricted: ${isRestricted}`));
                             await main.handleMessages(sock, { messages: [msg], type }, isRestricted);
                         } catch (e) {
                             console.error('Error in handleMessages:', e);
