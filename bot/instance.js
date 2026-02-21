@@ -73,9 +73,12 @@ function startPairingTimeout() {
     if (pairingTimeout) clearTimeout(pairingTimeout);
     pairingTimeout = setTimeout(async () => {
         if (connectionStatus === 'pairing' && !isAuthenticated) {
-            console.log(chalk.yellow(`⏳ Pairing timeout reached for ${instanceId}. Closing...`));
-            await updateDbStatus('offline');
-            process.exit(1);
+            console.log(chalk.yellow(`⏳ Pairing timeout reached for ${instanceId}. Clearing pairing code and returning to dormant state.`));
+            try { await updateDbStatus('offline'); } catch (e) {}
+            pairingCode = null;
+            pairingCodeGeneratedAt = null;
+            connectionStatus = 'ready_to_pair';
+            // Do not exit the process; stay dormant and wait for explicit user action.
         }
     }, 5 * 60 * 1000);
 }
@@ -961,9 +964,17 @@ async function startBot() {
         return sock;
     } catch (err) {
         console.error(chalk.red('❌ Error in startBot:'), err);
+        // Mark error and remain dormant. Do NOT auto-restart to avoid restart loops.
         connectionStatus = 'error';
-        await delay(5000);
-        startBot();
+        // Cleanup any partially created socket
+        try {
+            if (botSocket) {
+                try { botSocket.ev.removeAllListeners(); } catch (e) {}
+                try { botSocket.end(); } catch (e) {}
+            }
+        } catch (e) {}
+        botSocket = null;
+        return;
     }
 }
 
