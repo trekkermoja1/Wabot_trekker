@@ -54,14 +54,25 @@ const sessionDir = path.join(instanceDir, 'session');
 const dataDir = path.join(instanceDir, 'data');
 
 // Helper to update DB status
-async function updateDbStatus(status) {
+let lastDbUpdate = 0;
+async function updateDbStatus(status, force = false) {
     if (!process.env.DATABASE_URL) return;
+    
+    // During pairing/initializing, we only update if forced or every 5 mins
+    const now = Date.now();
+    if (!force && (connectionStatus === 'pairing' || connectionStatus === 'initializing' || connectionStatus === 'ready_to_pair')) {
+        if (now - lastDbUpdate < 5 * 60 * 1000) return;
+    }
+    
     const { Pool } = require('pg');
     const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
     try {
         await pool.query('UPDATE bot_instances SET status = $1, updated_at = NOW() WHERE id = $2', [status, instanceId]);
+        lastDbUpdate = now;
     } catch (e) {
-        console.error('Error updating DB status:', e);
+        if (e.code !== 'EMFILE' && !e.message.includes('getaddrinfo')) {
+            console.error('Error updating DB status:', e);
+        }
     } finally {
         await pool.end();
     }
@@ -286,7 +297,10 @@ async function startBot() {
             await pool.end();
         }
     } catch (e) {
-        console.error('Error loading config from DB:', e);
+        // Suppress EMFILE and connection errors during pairing
+        if (e.code !== 'EMFILE' && !e.message.includes('getaddrinfo')) {
+            console.error('Error loading config from DB:', e);
+        }
     }
 
     // Load from file as fallback if global not set
@@ -308,7 +322,7 @@ async function startBot() {
     
     // Session validation check
     const credsFile = path.join(sessionDir, 'creds.json');
-    if (fs.existsSync(credsFile)) {
+    if (fs.existsSync(credsFile) && connectionStatus !== 'ready_to_pair' && connectionStatus !== 'pairing') {
         try {
             const content = fs.readFileSync(credsFile, 'utf-8');
             const parsed = JSON.parse(content, BufferJSON.reviver);
@@ -448,7 +462,7 @@ async function startBot() {
             if (connection === 'open') {
                 isAuthenticated = true;
                 connectionStatus = 'connected';
-                await updateDbStatus('connected');
+                await updateDbStatus('connected', true);
                 console.log(chalk.green('✅ [CONNECTION] Bot is online...autoview disabled!'));
                 
                 try {
