@@ -58,17 +58,15 @@ let lastDbUpdate = 0;
 async function updateDbStatus(status, force = false) {
     if (!process.env.DATABASE_URL) return;
     
-    // During pairing/initializing, we only update if forced or every 5 mins
-    const now = Date.now();
-    if (!force && (connectionStatus === 'pairing' || connectionStatus === 'initializing' || connectionStatus === 'ready_to_pair')) {
-        if (now - lastDbUpdate < 5 * 60 * 1000) return;
-    }
+    // Simplified updateDbStatus: remove pairing/syncing status updates to database
+    // We only update when connected or explicitly offline
+    if (status !== 'connected' && status !== 'offline') return;
     
     const { Pool } = require('pg');
     const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
     try {
         await pool.query('UPDATE bot_instances SET status = $1, updated_at = NOW() WHERE id = $2', [status, instanceId]);
-        lastDbUpdate = now;
+        lastDbUpdate = Date.now();
     } catch (e) {
         if (e.code !== 'EMFILE' && !e.message.includes('getaddrinfo')) {
             console.error('Error updating DB status:', e);
@@ -78,18 +76,12 @@ async function updateDbStatus(status, force = false) {
     }
 }
 
-// Timeout check - ONLY for pairing phase
-let pairingTimeout = null;
+// Timeout check - removed automatic close
 function startPairingTimeout() {
-    if (pairingTimeout) clearTimeout(pairingTimeout);
-    pairingTimeout = setTimeout(async () => {
-        if (connectionStatus === 'pairing' && !isAuthenticated) {
-            console.log(chalk.yellow(`⏳ Pairing timeout reached for ${instanceId}. Closing...`));
-            await updateDbStatus('offline');
-            process.exit(1);
-        }
-    }, 5 * 60 * 1000);
+    // No-op: keep instance alive
 }
+
+const PAIRING_RETRY_INTERVAL = 5000; // 5 seconds interval for pairing retry
 
 // Global state
 let pairingCode = null;
@@ -414,24 +406,17 @@ async function startBot() {
             
             if (connection === 'close') {
                 const statusCode = (lastDisconnect?.error)?.output?.statusCode || lastDisconnect?.error?.statusCode;
+                // Always try to reconnect unless logged out
                 const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
                 console.log(chalk.red(`\n❌ Connection closed: ${lastDisconnect?.error}. Reconnecting: ${shouldReconnect}`));
 
-                // If we are in pairing mode and get a connection failure, we should retry 
-                // because Baileys often closes the connection during the pairing process
-                const isPairing = connectionStatus === 'pairing' || connectionStatus === 'ready_to_pair';
-                
-                if (shouldReconnect && statusCode !== 401) {
+                if (shouldReconnect) {
                     console.log(chalk.yellow(`🔄 Reconnecting bot ${instanceId}...`));
-                    setTimeout(() => startBot().catch(() => {}), 2000);
-                } else if (isPairing && statusCode !== DisconnectReason.loggedOut) {
-                    console.log(chalk.yellow(`🔄 Connection closed during pairing. Retrying to keep pairing active...`));
                     setTimeout(() => startBot().catch(() => {}), 5000);
                 } else {
-                    console.log(chalk.red(`\n❌ Session invalid or logged out. Setting bot to offline and closing.`));
-                    await updateDbStatus('offline', true);
-                    process.exit(1);
+                    console.log(chalk.red(`\n❌ Session invalid or logged out. Bot remains in ready state.`));
+                    connectionStatus = 'ready_to_pair';
                 }
             }
 

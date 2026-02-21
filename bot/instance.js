@@ -53,8 +53,11 @@ const instanceDir = path.join(__dirname, 'instances', instanceId);
 const sessionDir = path.join(instanceDir, 'session');
 const dataDir = path.join(instanceDir, 'data');
 
-// Helper to update DB status
 async function updateDbStatus(status) {
+    // Simplified updateDbStatus: remove pairing/syncing status updates to database
+    // We only update when connected or explicitly offline
+    if (status !== 'connected' && status !== 'offline') return;
+
     if (!process.env.DATABASE_URL) return;
     const { Pool } = require('pg');
     const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
@@ -67,20 +70,9 @@ async function updateDbStatus(status) {
     }
 }
 
-// Timeout check - ONLY for pairing phase
-let pairingTimeout = null;
+// Timeout check - removed automatic close
 function startPairingTimeout() {
-    if (pairingTimeout) clearTimeout(pairingTimeout);
-    pairingTimeout = setTimeout(async () => {
-        if (connectionStatus === 'pairing' && !isAuthenticated) {
-            console.log(chalk.yellow(`⏳ Pairing timeout reached for ${instanceId}. Clearing pairing code and returning to dormant state.`));
-            try { await updateDbStatus('offline'); } catch (e) {}
-            pairingCode = null;
-            pairingCodeGeneratedAt = null;
-            connectionStatus = 'ready_to_pair';
-            // Do not exit the process; stay dormant and wait for explicit user action.
-        }
-    }, 5 * 60 * 1000);
+    // No-op: keep instance alive
 }
 
 // Global state
@@ -512,7 +504,7 @@ async function startBot() {
             emitOwnEvents: true,
             fireInitQueries: true,
             generateHighQualityLinkPreview: true,
-            retryRequestDelayMs: 250,
+            retryRequestDelayMs: 300,
             msgRetryCounterCache,
             // ignore all broadcast messages -- to receive the same
             // comment the line below out
@@ -542,30 +534,26 @@ async function startBot() {
             
             if (connection === 'close') {
                 const statusCode = (lastDisconnect?.error)?.output?.statusCode || lastDisconnect?.error?.statusCode;
-                let shouldReconnect = statusCode !== DisconnectReason.loggedOut && statusCode !== 401;
                 
-                // In pairing mode, always try to reconnect even on auth errors (401)
-                // because we don't have credentials yet
-                if (connectionStatus === 'ready_to_pair' && statusCode === 401) {
+                // In pairing mode, always try to reconnect
+                let shouldReconnect = statusCode !== DisconnectReason.loggedOut && statusCode !== 401;
+                if (connectionStatus === 'ready_to_pair' || connectionStatus === 'pairing') {
                     shouldReconnect = true;
-                    console.log(chalk.blue('🔄 In pairing mode - force retry despite 401 error'));
+                    console.log(chalk.blue('🔄 In pairing mode - force retry to keep pairing active'));
                 }
 
                 console.log(chalk.red(`\n❌ Connection closed: ${lastDisconnect?.error}. statusCode=${statusCode}. Reconnecting: ${shouldReconnect}`));
-
-                if (!shouldReconnect) {
-                    console.log(chalk.red(`\n❌ Session invalid or logged out. Marking instance offline and cleaning up socket.`));
-                    try { await updateDbStatus('offline'); } catch (e) {}
-                    // Avoid killing the whole process on transient or logged-out errors.
+                
+                if (shouldReconnect) {
+                    const delayMs = (connectionStatus === 'ready_to_pair' || connectionStatus === 'pairing') ? 5000 : 2000;
+                    console.log(chalk.yellow(`🔄 Reconnecting bot ${instanceId} in ${delayMs}ms...`));
+                    setTimeout(() => startBot().catch(() => {}), delayMs);
+                    return;
+                } else {
+                    console.log(chalk.red(`\n❌ Session invalid or logged out. Bot is now dormant.`));
+                    connectionStatus = 'ready_to_pair';
                     isAuthenticated = false;
                     pairingCode = null;
-                    
-                    // If we're in pairing mode, stay ready_to_pair for retry. Otherwise mark logged_out.
-                    if (connectionStatus !== 'ready_to_pair') {
-                        connectionStatus = 'logged_out';
-                    } else {
-                        console.log(chalk.yellow('⚠️  Staying in pairing mode - will retry on next trigger'));
-                    }
                     
                     try {
                         if (botSocket) {
@@ -602,6 +590,10 @@ async function startBot() {
                 } catch (e) {
                     console.error('Error sending start message:', e);
                 }
+            } else if (connectionStatus === 'ready_to_pair' || connectionStatus === 'pairing') {
+                // If not open and in pairing mode, keep retrying at 5s interval
+                console.log(chalk.blue('🔄 Connection not yet open, retrying in 5s...'));
+                setTimeout(() => startBot().catch(() => {}), 5000);
             }
         });
 
