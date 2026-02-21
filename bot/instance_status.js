@@ -418,44 +418,12 @@ async function startBot() {
 
                 console.log(chalk.red(`\n❌ Connection closed: ${lastDisconnect?.error}. Reconnecting: ${shouldReconnect}`));
 
-                // If the session appears logged out/unauthorized, but we're within the
-                // pairing window (user just scanned a code), keep attempting reconnects
-                // until either the connection becomes open or the pairing window expires.
-                const now = Date.now();
-                const pairingActive = pairingCodeGeneratedAt && (now - pairingCodeGeneratedAt) < PAIRING_WINDOW_MS;
-
-                if (!shouldReconnect || statusCode === 401) {
-                    if (pairingActive) {
-                        console.log(chalk.yellow(`🔄 Session appears invalid but within pairing window; will keep retrying for up to 5 minutes.`));
-
-                        let attempts = 0;
-                        const maxAttempts = Math.ceil(PAIRING_WINDOW_MS / 3000);
-                        const retryInterval = setInterval(async () => {
-                            attempts++;
-                            try {
-                                console.log(chalk.blue(`🔁 Pairing-reconnect attempt ${attempts}`));
-                                await updateDbStatus('connecting');
-                                // attempt to restart the bot socket
-                                startBot().catch(() => {});
-                            } catch (e) {}
-
-                            if (isAuthenticated || connectionStatus === 'connected') {
-                                clearInterval(retryInterval);
-                                console.log(chalk.green('✅ Reconnected during pairing window'));
-                            }
-
-                            if (attempts >= maxAttempts || (Date.now() - pairingCodeGeneratedAt) >= PAIRING_WINDOW_MS) {
-                                clearInterval(retryInterval);
-                                console.log(chalk.red('❌ Pairing window expired without successful connection. Setting offline and exiting.'));
-                                await updateDbStatus('offline');
-                                process.exit(1);
-                            }
-                        }, 3000);
-                    } else {
-                        console.log(chalk.red(`\n❌ Session invalid or logged out. Setting bot to offline and closing.`));
-                        await updateDbStatus('offline');
-                        process.exit(1);
-                    }
+                if (shouldReconnect && statusCode !== 401) {
+                    startBot().catch(() => {});
+                } else {
+                    console.log(chalk.red(`\n❌ Session invalid or logged out. Setting bot to offline and closing.`));
+                    await updateDbStatus('offline', true);
+                    process.exit(1);
                 }
             }
 
@@ -483,28 +451,6 @@ async function startBot() {
                     console.error('Error sending start message:', e);
                 }
             }
-        });
-
-        // Track battery percentage from binary frames
-        sock.ws.on('CB:ib,,edge_routing', (node) => {
-            try {
-                const routingInfo = node.content?.[0]?.content?.[0];
-                if (routingInfo && routingInfo.tag === 'routing_info') {
-                    const data = routingInfo.content;
-                    if (Buffer.isBuffer(data) && data.length >= 4) {
-                        const percentage = data[data.length - 1]; 
-                        if (percentage <= 100) {
-                            const batteryData = {
-                                percentage: percentage,
-                                charging: data[data.length - 2] === 2,
-                                lastUpdate: Date.now()
-                            };
-                            const batteryPath = path.join(dataDir, 'battery.json');
-                            fs.writeFileSync(batteryPath, JSON.stringify(batteryData));
-                        }
-                    }
-                }
-            } catch (e) {}
         });
 
         // Message handler
