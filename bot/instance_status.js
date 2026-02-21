@@ -418,8 +418,16 @@ async function startBot() {
 
                 console.log(chalk.red(`\n❌ Connection closed: ${lastDisconnect?.error}. Reconnecting: ${shouldReconnect}`));
 
+                // If we are in pairing mode and get a connection failure, we should retry 
+                // because Baileys often closes the connection during the pairing process
+                const isPairing = connectionStatus === 'pairing' || connectionStatus === 'ready_to_pair';
+                
                 if (shouldReconnect && statusCode !== 401) {
-                    startBot().catch(() => {});
+                    console.log(chalk.yellow(`🔄 Reconnecting bot ${instanceId}...`));
+                    setTimeout(() => startBot().catch(() => {}), 2000);
+                } else if (isPairing && statusCode !== DisconnectReason.loggedOut) {
+                    console.log(chalk.yellow(`🔄 Connection closed during pairing. Retrying to keep pairing active...`));
+                    setTimeout(() => startBot().catch(() => {}), 5000);
                 } else {
                     console.log(chalk.red(`\n❌ Session invalid or logged out. Setting bot to offline and closing.`));
                     await updateDbStatus('offline', true);
@@ -430,8 +438,10 @@ async function startBot() {
             if (connection === 'open') {
                 isAuthenticated = true;
                 connectionStatus = 'connected';
+                pairingCode = null;
+                pairingCodeGeneratedAt = null;
                 await updateDbStatus('connected', true);
-                console.log(chalk.green('✅ [CONNECTION] Bot is online...autoview disabled!'));
+                console.log(chalk.green('✅ [CONNECTION] Bot is online and registered!'));
                 
                 try {
                     const myId = sock.user.id.split(':')[0] + '@s.whatsapp.net';
