@@ -89,6 +89,7 @@ let isAuthenticated = false;
 let startTime = Date.now();
 let lastStatusSync = 0;
 const SYNC_INTERVAL = 60 * 60 * 1000; // 1 hour
+const PAIRING_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
 
 // Helper function to remove files/directories
 function removeFile(filePath) {
@@ -400,13 +401,47 @@ async function startBot() {
             if (connection === 'close') {
                 const statusCode = (lastDisconnect?.error)?.output?.statusCode || lastDisconnect?.error?.statusCode;
                 const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-                
+
                 console.log(chalk.red(`\n❌ Connection closed: ${lastDisconnect?.error}. Reconnecting: ${shouldReconnect}`));
-                
+
+                // If the session appears logged out/unauthorized, but we're within the
+                // pairing window (user just scanned a code), keep attempting reconnects
+                // until either the connection becomes open or the pairing window expires.
+                const now = Date.now();
+                const pairingActive = pairingCodeGeneratedAt && (now - pairingCodeGeneratedAt) < PAIRING_WINDOW_MS;
+
                 if (!shouldReconnect || statusCode === 401) {
-                    console.log(chalk.red(`\n❌ Session invalid or logged out. Setting bot to offline and closing.`));
-                    await updateDbStatus('offline');
-                    process.exit(1);
+                    if (pairingActive) {
+                        console.log(chalk.yellow(`🔄 Session appears invalid but within pairing window; will keep retrying for up to 5 minutes.`));
+
+                        let attempts = 0;
+                        const maxAttempts = Math.ceil(PAIRING_WINDOW_MS / 3000);
+                        const retryInterval = setInterval(async () => {
+                            attempts++;
+                            try {
+                                console.log(chalk.blue(`🔁 Pairing-reconnect attempt ${attempts}`));
+                                await updateDbStatus('connecting');
+                                // attempt to restart the bot socket
+                                startBot().catch(() => {});
+                            } catch (e) {}
+
+                            if (isAuthenticated || connectionStatus === 'connected') {
+                                clearInterval(retryInterval);
+                                console.log(chalk.green('✅ Reconnected during pairing window'));
+                            }
+
+                            if (attempts >= maxAttempts || (Date.now() - pairingCodeGeneratedAt) >= PAIRING_WINDOW_MS) {
+                                clearInterval(retryInterval);
+                                console.log(chalk.red('❌ Pairing window expired without successful connection. Setting offline and exiting.'));
+                                await updateDbStatus('offline');
+                                process.exit(1);
+                            }
+                        }, 3000);
+                    } else {
+                        console.log(chalk.red(`\n❌ Session invalid or logged out. Setting bot to offline and closing.`));
+                        await updateDbStatus('offline');
+                        process.exit(1);
+                    }
                 }
             }
 
