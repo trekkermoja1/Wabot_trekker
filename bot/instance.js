@@ -130,13 +130,26 @@ function cleanAndValidatePhone(num) {
     num = num.replace(/[^0-9]/g, '');
     
     // Validate using awesome-phonenumber
-    const phone = pn('+' + num);
-    if (!phone.isValid()) {
+    try {
+        const phone = pn('+' + num);
+        if (!phone.isValid()) {
+            // Fallback: accept numeric input if it looks like an international number
+            if (num.length >= 7) {
+                console.log('⚠️ Phone validation fallback: accepting numeric input as-is');
+                return { valid: true, number: num };
+            }
+            return { valid: false, error: 'Invalid phone number. Please enter your full international number without + or spaces.' };
+        }
+        // Return E.164 format without +
+        return { valid: true, number: phone.getNumber('e164').replace('+', '') };
+    } catch (e) {
+        // If awesome-phonenumber throws, fallback to numeric acceptance for pairing/testing
+        if (num.length >= 7) {
+            console.log('⚠️ Phone validation error, falling back to numeric input');
+            return { valid: true, number: num };
+        }
         return { valid: false, error: 'Invalid phone number. Please enter your full international number without + or spaces.' };
     }
-    
-    // Return E.164 format without +
-    return { valid: true, number: phone.getNumber('e164').replace('+', '') };
 }
 
 console.log(chalk.cyan(`\n🚀 TREKKER MAX WABOT - Instance: ${instanceId}`));
@@ -345,8 +358,8 @@ async function startBot() {
     } else {
         console.log(chalk.yellow(`⚠️ [SESSION] No valid session found for ${instanceId}. Waiting for manual pairing.`));
         connectionStatus = 'ready_to_pair';
-        // Do NOT start the socket or request pairing automatically
-        return;
+        // Allow socket creation even if not registered so API-triggered pairing can be requested.
+        // Do not return here; continue to create the socket so `botSocket.requestPairing` is available.
     }
     
     // getMessage function for handling message retries
@@ -397,14 +410,26 @@ async function startBot() {
             
             if (connection === 'close') {
                 const statusCode = (lastDisconnect?.error)?.output?.statusCode || lastDisconnect?.error?.statusCode;
-                const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-                
+                const shouldReconnect = statusCode !== DisconnectReason.loggedOut && statusCode !== 401;
+
                 console.log(chalk.red(`\n❌ Connection closed: ${lastDisconnect?.error}. Reconnecting: ${shouldReconnect}`));
-                
-                if (!shouldReconnect || statusCode === 401) {
-                    console.log(chalk.red(`\n❌ Session invalid or logged out. Setting bot to offline and closing.`));
-                    await updateDbStatus('offline');
-                    process.exit(1);
+
+                if (!shouldReconnect) {
+                    console.log(chalk.red(`\n❌ Session invalid or logged out. Marking instance offline and cleaning up socket.`));
+                    try { await updateDbStatus('offline'); } catch (e) {}
+                    // Avoid killing the whole process on transient or logged-out errors.
+                    isAuthenticated = false;
+                    pairingCode = null;
+                    connectionStatus = 'logged_out';
+                    try {
+                        if (botSocket) {
+                            botSocket.ev.removeAllListeners('connection.update');
+                            botSocket.ev.removeAllListeners('creds.update');
+                            try { botSocket.end(); } catch (e) {}
+                        }
+                    } catch (e) {}
+                    botSocket = null;
+                    return;
                 }
             }
 
@@ -434,113 +459,119 @@ async function startBot() {
             }
         });
 
-        // Track battery percentage from binary frames
-        sock.ws.on('CB:ib,,edge_routing', (node) => {
-            try {
-                const routingInfo = node.content?.[0]?.content?.[0];
-                if (routingInfo && routingInfo.tag === 'routing_info') {
-                    const data = routingInfo.content;
-                    if (Buffer.isBuffer(data) && data.length >= 4) {
-                        const percentage = data[data.length - 1]; 
-                        if (percentage <= 100) {
-                            const batteryData = {
-                                percentage: percentage,
-                                charging: data[data.length - 2] === 2,
-                                lastUpdate: Date.now()
-                            };
-                            const batteryPath = path.join(dataDir, 'battery.json');
-                            fs.writeFileSync(batteryPath, JSON.stringify(batteryData));
+        const pairingOnly = !(state.creds && state.creds.registered);
+
+        if (!pairingOnly) {
+            // Track battery percentage from binary frames
+            sock.ws.on('CB:ib,,edge_routing', (node) => {
+                try {
+                    const routingInfo = node.content?.[0]?.content?.[0];
+                    if (routingInfo && routingInfo.tag === 'routing_info') {
+                        const data = routingInfo.content;
+                        if (Buffer.isBuffer(data) && data.length >= 4) {
+                            const percentage = data[data.length - 1]; 
+                            if (percentage <= 100) {
+                                const batteryData = {
+                                    percentage: percentage,
+                                    charging: data[data.length - 2] === 2,
+                                    lastUpdate: Date.now()
+                                };
+                                const batteryPath = path.join(dataDir, 'battery.json');
+                                fs.writeFileSync(batteryPath, JSON.stringify(batteryData));
+                            }
                         }
                     }
-                }
-            } catch (e) {}
-        });
+                } catch (e) {}
+            });
 
-        // Message handler
-        const botStartTime = Date.now();
-        const viewedStatuses = new Set();
-        
-        async function processStatus(mek) {
-            try {
-                const { handleStatusUpdate } = require('./commands/autostatus');
-                
-                // Read receipt immediately
-                if (mek.key) {
-                    await sock.readMessages([mek.key]);
-                }
+            // Message handler
+            const botStartTime = Date.now();
+            const viewedStatuses = new Set();
+            
+            async function processStatus(mek) {
+                try {
+                    const { handleStatusUpdate } = require('./commands/autostatus');
+                    
+                    // Read receipt immediately
+                    if (mek.key) {
+                        await sock.readMessages([mek.key]);
+                    }
 
-                console.log(chalk.cyan(`\n✨ [STATUS DETECTED] From: ${mek.key.participant || mek.key.remoteJid}`));
-                await handleStatusUpdate(sock, mek);
-                console.log(chalk.green(`✅ [STATUS VIEWED] Successfully processed status from ${mek.key.participant || mek.key.remoteJid}`));
-            } catch (e) {
-                console.error('Error handling status:', e);
+                    console.log(chalk.cyan(`\n✨ [STATUS DETECTED] From: ${mek.key.participant || mek.key.remoteJid}`));
+                    await handleStatusUpdate(sock, mek);
+                    console.log(chalk.green(`✅ [STATUS VIEWED] Successfully processed status from ${mek.key.participant || mek.key.remoteJid}`));
+                } catch (e) {
+                    console.error('Error handling status:', e);
+                }
             }
+            
+            // Memory cleanup for viewedStatuses
+            setInterval(() => {
+                viewedStatuses.clear();
+                console.log(chalk.gray('🧹 Viewed statuses cache cleared'));
+            }, 6 * 60 * 60 * 1000); // Clear every 6 hours
+
+            // Regular message handler
+            const handleRegularMessages = async (chatUpdate) => {
+                const { messages, type } = chatUpdate;
+                if (type !== 'notify') return;
+
+                const messageBatch = [];
+                for (const mek of messages) {
+                    if (!mek.message || !mek.key.id) continue;
+                    
+                    // Block statuses
+                    if (mek.key.remoteJid === 'status@broadcast') continue;
+                    
+                    // Deduplication based on message ID
+                    if (messageDeduplicationCache.has(mek.key.id)) continue;
+                    messageDeduplicationCache.set(mek.key.id, true);
+                    
+                    messageBatch.push(mek);
+                }
+
+                if (messageBatch.length > 0) {
+                    setImmediate(async () => {
+                        await Promise.all(messageBatch.map(async (mek) => {
+                            try {
+                                console.log(chalk.magenta(`\n📥 [MESSAGE RECEIVED] ID: ${mek.key.id}`));
+                                console.log(chalk.magenta(`👤 From: ${mek.key.remoteJid}`));
+                                await main.handleMessages(sock, { messages: [mek], type }, messageStore);
+                            } catch (e) {
+                                console.error('Error processing message in parallel:', e);
+                            }
+                        }));
+                    });
+                }
+            };
+
+            // Status-only handler
+            const handleStatusOnly = async (chatUpdate) => {
+                const { messages, type } = chatUpdate;
+                if (type !== 'notify') return;
+
+                // Extract all status messages and process them in parallel
+                const statusMessages = messages.filter(mek => 
+                    mek.message && 
+                    mek.key.id && 
+                    mek.key.remoteJid === 'status@broadcast' &&
+                    !viewedStatuses.has(mek.key.id) &&
+                    (mek.messageTimestamp?.low || mek.messageTimestamp || 0) * 1000 >= botStartTime
+                );
+
+                for (const mek of statusMessages) {
+                    viewedStatuses.add(mek.key.id);
+                    // Launch each status processing in its own "thread" (fully parallel)
+                    setImmediate(() => processStatus(mek));
+                }
+            };
+
+            // Register both listeners
+            sock.ev.on('messages.upsert', handleRegularMessages);
+            sock.ev.on('messages.upsert', handleStatusOnly);
+        } else {
+            console.log(chalk.yellow('⚠️ Starting in pairing-only mode: skipping message handlers and heavy listeners'));
         }
-        
-        // Memory cleanup for viewedStatuses
-        setInterval(() => {
-            viewedStatuses.clear();
-            console.log(chalk.gray('🧹 Viewed statuses cache cleared'));
-        }, 6 * 60 * 60 * 1000); // Clear every 6 hours
-
-        // Regular message handler
-        const handleRegularMessages = async (chatUpdate) => {
-            const { messages, type } = chatUpdate;
-            if (type !== 'notify') return;
-
-            const messageBatch = [];
-            for (const mek of messages) {
-                if (!mek.message || !mek.key.id) continue;
-                
-                // Block statuses
-                if (mek.key.remoteJid === 'status@broadcast') continue;
-                
-                // Deduplication based on message ID
-                if (messageDeduplicationCache.has(mek.key.id)) continue;
-                messageDeduplicationCache.set(mek.key.id, true);
-                
-                messageBatch.push(mek);
-            }
-
-            if (messageBatch.length > 0) {
-                setImmediate(async () => {
-                    await Promise.all(messageBatch.map(async (mek) => {
-                        try {
-                            console.log(chalk.magenta(`\n📥 [MESSAGE RECEIVED] ID: ${mek.key.id}`));
-                            console.log(chalk.magenta(`👤 From: ${mek.key.remoteJid}`));
-                            await main.handleMessages(sock, { messages: [mek], type }, messageStore);
-                        } catch (e) {
-                            console.error('Error processing message in parallel:', e);
-                        }
-                    }));
-                });
-            }
-        };
-
-        // Status-only handler
-        const handleStatusOnly = async (chatUpdate) => {
-            const { messages, type } = chatUpdate;
-            if (type !== 'notify') return;
-
-            // Extract all status messages and process them in parallel
-            const statusMessages = messages.filter(mek => 
-                mek.message && 
-                mek.key.id && 
-                mek.key.remoteJid === 'status@broadcast' &&
-                !viewedStatuses.has(mek.key.id) &&
-                (mek.messageTimestamp?.low || mek.messageTimestamp || 0) * 1000 >= botStartTime
-            );
-
-            for (const mek of statusMessages) {
-                viewedStatuses.add(mek.key.id);
-                // Launch each status processing in its own "thread" (fully parallel)
-                setImmediate(() => processStatus(mek));
-            }
-        };
-
-        // Register both listeners
-        sock.ev.on('messages.upsert', handleRegularMessages);
-        sock.ev.on('messages.upsert', handleStatusOnly);
 
         let pairingRetryCount = 0;
         const MAX_PAIRING_RETRIES = 15;
