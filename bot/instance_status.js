@@ -704,8 +704,14 @@ async function startBot() {
                     connectionRetryCount = 0;
                     connectionStatus = 'connected';
                     isAuthenticated = true;
+                    // Clear pairing codes to indicate successful connection
                     pairingCode = null;
                     pairingCodeGeneratedAt = null;
+                    // Clear any active pairing timeout since we're now connected
+                    if (pairingTimeout) {
+                        clearTimeout(pairingTimeout);
+                        pairingTimeout = null;
+                    }
                     startTime = Date.now();
                     
                     console.log(chalk.green(`\n📶 [ONLINE] Instance: ${instanceId} - Client is online`));
@@ -775,23 +781,71 @@ async function startBot() {
                 }
 
                 if (connection === 'close') {
+                    const statusCode = (lastDisconnect?.error)?.output?.statusCode || lastDisconnect?.error?.statusCode;
                     const shouldReconnect = statusCode !== DisconnectReason.loggedOut && statusCode !== 401;
 
-                    if (statusCode === 401 || statusCode === DisconnectReason.loggedOut) {
+                    console.log(chalk.red(`\n❌ Connection closed: ${lastDisconnect?.error}`));
+
+                    const now = Date.now();
+                    // Check if we were previously authenticated OR if we're within the pairing window
+                    const wasPreviouslyConnected = isAuthenticated;
+                    const pairingActive = pairingCodeGeneratedAt && (now - pairingCodeGeneratedAt) < PAIRING_WINDOW_MS;
+
+                    if ((statusCode === 401 || statusCode === DisconnectReason.loggedOut) && !wasPreviouslyConnected && !pairingActive) {
+                        // Fresh logout during non-pairing time: clear session and restart for re-pairing
+                        console.log(chalk.red(`\n❌ Session invalid/logged out and outside pairing window. Clearing and restarting.`));
                         isAuthenticated = false;
                         pairingCode = null;
                         connectionStatus = 'logged_out';
-                        
-                        // Clear session files and re-initialize immediately
                         try {
                             removeFile(sessionDir);
                             fs.mkdirSync(sessionDir, { recursive: true });
                             startBot();
-                        } catch (e) {
-                            // error clearing session
+                        } catch (e) {}
+                    } else if (wasPreviouslyConnected || pairingActive) {
+                        // We were authenticated OR still within pairing window: keep retrying
+                        if (wasPreviouslyConnected) {
+                            console.log(chalk.yellow(`🔄 Connection dropped after successful connection. Retrying...`));
+                        } else {
+                            console.log(chalk.yellow(`🔄 Connection closed during pairing window. Retrying for up to ${PAIRING_WINDOW_MS / 1000}s more...`));
                         }
-                    } else if (shouldReconnect) {
+
                         // Sync status before reconnecting
+                        await syncSessionToDb(true);
+
+                        // Retry loop: keep trying until pairing window expires or connection succeeds
+                        let retryAttempt = 0;
+                        const maxRetries = Math.ceil(PAIRING_WINDOW_MS / 3000);
+                        
+                        const retryInterval = setInterval(async () => {
+                            retryAttempt++;
+                            const elapsedSincePairingCode = pairingCodeGeneratedAt ? (Date.now() - pairingCodeGeneratedAt) : PAIRING_WINDOW_MS;
+                            const timeRemaining = PAIRING_WINDOW_MS - elapsedSincePairingCode;
+
+                            if (isAuthenticated || connectionStatus === 'connected') {
+                                clearInterval(retryInterval);
+                                console.log(chalk.green('✅ Reconnected successfully'));
+                                return;
+                            }
+
+                            if (timeRemaining <= 0) {
+                                clearInterval(retryInterval);
+                                console.log(chalk.red('❌ Pairing/connection window expired. Exiting.'));
+                                await updateDbStatus('offline');
+                                process.exit(1);
+                                return;
+                            }
+
+                            console.log(chalk.blue(`🔁 Reconnect attempt ${retryAttempt} (${Math.ceil(timeRemaining / 1000)}s remaining)`));
+                            try {
+                                await updateDbStatus('connecting');
+                                startBot().catch(() => {});
+                            } catch (e) {
+                                console.error('Retry error:', e.message);
+                            }
+                        }, 3000);
+                    } else if (shouldReconnect) {
+                        // Other connection errors: standard reconnect logic
                         await syncSessionToDb(true);
                         
                         if (connectionRetryCount < MAX_RETRY_COUNT) {
@@ -808,9 +862,7 @@ async function startBot() {
                                 isAuthenticated = false;
                                 pairingCode = null;
                                 connectionStatus = 'ready_to_pair';
-                            } catch (e) {
-                                // error clearing session
-                            }
+                            } catch (e) {}
                         }
                     }
                 }
