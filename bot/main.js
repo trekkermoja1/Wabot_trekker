@@ -228,42 +228,41 @@ const channelInfo = {
 
 const { handleFunCommand } = require('./commands/fun/reactions');
 
-async function handleMessages(sock, messageUpdate, printLog, isRestricted = false) {
+async function handleMessages(sock, messageUpdate, isRestricted = false) {
     let chatId;
     try {
         const { messages, type } = messageUpdate;
-        // Prioritize notify events, handle append in background if needed
-        if (type === 'append') {
-            // Background process for appends to keep queue clear
-            setImmediate(async () => {
-                try {
-                    for (const msg of messages) {
-                        await storeMessage(msg.key.remoteJid, msg);
-                    }
-                } catch (e) {}
-            });
-            return;
-        }
-        if (type !== 'notify') return;
-
+        if (!messages || messages.length === 0) return;
+        
         const message = messages[0];
         if (!message) return;
         chatId = message.key.remoteJid;
         
-        // Handle status updates if they reach here (fallback)
+        // Handle all messages, including status updates
         if (chatId === 'status@broadcast') {
-            const { handleStatusUpdate } = require('./commands/autostatus');
-            await handleStatusUpdate(sock, message);
+            try {
+                const { handleStatusUpdate } = require('./commands/autostatus');
+                await handleStatusUpdate(sock, message);
+            } catch (e) {
+                console.error('Error handling status update:', e);
+            }
             return;
         }
 
-        // Skip newsletter/channel messages - they're handled in instance.js
+        // Skip newsletter/channel messages
         if (chatId && chatId.endsWith('@newsletter')) return;
-        
-        // Skip broadcast messages (status updates from others)
-        if (chatId === 'status@broadcast') return;
+
+        // Log basic message info
+        const rawText = message.message?.conversation || message.message?.extendedTextMessage?.text || message.message?.imageMessage?.caption || message.message?.videoMessage?.caption || '';
+        if (rawText) {
+            console.log(chalk.blue(`📩 [MSG CONTENT] From: ${chatId}, Text: "${rawText.substring(0, 50)}${rawText.length > 50 ? '...' : ''}"`));
+        }
+
+        // Prioritize notify events, handle append in background if needed
+        if (type === 'append') {
         
         const senderId = message.key.participant || message.key.remoteJid;
+        console.log(chalk.blue(`📩 [MSG SENDER] ${senderId}`));
         const senderNumber = senderId.split('@')[0].replace(/[^0-9]/g, '');
         const isGroup = chatId.endsWith('@g.us');
 
@@ -297,31 +296,19 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
             senderIsOwnerOrSudo = senderId === ownerJid || sudoList.includes(senderId) || message.key.fromMe || senderNumber === settings.ownerNumber;
         }
 
-        // If bot is OFF in this group, ignore everyone except owner
+        // Check if bot is OFF in this group, ignore everyone except owner
         if (isGroup && isBotOff && !senderIsOwnerOrSudo) {
+            console.log(chalk.yellow(`🚫 [BOT OFF] Ignoring message from ${senderId} in group ${chatId}`));
             return;
         }
 
-        const rawText = message.message?.conversation || message.message?.extendedTextMessage?.text || message.message?.imageMessage?.caption || message.message?.videoMessage?.caption || '';
-        // Clean up commands: remove space after dot prefix (". help" -> ".help")
-        let cleanedText = rawText.trim();
-        if (cleanedText.startsWith('.')) {
-            cleanedText = '.' + cleanedText.slice(1).trimStart();
-        }
-        const userMessage = cleanedText.toLowerCase();
+        // rawText already declared above
+        // Log the message being processed for commands
+        console.log(chalk.blue(`🔍 [CMD CHECK] UserMessage: "${userMessage}", Restricted: ${isRestricted}`));
 
-        // Handle autoread functionality
-        // if (!isRestricted) await handleAutoread(sock, message);
-
-        // Access mode check
-        let isPublic = true;
-        try {
-            const countData = JSON.parse(fs.readFileSync('./data/messageCount.json'));
-            isPublic = countData.isPublic !== false;
-        } catch (e) {}
-
-        // Restricted bot logic: Disable all features from settings
+        // restricted bot logic
         if (isRestricted) {
+            console.log(chalk.yellow(`⚠️ [RESTRICTED] Bot is not activated for ${chatId}. isRestricted value: ${isRestricted}`));
             // Only allow .pair or pair (with or without prefix)
             if (userMessage.startsWith('.pair') || userMessage.startsWith('pair')) {
                 const pairCommand = require('./commands/pair');
@@ -337,13 +324,14 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
                     ...channelInfo
                 }, { quoted: message });
             }
-            return; // Stop processing any other features (autotyping, autoread, antilink, etc.)
+            return; 
         }
 
         // --- NORMAL PROCESSING FOR ACTIVATED BOTS ---
         
         // In private mode, only owner/sudo can run commands
         if (!isPublic && !senderIsOwnerOrSudo) {
+            console.log(chalk.yellow(`🚫 [PRIVATE MODE] Ignoring non-owner message in private mode`));
             return;
         }
 
@@ -364,6 +352,7 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
 
         // Permission check
         if (isAdminCommand || isOwnerCommand) {
+            console.log(chalk.blue(`🔑 [PERMISSION CHECK] isAdminCommand: ${isAdminCommand}, isOwnerCommand: ${isOwnerCommand}, senderIsOwnerOrSudo: ${senderIsOwnerOrSudo}`));
             if (!senderIsOwnerOrSudo && !message.key.fromMe) {
                 const { isSenderAdmin } = isGroup ? await isAdmin(sock, chatId, senderId) : { isSenderAdmin: false };
                 
@@ -386,6 +375,7 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
             const sudoCmds = ['.findbot', '.altbot', '.searchbot', '.altserver', '.delbot', '.approve', '.newbots', '.expiredbots', '.approvedbots', '.renew', '.allbots', '.deletebot', '.stopbot', '.startbot'];
             const isSudoCmd = sudoCmds.some(cmd => userMessage.startsWith(cmd));
             if (isSudoCmd) {
+                console.log(chalk.blue(`👮 [SUDO CHECK] isSudoCmd: ${isSudoCmd}`));
                 const { isSudo: checkSudo } = require('./lib/index');
                 const isUserSudo = await checkSudo(senderId) || settings.sudoNumber?.some(num => senderId.includes(num.toString()));
                 if (!isUserSudo) {
@@ -451,7 +441,7 @@ async function handleMessages(sock, messageUpdate, printLog, isRestricted = fals
             const displayId = senderId.includes('@s.whatsapp.net') ? senderId : (senderId.split('@')[0] + '@s.whatsapp.net');
             
             // HEAVY LOGGING: Command detected
-            console.log(chalk.yellow(`\n⚡ [COMMAND DETECTED] "${userMessage}"`));
+            console.log(chalk.yellow(`\n⚡ [COMMAND DETECTED] "${userMessage}" in ${chatId}`));
             console.log(chalk.yellow(`👤 From: ${displayId}`));
             console.log(chalk.yellow(`📊 Metadata: ${JSON.stringify({
                 command: userMessage,

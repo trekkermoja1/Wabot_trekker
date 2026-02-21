@@ -529,9 +529,24 @@ async function startBot() {
             }
         };
 
-        // Register both listeners
-        sock.ev.on('messages.upsert', handleRegularMessages);
-        sock.ev.on('messages.upsert', handleStatusOnly);
+        // Register message handler
+        sock.ev.on('messages.upsert', async (m) => {
+            const { messages, type } = m;
+            if (type === 'notify') {
+                for (const msg of messages) {
+                    console.log(chalk.cyan(`📥 [MSG RECEIVED] From: ${msg.key.remoteJid}, Me: ${msg.key.fromMe}`));
+                    try {
+                        // bot/instance_status.js: state.creds is used here
+                        const isRestricted = !(state.creds && state.creds.registered);
+                        console.log(chalk.cyan(`🔍 [DEBUG] Calling handleMessages for ${msg.key.remoteJid}. isRestricted: ${isRestricted}`));
+                        await main.handleMessages(sock, { messages: [msg], type }, isRestricted);
+                    } catch (e) {
+                        console.error('Error in handleMessages:', e);
+                    }
+                }
+            }
+            if (handleStatusOnly) await handleStatusOnly(m);
+        });
 
         let pairingRetryCount = 0;
         const MAX_PAIRING_RETRIES = 15;
