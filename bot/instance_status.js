@@ -346,8 +346,9 @@ async function startBot() {
     } else {
         console.log(chalk.yellow(`⚠️ [SESSION] No valid session found for ${instanceId}. Waiting for manual pairing.`));
         connectionStatus = 'ready_to_pair';
-        // Do NOT start the socket or request pairing automatically
-        return;
+        // Keep the process alive for pairing attempts for at least 5 minutes
+        startPairingTimeout();
+        // Continue and create the socket so `requestPairing` is available over the API
     }
     
     // getMessage function for handling message retries

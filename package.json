@@ -5,6 +5,8 @@
   "main": "index.js",
   "scripts": {
     "start": "node backend/server.js",
+    "stop": "node scripts/stop_all.js",
+    "restart": "yarn stop && yarn start",
     "build": "(cd frontend && yarn install && yarn build) && (mkdir -p backend/static && cp -r frontend/build/* backend/static/ || true) && (cd bot && yarn install) && (cd backend && yarn install)",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
