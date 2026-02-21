@@ -189,16 +189,8 @@ const server = http.createServer(async (req, res) => {
         }));
         return;
     } else if (pathname === '/pairing-code' || pathname === '/pairing-code/') {
-        // Trigger pairing if not already paired and not authenticated
-        if (!pairingCode && !isAuthenticated && connectionStatus === 'ready_to_pair') {
-            console.log(chalk.blue(`[API] Pairing code requested for ${instanceId}, triggering generation...`));
-            if (botSocket && botSocket.requestPairing) {
-                botSocket.requestPairing().catch(e => {
-                    console.error('Error triggering requestPairing:', e.message);
-                });
-            }
-        }
-        
+        // Just return current pairing status - do NOT auto-trigger pairing
+        // User must call /regenerate-code to start pairing process
         res.writeHead(200);
         res.end(JSON.stringify({
             pairingCode: pairingCode || null,
@@ -230,27 +222,27 @@ const server = http.createServer(async (req, res) => {
         isAuthenticated = false;
         connectionStatus = 'initializing';
         
-        // 3. Re-initialize bot with a fresh connection
+        // 3. Re-initialize bot with a fresh connection (dormant - no auto-pairing)
         startBot();
         
-        // 4. Wait for connection to be ready before calling requestPairing
-        let attempts = 0;
-        const checkReady = setInterval(() => {
-            if (botSocket && botSocket.requestPairing) {
-                clearInterval(checkReady);
-                botSocket.requestPairing().catch(e => {
-                    console.error('Error triggering requestPairing:', e.message);
-                });
-            }
-            if (attempts++ > 40) {
-                clearInterval(checkReady);
-                console.log(chalk.red('❌ Timed out waiting for botSocket to be ready for pairing'));
-                connectionStatus = 'error';
-            }
-        }, 500);
+        // 4. Do NOT auto-trigger pairing - wait for user to explicitly request it
+        console.log(chalk.blue('🟡 Instance reset. Awaiting explicit pairing request. Call /trigger-pairing to start pairing.'));
 
         res.writeHead(200);
         res.end(JSON.stringify({ success: true, message: 'Resetting for fresh pairing' }));
+    } else if (pathname === '/trigger-pairing' || pathname === '/trigger-pairing/') {
+        // Explicit pairing trigger - only responds when socket is ready
+        if (!botSocket || !botSocket.requestPairing) {
+            return res.writeHead(500).end(JSON.stringify({ error: 'Socket not ready. Try again in a moment.' }));
+        }
+        
+        console.log(chalk.blue(`📱 User explicitly triggered pairing for ${instanceId}`));
+        botSocket.requestPairing().catch(e => {
+            console.error('Error during pairing request:', e.message);
+        });
+        
+        res.writeHead(200);
+        res.end(JSON.stringify({ success: true, message: 'Pairing triggered. Check /pairing-code for status.' }));
     } else if (pathname === '/stop') {
         res.writeHead(200);
         res.end(JSON.stringify({ message: 'Stopping instance' }));
@@ -573,58 +565,33 @@ async function startBot() {
             console.log(chalk.yellow('⚠️ Starting in pairing-only mode: skipping message handlers and heavy listeners'));
         }
 
-        let pairingRetryCount = 0;
-        const MAX_PAIRING_RETRIES = 15;
-        
         const requestPairing = async () => {
+            // Do NOT auto-retry. This is an explicit user-driven request.
             if (connectionStatus === 'logged_out' || isAuthenticated || connectionStatus === 'connected') {
                 console.log(chalk.yellow(`ℹ️ [PAIRING] Bot ${instanceId} is already connected/authenticated. Skipping pairing request.`));
                 return;
             }
             
-            // Check retry count
-            if (pairingRetryCount >= MAX_PAIRING_RETRIES) {
-                console.log(chalk.red(`❌ Max pairing retries (${MAX_PAIRING_RETRIES}) reached for ${instanceId}`));
-                connectionStatus = 'error';
-                return;
-            }
-
-            // Ensure we don't request too fast
-            await delay(2000);
-            
             try {
                 connectionStatus = 'pairing';
-                pairingRetryCount++;
-                console.log(chalk.blue(`🔑 Requesting pairing code (attempt ${pairingRetryCount}/${MAX_PAIRING_RETRIES})...`));
+                console.log(chalk.blue(`🔑 Requesting pairing code for ${instanceId}...`));
                 // Use cleanPhone which is validated and cleaned
                 let code = await sock.requestPairingCode(cleanPhone);
                 code = code?.match(/.{1,4}/g)?.join('-') || code;
                 pairingCode = code;
                 pairingCodeGeneratedAt = Date.now();
-                pairingRetryCount = 0; // Reset on success
                 
                 console.log(chalk.green(`\n${'='.repeat(50)}`));
                 console.log(chalk.green(`🔑 PAIRING CODE: ${chalk.bold.white(code)}`));
                 console.log(chalk.green(`${'='.repeat(50)}`));
 
-                // Start 5-minute timeout for pairing (manual/pair command only)
+                // Start 5-minute timeout for pairing
                 startPairingTimeout();
             } catch (err) {
                 if (connectionStatus === 'logged_out') return;
                 console.error(chalk.red('❌ Failed to request pairing code:'), err.message || err);
-                
-                if (err.message && err.message.includes('rate-overlimit')) {
-                    console.log(chalk.yellow('⏳ Rate limit hit, retrying in 30s...'));
-                    setTimeout(requestPairing, 30000);
-                } else if (err.message && (err.message.includes('Connection Closed') || err.message.includes('Precondition Required'))) {
-                    // Connection not ready, wait and retry
-                    console.log(chalk.yellow('🔄 Connection not ready, retrying in 10s...'));
-                    connectionStatus = 'connecting';
-                    setTimeout(requestPairing, 10000);
-                } else {
-                    console.log(chalk.yellow('🔄 Retrying pairing code request in 12s...'));
-                    setTimeout(requestPairing, 12000);
-                }
+                connectionStatus = 'error';
+                console.log(chalk.red('⚠️ No automatic retry. User must request pairing again via API.'));
             }
         };
 
@@ -771,16 +738,23 @@ async function startBot() {
                 if (connection === 'close') {
                     const shouldReconnect = statusCode !== DisconnectReason.loggedOut && statusCode !== 401;
 
+                    // During pairing, do NOT reconnect automatically
+                    if (connectionStatus === 'pairing') {
+                        console.log(chalk.yellow(`⚠️ [PAIRING] Connection closed during pairing. Staying dormant - user must retry pairing via API.`));
+                        return;
+                    }
+
                     if (statusCode === 401 || statusCode === DisconnectReason.loggedOut) {
                         isAuthenticated = false;
                         pairingCode = null;
                         connectionStatus = 'logged_out';
                         
-                        // Clear session files and re-initialize immediately
+                        // Clear session files and do NOT restart - stay dormant
                         try {
                             removeFile(sessionDir);
                             fs.mkdirSync(sessionDir, { recursive: true });
-                            startBot();
+                            connectionStatus = 'ready_to_pair';
+                            console.log(chalk.yellow(`🟡 Session logged out/invalid. Instance is dormant. User must request pairing via API.`));
                         } catch (e) {
                             // error clearing session
                         }
