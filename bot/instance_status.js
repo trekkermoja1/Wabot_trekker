@@ -54,7 +54,6 @@ const sessionDir = path.join(instanceDir, 'session');
 const dataDir = path.join(instanceDir, 'data');
 
 // Helper to update DB status
-let lastDbUpdate = 0;
 async function updateDbStatus(status, force = false) {
     if (!process.env.DATABASE_URL) return;
     
@@ -66,7 +65,7 @@ async function updateDbStatus(status, force = false) {
     const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
     try {
         await pool.query('UPDATE bot_instances SET status = $1, updated_at = NOW() WHERE id = $2', [status, instanceId]);
-        lastDbUpdate = Date.now();
+        global.lastDbUpdate = Date.now();
     } catch (e) {
         if (e.code !== 'EMFILE' && !e.message.includes('getaddrinfo')) {
             console.error('Error updating DB status:', e);
@@ -663,10 +662,7 @@ async function startBot() {
                     pairingCode = null;
                     pairingCodeGeneratedAt = null;
                     // Clear any active pairing timeout since we're now connected
-                    if (pairingTimeout) {
-                        clearTimeout(pairingTimeout);
-                        pairingTimeout = null;
-                    }
+                    // pairingTimeout check removed as it's no longer used
                     startTime = Date.now();
                     
                     console.log(chalk.green(`\n📶 [ONLINE] Instance: ${instanceId} - Client is online`));
