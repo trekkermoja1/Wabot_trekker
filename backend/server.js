@@ -524,7 +524,7 @@ async function initDatabase() {
         port INTEGER,
         pid INTEGER,
         duration_months INTEGER,
-        autoview BOOLEAN DEFAULT 1,
+        autoview BOOLEAN DEFAULT false,
         created_at TIMESTAMP NOT NULL DEFAULT ${useSQLite ? 'CURRENT_TIMESTAMP' : 'NOW()'},
         updated_at TIMESTAMP NOT NULL DEFAULT ${useSQLite ? 'CURRENT_TIMESTAMP' : 'NOW()'},
         approved_at TIMESTAMP,
