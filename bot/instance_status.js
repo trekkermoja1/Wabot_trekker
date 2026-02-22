@@ -202,12 +202,14 @@ const server = http.createServer(async (req, res) => {
         // Always reset everything for a fresh pairing on explicit request
         console.log(chalk.yellow(`🔄 Resetting instance ${instanceId} for fresh pairing...`));
         
-        // 1. Close existing socket and stop all activity
+        // 1. Close existing socket and stop all activity - use a flag to prevent race conditions
         if (botSocket) {
             try { 
+                // Mark that we're in regeneration to prevent old event handlers from interfering
+                botSocket._isRegenerating = true;
                 botSocket.ev.removeAllListeners('connection.update');
                 botSocket.ev.removeAllListeners('creds.update');
-                botSocket.end(); 
+                if (botSocket.end) botSocket.end(); 
             } catch (e) {}
             botSocket = null;
         }
@@ -219,20 +221,37 @@ const server = http.createServer(async (req, res) => {
         pairingCodeGeneratedAt = null;
         isAuthenticated = false;
         connectionStatus = 'initializing';
+        pairingRetryCount = 0;
         
         // 3. Re-initialize bot with a fresh connection
+        // Wait a bit to ensure old socket is fully cleaned up
+        await new Promise(r => setTimeout(r, 1000));
+        
+        // 4. Start fresh bot and wait properly for it to be ready
         startBot();
         
-        // 4. Wait for connection to be ready before calling requestPairing
-        let attempts = 0;
+        // Wait for connection to stabilize before requesting pairing code
+        // Check for both the socket and connection status
+        let readyAttempts = 0;
+        const maxReadyAttempts = 60;
+        
         const checkReady = setInterval(() => {
-            if (botSocket && botSocket.requestPairing) {
+            readyAttempts++;
+            
+            // Check if socket exists and is ready for pairing
+            const isSocketReady = botSocket && 
+                botSocket.requestPairingCode && 
+                (connectionStatus === 'ready_to_pair' || connectionStatus === 'connecting' || connectionStatus === 'initializing');
+            
+            if (isSocketReady && readyAttempts > 8) { // Wait at least 4 seconds for connection to stabilize
                 clearInterval(checkReady);
-                botSocket.requestPairing().catch(e => {
-                    console.error('Error triggering requestPairing:', e.message);
-                });
-            }
-            if (attempts++ > 40) {
+                console.log(chalk.blue('🔑 Socket ready, requesting pairing code...'));
+                if (botSocket && botSocket.requestPairing) {
+                    botSocket.requestPairing().catch(e => {
+                        console.error('Error triggering requestPairing:', e.message);
+                    });
+                }
+            } else if (readyAttempts > maxReadyAttempts) {
                 clearInterval(checkReady);
                 console.log(chalk.red('❌ Timed out waiting for botSocket to be ready for pairing'));
                 connectionStatus = 'error';
@@ -405,20 +424,26 @@ async function startBot() {
 
         botSocket = sock;
 
-        // Connection update handler for start message
+        // Connection update handler - simplified to avoid conflicts with the main handler in sock.ev.process
         sock.ev.on('connection.update', async (update) => {
             const { connection, lastDisconnect } = update;
             
+            // Skip if we're in the middle of regeneration or already handling
+            if (sock._isRegenerating || isConnecting) return;
+            
             if (connection === 'close') {
                 const statusCode = (lastDisconnect?.error)?.output?.statusCode || lastDisconnect?.error?.statusCode;
-                // Always try to reconnect unless logged out
                 const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
                 console.log(chalk.red(`\n❌ Connection closed: ${lastDisconnect?.error}. Reconnecting: ${shouldReconnect}`));
 
                 if (shouldReconnect) {
+                    isConnecting = true;
                     console.log(chalk.yellow(`🔄 Reconnecting bot ${instanceId}...`));
-                    setTimeout(() => startBot().catch(() => {}), 5000);
+                    setTimeout(() => {
+                        isConnecting = false;
+                        startBot().catch(() => {});
+                    }, 5000);
                 } else {
                     console.log(chalk.red(`\n❌ Session invalid or logged out. Bot remains in ready state.`));
                     connectionStatus = 'ready_to_pair';
@@ -428,6 +453,7 @@ async function startBot() {
             if (connection === 'open') {
                 isAuthenticated = true;
                 connectionStatus = 'connected';
+                isConnecting = false;
                 pairingCode = null;
                 pairingCodeGeneratedAt = null;
                 await updateDbStatus('connected', true);
@@ -557,7 +583,17 @@ async function startBot() {
         let pairingRetryCount = 0;
         const MAX_PAIRING_RETRIES = 15;
         
+        // Global flag to prevent multiple simultaneous connection attempts
+        let isConnecting = false;
+        let currentRetryInterval = null;
+        
         const requestPairing = async () => {
+            // Prevent concurrent pairing requests
+            if (sock._isRegenerating) {
+                console.log(chalk.yellow(`ℹ️ [PAIRING] Bot ${instanceId} is currently regenerating, skipping pairing request.`));
+                return;
+            }
+            
             if (connectionStatus === 'logged_out' || isAuthenticated || connectionStatus === 'connected') {
                 console.log(chalk.yellow(`ℹ️ [PAIRING] Bot ${instanceId} is already connected/authenticated. Skipping pairing request.`));
                 return;
@@ -570,13 +606,18 @@ async function startBot() {
                 return;
             }
 
-            // Ensure we don't request too fast
-            await delay(2000);
+            // Wait for connection to stabilize before requesting pairing
+            // Only wait if we're still initializing
+            if (connectionStatus === 'initializing') {
+                console.log(chalk.blue('⏳ Waiting for connection to stabilize...'));
+                await delay(3000);
+            }
             
             try {
                 connectionStatus = 'pairing';
                 pairingRetryCount++;
                 console.log(chalk.blue(`🔑 Requesting pairing code (attempt ${pairingRetryCount}/${MAX_PAIRING_RETRIES})...`));
+                
                 // Use cleanPhone which is validated and cleaned
                 let code = await sock.requestPairingCode(cleanPhone);
                 code = code?.match(/.{1,4}/g)?.join('-') || code;
@@ -592,6 +633,7 @@ async function startBot() {
                 startPairingTimeout();
             } catch (err) {
                 if (connectionStatus === 'logged_out') return;
+                if (sock._isRegenerating) return; // Skip if we're regenerating
                 console.error(chalk.red('❌ Failed to request pairing code:'), err.message || err);
                 
                 if (err.message && err.message.includes('rate-overlimit')) {
@@ -679,6 +721,12 @@ async function startBot() {
                     connectionRetryCount = 0;
                     connectionStatus = 'connected';
                     isAuthenticated = true;
+                    isConnecting = false;
+                    // Clear any existing retry interval
+                    if (currentRetryInterval) {
+                        clearInterval(currentRetryInterval);
+                        currentRetryInterval = null;
+                    }
                     // Clear pairing codes to indicate successful connection
                     pairingCode = null;
                     pairingCodeGeneratedAt = null;
@@ -753,6 +801,25 @@ async function startBot() {
                 }
 
                 if (connection === 'close') {
+                    // Skip if we're in the middle of regeneration
+                    if (sock._isRegenerating) {
+                        console.log(chalk.yellow('⚠️ Connection closed during regeneration - ignoring'));
+                        return;
+                    }
+
+                    // Prevent multiple simultaneous reconnection attempts
+                    if (isConnecting) {
+                        console.log(chalk.yellow('⚠️ Already reconnecting, skipping duplicate connection close handler'));
+                        return;
+                    }
+                    isConnecting = true;
+                    
+                    // Clear any existing retry interval
+                    if (currentRetryInterval) {
+                        clearInterval(currentRetryInterval);
+                        currentRetryInterval = null;
+                    }
+
                     const statusCode = (lastDisconnect?.error)?.output?.statusCode || lastDisconnect?.error?.statusCode;
                     const shouldReconnect = statusCode !== DisconnectReason.loggedOut && statusCode !== 401;
 
@@ -769,6 +836,7 @@ async function startBot() {
                         isAuthenticated = false;
                         pairingCode = null;
                         connectionStatus = 'logged_out';
+                        isConnecting = false;
                         try {
                             removeFile(sessionDir);
                             fs.mkdirSync(sessionDir, { recursive: true });
@@ -789,19 +857,28 @@ async function startBot() {
                         let retryAttempt = 0;
                         const maxRetries = Math.ceil(PAIRING_WINDOW_MS / 3000);
                         
-                        const retryInterval = setInterval(async () => {
+                        currentRetryInterval = setInterval(async () => {
+                            // Check if we're still supposed to be retrying
+                            if (sock._isRegenerating || connectionStatus === 'connected' || isAuthenticated) {
+                                clearInterval(currentRetryInterval);
+                                isConnecting = false;
+                                return;
+                            }
+                            
                             retryAttempt++;
                             const elapsedSincePairingCode = pairingCodeGeneratedAt ? (Date.now() - pairingCodeGeneratedAt) : PAIRING_WINDOW_MS;
                             const timeRemaining = PAIRING_WINDOW_MS - elapsedSincePairingCode;
 
                             if (isAuthenticated || connectionStatus === 'connected') {
-                                clearInterval(retryInterval);
+                                clearInterval(currentRetryInterval);
+                                isConnecting = false;
                                 console.log(chalk.green('✅ Reconnected successfully'));
                                 return;
                             }
 
-                            if (timeRemaining <= 0) {
-                                clearInterval(retryInterval);
+                            if (timeRemaining <= 0 || retryAttempt >= maxRetries) {
+                                clearInterval(currentRetryInterval);
+                                isConnecting = false;
                                 console.log(chalk.red('❌ Pairing/connection window expired. Exiting.'));
                                 await updateDbStatus('offline');
                                 process.exit(1);
@@ -826,8 +903,10 @@ async function startBot() {
                             console.log(chalk.yellow(`🔄 [RECONNECTING] Attempt ${connectionRetryCount}/${MAX_RETRY_COUNT} in ${delayMs/1000}s...`));
                             await delay(delayMs);
                             startBot();
+                            isConnecting = false;
                         } else {
                             connectionStatus = 'offline';
+                            isConnecting = false;
                             try {
                                 removeFile(sessionDir);
                                 fs.mkdirSync(sessionDir, { recursive: true });
@@ -836,6 +915,8 @@ async function startBot() {
                                 connectionStatus = 'ready_to_pair';
                             } catch (e) {}
                         }
+                    } else {
+                        isConnecting = false;
                     }
                 }
             }
@@ -1018,6 +1099,12 @@ async function startBot() {
     } catch (err) {
         console.error(chalk.red('❌ Error in startBot:'), err);
         connectionStatus = 'error';
+        isConnecting = false;
+        // Clear any existing retry interval
+        if (currentRetryInterval) {
+            clearInterval(currentRetryInterval);
+            currentRetryInterval = null;
+        }
         await delay(5000);
         startBot();
     }
