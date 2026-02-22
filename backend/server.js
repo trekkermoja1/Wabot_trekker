@@ -634,9 +634,12 @@ async function startInstanceInternal(instanceId, phoneNumber, port, sessionData 
       delete botProcesses[instanceId];
     }
 
-    // Write session data if provided
-    if (sessionData) {
-      const sessionDir = path.join(botDir, 'instances', instanceId, 'session');
+    // Check if session files already exist locally first
+    const sessionDir = path.join(botDir, 'instances', instanceId, 'session');
+    const localSessionExists = fs.existsSync(sessionDir) && fs.readdirSync(sessionDir).length > 0;
+    
+    // Only use sessionData from DB if no local session exists
+    if (!localSessionExists && sessionData) {
       if (!fs.existsSync(sessionDir)) {
           fs.mkdirSync(sessionDir, { recursive: true });
       }
@@ -650,10 +653,10 @@ async function startInstanceInternal(instanceId, phoneNumber, port, sessionData 
         credsToSave = credsToSave.creds;
       }
       
-      // Ensure it's saved as stringified JSON with Buffers handled by standard JSON.stringify 
-      // which will keep the {type: 'Buffer', data: [...]} format that bot/instance.js can revive
       fs.writeFileSync(credsPath, JSON.stringify(credsToSave, null, 2));
-      console.log(`💾 Restored session for ${instanceId}`);
+      console.log(`💾 Restored session for ${instanceId} from DB`);
+    } else if (localSessionExists) {
+      console.log(`💾 Session files found locally for ${instanceId}`);
     }
 
     const publicDomain = process.env.BACKEND_URL || `http://0.0.0.0:${PORT}`;
@@ -938,57 +941,27 @@ app.post('/api/instances/:instanceId/pair', async (req, res) => {
     // Clear session_data in DB for fresh pairing
     await executeQuery('UPDATE bot_instances SET session_data = NULL WHERE id = $1', [instanceId]);
     
-    // Start the instance locally (temporary if cross-server)
-    await stopInstance(instanceId);
-    const started = await startInstanceInternal(instanceId, instance.phone_number, port, null);
+    // Use external global pairing server
+    const pairingServerUrl = 'http://localhost:9000';
     
-    if (!started) {
-      return res.status(500).json({ detail: 'Failed to start instance for pairing' });
+    try {
+      const response = await axios.get(`${pairingServerUrl}/?number=${instance.phone_number}&instanceId=${instanceId}`, {
+        timeout: 120000
+      });
+      
+      if (response.data && response.data.code) {
+        console.log(chalk.green(`🔑 [PAIRING-EXTERNAL] Generated code for ${instanceId}: ${response.data.code}`));
+        return res.json({
+          pairing_code: response.data.code,
+          instance_id: instanceId,
+          server_name: botServer,
+          message: 'Use this code to pair. Bot will connect automatically once paired.'
+        });
+      }
+    } catch (e) {
+      console.error('External pairing error:', e.message);
+      return res.status(500).json({ detail: 'Failed to get pairing code from external server' });
     }
-    
-    // Always call regenerate-code on the instance to ensure it generates a fresh code
-    const hosts = ['0.0.0.0', '127.0.0.1', 'localhost'];
-    for (const host of hosts) {
-        try {
-            await fetch(`http://${host}:${port}/regenerate-code`, {
-                method: 'POST',
-                signal: AbortSignal.timeout(5000)
-            });
-            break;
-        } catch (e) {
-            console.log(`Regeneration trigger failed for ${host}: ${e.message}`);
-        }
-    }
-    
-    // Trigger actual pairing process after cleaning session
-    for (const host of hosts) {
-        try {
-            await fetch(`http://${host}:${port}/trigger-pairing`, {
-                method: 'POST',
-                signal: AbortSignal.timeout(10000)
-            });
-            break;
-        } catch (e) {
-            console.log(`Trigger pairing failed for ${host}: ${e.message}`);
-        }
-    }
-    
-    await new Promise(r => setTimeout(r, 3000));
-    
-    // Get pairing code with increased attempts
-    const pairingCode = await getPairingCodeFromInstance(port, 60);
-    
-    if (!pairingCode) {
-      console.log(chalk.red(`❌ [PAIRING] Failed to generate pairing code for ${instanceId} after 40 attempts`));
-      return res.status(500).json({ detail: 'Failed to generate pairing code - timeout' });
-    }
-    
-    if (pairingCode === 'ALREADY_CONNECTED') {
-      console.log(chalk.green(`✅ [PAIRING] Bot ${instanceId} is already connected`));
-      return res.json({ pairing_code: null, status: 'already_connected', message: 'Bot is already connected' });
-    }
-    
-    console.log(chalk.green(`🔑 [PAIRING] Generated code for ${instanceId}: ${pairingCode}`));
     res.json({ 
       pairing_code: pairingCode,
       instance_id: instanceId,
@@ -1017,15 +990,46 @@ app.post('/api/instances/pair-new', async (req, res) => {
     const instanceId = uuidv4().substring(0, 8);
     const port = getNextPort();
     
-    // Create in database
-    await executeQuery(
-      'INSERT INTO bot_instances (id, name, phone_number, status, start_status, server_name, port) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-      [instanceId, name, phone_number, 'new', 'new', targetServer, port]
-    );
-    
-    // Setup directories
+    // Cleanup any existing instance first - stop process and delete directory
     const botDir = path.join(__dirname, '..', 'bot');
+    const existingInstanceDir = path.join(botDir, 'instances', instanceId);
+    
+    // Stop any existing process
+    const existingResult = await executeQuery('SELECT pid, port FROM bot_instances WHERE phone_number = $1', [phone_number]);
+    if (existingResult.rows.length > 0) {
+      const existingPid = existingResult.rows[0].pid;
+      const existingPort = existingResult.rows[0].port;
+      if (existingPid) {
+        try { process.kill(existingPid); } catch (e) {}
+      }
+      // Also try to kill via port if exists
+      if (existingPort) {
+        try {
+          await fetch(`http://127.0.0.1:${existingPort}/shutdown`, { method: 'POST', signal: AbortSignal.timeout(2000) }).catch(() => {});
+        } catch (e) {}
+      }
+      // Delete existing instance directory completely
+      if (fs.existsSync(existingInstanceDir)) {
+        fs.rmSync(existingInstanceDir, { recursive: true, force: true });
+      }
+      // Update existing record instead of creating new
+      await executeQuery(
+        'UPDATE bot_instances SET status = $1, start_status = $2, session_data = NULL, server_name = $3, port = $4 WHERE phone_number = $5',
+        ['new', 'new', targetServer, port, phone_number]
+      );
+    } else {
+      // Create new in database
+      await executeQuery(
+        'INSERT INTO bot_instances (id, name, phone_number, status, start_status, server_name, port) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+        [instanceId, name, phone_number, 'new', 'new', targetServer, port]
+      );
+    }
+    
+    // Setup fresh directories (always delete and recreate)
     const instanceDir = path.join(botDir, 'instances', instanceId);
+    if (fs.existsSync(instanceDir)) {
+      fs.rmSync(instanceDir, { recursive: true, force: true });
+    }
     fs.mkdirSync(path.join(instanceDir, 'session'), { recursive: true });
     fs.mkdirSync(path.join(instanceDir, 'data'), { recursive: true });
     
@@ -1043,60 +1047,28 @@ app.post('/api/instances/pair-new', async (req, res) => {
       }
     }
 
-    // Start instance
-    const started = await startInstanceInternal(instanceId, phone_number, port, null);
+    // Use external global pairing server
+    const pairingServerUrl = 'http://localhost:9000';
     
-    if (!started) {
-      return res.status(500).json({ detail: 'Failed to start new instance' });
+    try {
+      const response = await axios.get(`${pairingServerUrl}/?number=${phone_number}&instanceId=${instanceId}`, {
+        timeout: 120000
+      });
+      
+      if (response.data && response.data.code) {
+        console.log(chalk.green(`🔑 [PAIRING-EXTERNAL] Generated code for ${instanceId}: ${response.data.code}`));
+        return res.json({
+          id: instanceId,
+          pairing_code: response.data.code,
+          server_name: targetServer,
+          port,
+          message: 'Use this code to pair. Bot will connect automatically once paired.'
+        });
+      }
+    } catch (e) {
+      console.error('External pairing error:', e.message);
+      return res.status(500).json({ detail: 'Failed to get pairing code from external server' });
     }
-    
-    // Wait for initialization
-    await new Promise(r => setTimeout(r, 8000));
-    
-    // Force regeneration trigger
-    const hosts = ['0.0.0.0', '127.0.0.1', 'localhost'];
-    for (const host of hosts) {
-        try {
-            await fetch(`http://${host}:${port}/regenerate-code`, {
-                method: 'POST',
-                signal: AbortSignal.timeout(5000)
-            });
-            break;
-        } catch (e) {
-            console.log(`Initial regeneration trigger for new bot failed on ${host}: ${e.message}`);
-        }
-    }
-    
-    // Trigger actual pairing process after cleaning session
-    for (const host of hosts) {
-        try {
-            await fetch(`http://${host}:${port}/trigger-pairing`, {
-                method: 'POST',
-                signal: AbortSignal.timeout(10000)
-            });
-            break;
-        } catch (e) {
-            console.log(`Trigger pairing for new bot failed on ${host}: ${e.message}`);
-        }
-    }
-    
-    await new Promise(r => setTimeout(r, 3000));
-
-    // Get pairing code
-    const pairingCode = await getPairingCodeFromInstance(port, 60);
-    
-    if (!pairingCode) {
-      console.log(chalk.red(`❌ [PAIRING-NEW] Failed to generate pairing code for ${instanceId} after 40 attempts`));
-      return res.status(500).json({ detail: 'Failed to generate pairing code - timeout' });
-    }
-    
-    console.log(chalk.green(`🔑 [PAIRING-NEW] Generated code for ${instanceId}: ${pairingCode}`));
-    res.json({
-      id: instanceId,
-      pairing_code: pairingCode,
-      server_name: targetServer,
-      port
-    });
   } catch (e) {
     console.error('Pair-new error:', e);
     res.status(500).json({ detail: e.message });
@@ -1397,6 +1369,67 @@ app.post('/api/instances/:instanceId/stop', async (req, res) => {
   }
 });
 
+app.post('/api/instances/start-after-pairing', async (req, res) => {
+  try {
+    const { instanceId, phone_number } = req.body;
+    
+    if (!instanceId) {
+      return res.status(400).json({ detail: 'instanceId is required' });
+    }
+    
+    // Get instance info
+    const result = await executeQuery('SELECT * FROM bot_instances WHERE id = $1', [instanceId]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ detail: 'Instance not found' });
+    }
+    
+    const instance = result.rows[0];
+    let port = instance.port;
+    
+    if (!port) {
+      port = getNextPort();
+      await executeQuery('UPDATE bot_instances SET port = $1 WHERE id = $2', [port, instanceId]);
+    }
+    
+    // Check if session files exist in local directory
+    const botDir = path.join(__dirname, '..', 'bot');
+    const sessionDir = path.join(botDir, 'instances', instanceId, 'session');
+    const sessionExists = fs.existsSync(sessionDir) && fs.readdirSync(sessionDir).length > 0;
+    
+    // Read session from local files if exists
+    let sessionData = null;
+    if (sessionExists) {
+      console.log(chalk.blue(`📁 Session files found locally for ${instanceId}`));
+    } else if (instance.session_data) {
+      // Fallback to DB session
+      console.log(chalk.blue(`📦 Session data found in DB for ${instanceId}`));
+      sessionData = instance.session_data;
+    }
+    
+    // Update status to connecting
+    await executeQuery("UPDATE bot_instances SET status = 'connecting', start_status = 'new' WHERE id = $1", [instanceId]);
+    
+    // Start the instance with session data
+    const started = await startInstanceInternal(instanceId, instance.phone_number || phone_number, port, sessionData);
+    
+    if (started) {
+      // Update status to connected after a delay
+      setTimeout(async () => {
+        await executeQuery("UPDATE bot_instances SET status = 'connected', connected_user = $1 WHERE id = $2", 
+          [instance.phone_number || phone_number, instanceId]);
+        console.log(chalk.green(`✅ Bot ${instanceId} status updated to connected`));
+      }, 10000);
+      
+      res.json({ message: 'Bot started after pairing', instanceId, port });
+    } else {
+      res.status(500).json({ detail: 'Failed to start bot' });
+    }
+  } catch (e) {
+    console.error('Error starting bot after pairing:', e);
+    res.status(500).json({ detail: e.message });
+  }
+});
+
 app.delete('/api/instances/:instanceId', async (req, res) => {
   try {
     const { instanceId } = req.params;
@@ -1606,7 +1639,7 @@ app.post('/pair', async (req, res) => {
     
     await new Promise(r => setTimeout(r, 3000));
     
-    const pairingCode = await getPairingCodeFromInstance(port, 60);
+    const pairingCode = await getPairingCodeFromInstance(port, 90);
     
     if (!pairingCode) {
       console.log(chalk.red(`[PAIR-FORM] Failed to generate pairing code for ${instanceId}`));

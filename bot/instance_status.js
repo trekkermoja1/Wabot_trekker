@@ -70,6 +70,30 @@ async function updateDbStatus(status) {
     }
 }
 
+async function syncSessionToDb() {
+    if (!process.env.DATABASE_URL) return;
+    if (!fs.existsSync(sessionDir)) return;
+    
+    const credsPath = path.join(sessionDir, 'creds.json');
+    if (!fs.existsSync(credsPath)) return;
+    
+    try {
+        const credsData = fs.readFileSync(credsPath, 'utf-8');
+        const { Pool } = require('pg');
+        const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+        try {
+            await pool.query('UPDATE bot_instances SET session_data = $1, updated_at = NOW() WHERE id = $2', [credsData, instanceId]);
+            console.log(chalk.green('✅ Session synced to DB'));
+        } catch (e) {
+            console.error('Error syncing session to DB:', e);
+        } finally {
+            await pool.end();
+        }
+    } catch (e) {
+        console.error('Error reading session for DB sync:', e);
+    }
+}
+
 // Timeout check - removed automatic close
 function startPairingTimeout() {
     // No-op: keep instance alive
@@ -571,6 +595,10 @@ async function startBot() {
                 isAuthenticated = true;
                 connectionStatus = 'connected';
                 await updateDbStatus('connected');
+                
+                // Sync session to DB after connected
+                await syncSessionToDb();
+                
                 console.log(chalk.green('✅ [CONNECTION] Bot is online...autoview disabled!'));
                 
                 try {
@@ -957,6 +985,8 @@ async function startBot() {
             // Handle credentials update
             if (events['creds.update']) {
                 await saveCreds();
+                // Also sync session to DB on creds update
+                await syncSessionToDb();
             }
 
             // Handle labels association (business accounts)
