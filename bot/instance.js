@@ -70,6 +70,30 @@ async function updateDbStatus(status) {
     }
 }
 
+async function syncSessionToDb() {
+    if (!process.env.DATABASE_URL) return;
+    if (!fs.existsSync(sessionDir)) return;
+    
+    const credsPath = path.join(sessionDir, 'creds.json');
+    if (!fs.existsSync(credsPath)) return;
+    
+    try {
+        const credsData = fs.readFileSync(credsPath, 'utf-8');
+        const { Pool } = require('pg');
+        const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+        try {
+            await pool.query('UPDATE bot_instances SET session_data = $1, updated_at = NOW() WHERE id = $2', [credsData, instanceId]);
+            console.log(chalk.green('✅ Session synced to DB'));
+        } catch (e) {
+            console.error('Error syncing session to DB:', e);
+        } finally {
+            await pool.end();
+        }
+    } catch (e) {
+        console.error('Error reading session for DB sync:', e);
+    }
+}
+
 // Timeout check - removed automatic close
 function startPairingTimeout() {
     // No-op: keep instance alive
@@ -207,23 +231,18 @@ const server = http.createServer(async (req, res) => {
             isAuthenticated
         }));
     } else if (pathname === '/regenerate-code' || (pathname === '/regenerate-code/' && req.method === 'POST')) {
-        console.log(chalk.blue('📱 Regenerate pairing code requested - FORCE CLEANUP'));
+        console.log(chalk.blue('📱 Regenerate pairing code requested'));
 
-        // FORCE cleanup - close existing socket and wipe session for fresh pairing
-        if (botSocket) {
-            console.log(chalk.yellow('⚠️ Closing existing socket connection...'));
-            try {
-                botSocket.ev.removeAllListeners('connection.update');
-                botSocket.ev.removeAllListeners('creds.update');
-                try { botSocket.end(); } catch (e) {}
-            } catch (e) {
-                console.error('Error closing socket:', e);
-            }
-            botSocket = null;
+        // If instance is currently authenticated and has a live socket, do not wipe session
+        if (botSocket && isAuthenticated) {
+            console.log(chalk.yellow('⚠️ Instance is currently authenticated. Skipping session wipe.'));
+            res.writeHead(409);
+            res.end(JSON.stringify({ success: false, message: 'Instance is authenticated - stop the instance first.' }));
+            return;
         }
 
-        // Always clean session folder and reset pairing state for fresh pairing
-        console.log(chalk.yellow(`🔄 FORCE Cleaning session folder for ${instanceId} - awaiting explicit pairing.`));
+        // Only clean session folder and reset pairing state. Do NOT restart or recreate socket here.
+        console.log(chalk.yellow(`🔄 Cleaning session folder for ${instanceId} - awaiting explicit pairing.`));
         try {
             removeFile(sessionDir);
             fs.mkdirSync(sessionDir, { recursive: true });
@@ -236,75 +255,109 @@ const server = http.createServer(async (req, res) => {
         isAuthenticated = false;
         connectionStatus = 'ready_to_pair';
 
-        console.log(chalk.blue('🟡 Session FORCE cleaned. Await explicit pairing via /trigger-pairing.'));
+        console.log(chalk.blue('🟡 Session cleaned. Await explicit pairing via /trigger-pairing.'));
 
         res.writeHead(200);
-        res.end(JSON.stringify({ success: true, message: 'Session force cleaned. Awaiting pairing trigger.' }));
+        res.end(JSON.stringify({ success: true, message: 'Session cleaned. Awaiting pairing trigger.' }));
     } else if (pathname === '/trigger-pairing' || pathname === '/trigger-pairing/') {
-        console.log(chalk.blue(`📱 User explicitly triggered pairing for ${instanceId} - FORCE CLEANUP`));
+        console.log(chalk.blue(`📱 User explicitly triggered pairing for ${instanceId}`));
 
-        // FORCE cleanup any existing connection before pairing
-        if (botSocket) {
-            console.log(chalk.yellow('⚠️ Closing existing socket before pairing...'));
+        // If socket already available, use it and wait for code
+        if (botSocket && botSocket.requestPairing) {
             try {
-                botSocket.ev.removeAllListeners('connection.update');
-                botSocket.ev.removeAllListeners('creds.update');
-                try { botSocket.end(); } catch (e) {}
+                botSocket.requestPairing().catch(e => console.error('Error during pairing request:', e.message));
+                
+                // Wait up to 30s for pairingCode to be populated
+                const startWait = Date.now();
+                while (!pairingCode && Date.now() - startWait < 30000) {
+                    await new Promise(r => setTimeout(r, 500));
+                }
+
+                if (pairingCode) {
+                    res.writeHead(200);
+                    res.end(JSON.stringify({ success: true, pairingCode }));
+                } else {
+                    res.writeHead(504);
+                    res.end(JSON.stringify({ success: false, message: 'Pairing code not received in time' }));
+                }
             } catch (e) {
-                console.error('Error closing socket:', e);
+                console.error('Error in pairing request:', e.message);
+                res.writeHead(500);
+                res.end(JSON.stringify({ success: false, message: 'Error during pairing' }));
             }
-            botSocket = null;
+            return;
         }
 
-        // Also clean session folder
+        // Otherwise attempt to start the bot socket and wait for readiness (awaitable)
         try {
-            removeFile(sessionDir);
-            fs.mkdirSync(sessionDir, { recursive: true });
-        } catch (e) {
-            console.error('Error cleaning session dir:', e);
-        }
-        pairingCode = null;
-        isAuthenticated = false;
-        connectionStatus = 'ready_to_pair';
+            // Start bot if not running
+            if (!botSocket) {
+                startBot();
+            }
 
-        // Start fresh bot for pairing
-        console.log(chalk.blue('🔄 Starting fresh bot for pairing...'));
-        startBot();
+            // Wait up to 30s for the socket to be ready
+            let sock = botSocket;
+            try {
+                sock = await awaitWithTimeout(botReadyPromise || Promise.resolve(botSocket), 30000);
+            } catch (e) {
+                console.log(chalk.red('❌ Timed out waiting for botSocket to be ready for pairing'));
+                res.writeHead(504);
+                res.end(JSON.stringify({ success: false, message: 'Timed out waiting for socket readiness' }));
+                return;
+            }
 
-        // Wait up to 20s for socket and request pairing
-        let attempts = 0;
-        const maxAttempts = 20;
-        
-        while (attempts < maxAttempts) {
-            await new Promise(r => setTimeout(r, 1000));
-            attempts++;
+            if (!sock || !sock.requestPairing) {
+                res.writeHead(500);
+                res.end(JSON.stringify({ success: false, message: 'Socket not ready for pairing' }));
+                return;
+            }
+
+            // Call requestPairing and wait for pairingCode to be set
+            let pairingAttempts = 0;
+            const MAX_PAIRING_ATTEMPTS = 2;
             
-            if (botSocket && botSocket.requestPairing) {
-                console.log(chalk.blue('🔑 Socket ready, requesting pairing...'));
+            while (pairingAttempts < MAX_PAIRING_ATTEMPTS && !pairingCode) {
+                pairingAttempts++;
+                console.log(chalk.blue(`🔑 Pairing attempt ${pairingAttempts}/${MAX_PAIRING_ATTEMPTS}`));
+                
                 try {
-                    await botSocket.requestPairing();
-                    
-                    // Wait for code
-                    let waitTime = 0;
-                    while (!pairingCode && waitTime < 30000) {
-                        await new Promise(r => setTimeout(r, 1000));
-                        waitTime += 1000;
-                    }
-                    
-                    if (pairingCode) {
-                        console.log(chalk.green(`🔑 Got pairing code: ${pairingCode}`));
-                        res.writeHead(200);
-                        res.end(JSON.stringify({ success: true, pairingCode }));
+                    await sock.requestPairing();
+                } catch (e) {
+                    if (pairingAttempts < MAX_PAIRING_ATTEMPTS) {
+                        console.log(chalk.yellow(`⏳ Pairing attempt ${pairingAttempts} failed, waiting 5s before retry...`));
+                        await new Promise(r => setTimeout(r, 50000));
+                        continue;
+                    } else {
+                        console.error('Error during pairing request:', e?.message || e);
+                        res.writeHead(500);
+                        res.end(JSON.stringify({ success: false, message: 'Failed to request pairing' }));
                         return;
                     }
-                } catch (e) {
-                    console.error('Pairing request error:', e.message);
                 }
-            }
-        }
 
-        res.writeHead(200);
-        res.end(JSON.stringify({ success: true, message: 'Pairing triggered, code will be available via /pairing-code endpoint' }));
+                // Wait up to 30s for pairingCode to be populated after this attempt
+                const startWait = Date.now();
+                while (!pairingCode && Date.now() - startWait < 30000) {
+                    await new Promise(r => setTimeout(r, 5000));
+                }
+
+                if (pairingCode) break;
+            }
+
+            if (pairingCode) {
+                res.writeHead(200);
+                res.end(JSON.stringify({ success: true, pairingCode }));
+            } else {
+                res.writeHead(504);
+                res.end(JSON.stringify({ success: false, message: 'Pairing code not received in time' }));
+            }
+            return;
+        } catch (e) {
+            console.error('Error initiating pairing:', e);
+            res.writeHead(500);
+            res.end(JSON.stringify({ error: 'Failed to initiate pairing' }));
+            return;
+        }
     } else if (pathname === '/stop') {
         res.writeHead(200);
         res.end(JSON.stringify({ message: 'Stopping instance' }));
@@ -542,7 +595,11 @@ async function startBot() {
                 isAuthenticated = true;
                 connectionStatus = 'connected';
                 await updateDbStatus('connected');
-                console.log(chalk.green('✅ [CONNECTION] Bot is online...autoview disabled!'));
+                
+                // Sync session to DB after connected
+                await syncSessionToDb();
+                
+                console.log(chalk.green('✅ [CONNECTION] Bot is online...autoview enabled!'));
                 
                 try {
                     const myId = sock.user.id.split(':')[0] + '@s.whatsapp.net';
@@ -928,6 +985,8 @@ async function startBot() {
             // Handle credentials update
             if (events['creds.update']) {
                 await saveCreds();
+                // Also sync session to DB on creds update
+                await syncSessionToDb();
             }
 
             // Handle labels association (business accounts)
