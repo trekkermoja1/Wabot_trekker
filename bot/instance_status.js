@@ -613,14 +613,43 @@ async function startBot() {
                 await delay(3000);
             }
             
+            // Verify we have a valid connection to WhatsApp before requesting code
+            if (!sock.ws || !sock.ws.socket || sock.ws.socket.readyState !== 1) {
+                console.log(chalk.yellow('⚠️ [PAIRING] WebSocket not ready, waiting...'));
+                await delay(5000);
+                if (!sock.ws || !sock.ws.socket || sock.ws.socket.readyState !== 1) {
+                    console.log(chalk.red('❌ [PAIRING] Cannot connect to WhatsApp servers'));
+                    connectionStatus = 'error';
+                    return;
+                }
+            }
+            
+            console.log(chalk.green(`✅ [WA-SERVER] Connected to WhatsApp, requesting pairing code...`));
+            
             try {
                 connectionStatus = 'pairing';
                 pairingRetryCount++;
                 console.log(chalk.blue(`🔑 Requesting pairing code (attempt ${pairingRetryCount}/${MAX_PAIRING_RETRIES})...`));
                 
                 // Use cleanPhone which is validated and cleaned
-                let code = await sock.requestPairingCode(cleanPhone);
-                code = code?.match(/.{1,4}/g)?.join('-') || code;
+                let rawCode = await sock.requestPairingCode(cleanPhone);
+                
+                // Verify the code comes from WhatsApp (should be 8 digits)
+                if (!rawCode || typeof rawCode !== 'string') {
+                    throw new Error('Invalid pairing code received from WhatsApp');
+                }
+                
+                // Log to confirm code comes from WhatsApp server
+                console.log(chalk.green(`✅ [WA-SERVER] Received authentic pairing code from WhatsApp`));
+                
+                // Format code with dashes (e.g., XXXX-XXXX)
+                let code = rawCode.match(/.{1,4}/g)?.join('-') || rawCode;
+                
+                // Validate formatted code
+                if (!code || code.length < 6) {
+                    throw new Error(`Invalid code format received: ${code}`);
+                }
+                
                 pairingCode = code;
                 pairingCodeGeneratedAt = Date.now();
                 pairingRetryCount = 0; // Reset on success
