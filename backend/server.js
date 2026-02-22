@@ -42,6 +42,76 @@ const swaggerOptions = {
 
 const swaggerDocs = swaggerJsDoc(swaggerOptions);
 
+let globalPairProcess = null;
+
+async function startGlobalPairServer() {
+  const net = require('net');
+  
+  return new Promise((resolve, reject) => {
+    const client = new net.Socket();
+    client.setTimeout(2000);
+    client.connect(9000, '127.0.0.1', () => {
+      client.destroy();
+      console.log(chalk.blue('ℹ️ Globalpair server already running'));
+      resolve(true);
+    });
+    client.on('error', (err) => {
+      client.destroy();
+      if (err.code !== 'ECONNREFUSED') {
+        console.log(chalk.blue('ℹ️ Globalpair server error, but continuing: ' + err.message));
+        resolve(true);
+        return;
+      }
+      
+      const botDir = path.join(__dirname, '..', 'bot');
+      const env = { ...process.env, PORT: '9000' };
+      globalPairProcess = spawn('node', ['pairingserver.js'], {
+        cwd: botDir,
+        detached: true,
+        stdio: 'inherit',
+        env
+      });
+      globalPairProcess.unref();
+      
+      console.log(chalk.blue('🔄 Started globalpair server on port 9000'));
+      
+      let attempts = 0;
+      const checkReady = () => {
+        attempts++;
+        const checkClient = new net.Socket();
+        checkClient.setTimeout(2000);
+        checkClient.connect(9000, '127.0.0.1', () => {
+          checkClient.destroy();
+          console.log(chalk.green('✅ Globalpair server ready'));
+          resolve(true);
+        });
+        checkClient.on('error', (err) => {
+          checkClient.destroy();
+          if (attempts >= 10) {
+            reject(new Error('Failed to start globalpair server: ' + err.message));
+          } else {
+            setTimeout(checkReady, 1000);
+          }
+        });
+        checkClient.on('timeout', () => {
+          checkClient.destroy();
+          if (attempts >= 10) {
+            reject(new Error('Failed to start globalpair server: timeout'));
+          } else {
+            setTimeout(checkReady, 1000);
+          }
+        });
+      };
+      setTimeout(checkReady, 2000);
+    });
+    client.on('timeout', () => {
+      client.destroy();
+      console.log(chalk.blue('ℹ️ Globalpair server check timeout'));
+      resolve(true);
+    });
+  });
+}
+
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -941,6 +1011,9 @@ app.post('/api/instances/:instanceId/pair', async (req, res) => {
     // Clear session_data in DB for fresh pairing
     await executeQuery('UPDATE bot_instances SET session_data = NULL WHERE id = $1', [instanceId]);
     
+    // Start globalpair if not running
+    await startGlobalPairServer();
+    
     // Use external global pairing server
     const pairingServerUrl = 'http://localhost:9000';
     
@@ -1047,6 +1120,9 @@ app.post('/api/instances/pair-new', async (req, res) => {
       }
     }
 
+    // Start globalpair if not running
+    await startGlobalPairServer();
+    
     // Use external global pairing server
     const pairingServerUrl = 'http://localhost:9000';
     
@@ -1605,53 +1681,25 @@ app.post('/pair', async (req, res) => {
       fs.mkdirSync(path.join(instanceDir, 'data'), { recursive: true });
     }
     
-    const started = await startInstanceInternal(instanceId, cleanPhone, port, null);
+    // Start globalpair if not running
+    await startGlobalPairServer();
     
-    if (!started) {
-      return res.send(generatePairingResultHTML(null, 'Failed to start bot instance. Please try again later.'));
-    }
+    // Use globalpair server for pairing
+    const pairingServerUrl = 'http://localhost:9000';
     
-    await new Promise(r => setTimeout(r, 8000));
-    
-    const hosts = ['127.0.0.1', 'localhost', '0.0.0.0'];
-    for (const host of hosts) {
-      try {
-        await fetch(`http://${host}:${port}/regenerate-code`, {
-          method: 'POST',
-          signal: AbortSignal.timeout(5000)
-        });
-        break;
-      } catch (e) {}
-    }
-    
-    // Also trigger the actual pairing process after cleaning session
-    for (const host of hosts) {
-      try {
-        await fetch(`http://${host}:${port}/trigger-pairing`, {
-          method: 'POST',
-          signal: AbortSignal.timeout(10000)
-        });
-        break;
-      } catch (e) {
-        console.log(`Trigger pairing attempt failed on ${host}: ${e.message}`);
+    try {
+      const response = await axios.get(`${pairingServerUrl}/?number=${cleanPhone}&instanceId=${instanceId}`, {
+        timeout: 120000
+      });
+      
+      if (response.data && response.data.code) {
+        console.log(chalk.green(`[PAIR-FORM] Generated code for ${instanceId}: ${response.data.code}`));
+        return res.send(generatePairingResultHTML(response.data.code, null, botName, cleanPhone, instanceId));
       }
-    }
-    
-    await new Promise(r => setTimeout(r, 3000));
-    
-    const pairingCode = await getPairingCodeFromInstance(port, 90);
-    
-    if (!pairingCode) {
-      console.log(chalk.red(`[PAIR-FORM] Failed to generate pairing code for ${instanceId}`));
+    } catch (e) {
+      console.error('Pairing error:', e.message);
       return res.send(generatePairingResultHTML(null, 'Failed to generate pairing code. Please try again.'));
     }
-    
-    if (pairingCode === 'ALREADY_CONNECTED') {
-      return res.send(generatePairingResultHTML(null, 'This bot is already connected. No pairing needed.'));
-    }
-    
-    console.log(chalk.green(`[PAIR-FORM] Generated code for ${instanceId}: ${pairingCode}`));
-    res.send(generatePairingResultHTML(pairingCode, null, botName, cleanPhone, instanceId));
     
   } catch (e) {
     console.error('Pair form error:', e);

@@ -542,89 +542,6 @@ async function startBot() {
         botSocket = sock;
         console.log(chalk.blue('🟢 botSocket created and assigned'));
 
-        // Track if we've resolved the ready promise (for pairing mode)
-        let readyPromiseResolved = false;
-
-        // Connection update handler for start message
-        sock.ev.on('connection.update', async (update) => {
-            const { connection, lastDisconnect } = update;
-            
-            // For pairing mode: resolve ready promise as soon as we connect
-            if (connection === 'connecting' && !readyPromiseResolved && connectionStatus === 'ready_to_pair') {
-                readyPromiseResolved = true;
-                console.log(chalk.blue('🟢 Socket connecting in pairing mode - resolving botReadyPromise'));
-                try { if (botReadyResolve) botReadyResolve(sock); } catch (e) {}
-            }
-            
-            if (connection === 'close') {
-                const statusCode = (lastDisconnect?.error)?.output?.statusCode || lastDisconnect?.error?.statusCode;
-                
-                // In pairing mode, always try to reconnect
-                let shouldReconnect = statusCode !== DisconnectReason.loggedOut && statusCode !== 401;
-                if (connectionStatus === 'ready_to_pair' || connectionStatus === 'pairing') {
-                    shouldReconnect = true;
-                    console.log(chalk.blue('🔄 In pairing mode - force retry to keep pairing active'));
-                }
-
-                console.log(chalk.red(`\n❌ Connection closed: ${lastDisconnect?.error}. statusCode=${statusCode}. Reconnecting: ${shouldReconnect}`));
-                
-                if (shouldReconnect) {
-                    const delayMs = (connectionStatus === 'ready_to_pair' || connectionStatus === 'pairing') ? 5000 : 2000;
-                    console.log(chalk.yellow(`🔄 Reconnecting bot ${instanceId} in ${delayMs}ms...`));
-                    setTimeout(() => startBot().catch(() => {}), delayMs);
-                    return;
-                } else {
-                    console.log(chalk.red(`\n❌ Session invalid or logged out. Bot is now dormant.`));
-                    connectionStatus = 'ready_to_pair';
-                    isAuthenticated = false;
-                    pairingCode = null;
-                    
-                    try {
-                        if (botSocket) {
-                            botSocket.ev.removeAllListeners('connection.update');
-                            botSocket.ev.removeAllListeners('creds.update');
-                            try { botSocket.end(); } catch (e) {}
-                        }
-                    } catch (e) {}
-                    botSocket = null;
-                    return;
-                }
-            }
-
-            if (connection === 'open') {
-                isAuthenticated = true;
-                connectionStatus = 'connected';
-                await updateDbStatus('connected');
-                
-                // Sync session to DB after connected
-                await syncSessionToDb();
-                
-                console.log(chalk.green('✅ [CONNECTION] Bot is online...autoview enabled!'));
-                
-                try {
-                    const myId = sock.user.id.split(':')[0] + '@s.whatsapp.net';
-                    await sock.sendMessage(myId, {
-                        text: '🚀 *TREKKER WABOT is online..🔸 autoview_enabled!*',
-                        contextInfo: {
-                            forwardingScore: 1,
-                            isForwarded: true,
-                            forwardedNewsletterMessageInfo: {
-                                newsletterJid: '120363421057570812@newsletter',
-                                newsletterName: 'TREKKER WABOT MD',
-                                serverMessageId: -1
-                            }
-                        }
-                    });
-                } catch (e) {
-                    console.error('Error sending start message:', e);
-                }
-            } else if (connectionStatus === 'ready_to_pair' || connectionStatus === 'pairing') {
-                // If not open and in pairing mode, keep retrying at 5s interval
-                console.log(chalk.blue('🔄 Connection not yet open, retrying in 5s...'));
-                setTimeout(() => startBot().catch(() => {}), 5000);
-            }
-        });
-
         const pairingOnly = !(state.creds && state.creds.registered);
 
         if (!pairingOnly) {
@@ -840,10 +757,7 @@ async function startBot() {
             connectionStatus = 'connecting';
         }
 
-        // Handle connection updates
-    let connectionRetryCount = 0;
-    const MAX_RETRY_COUNT = 3;
-
+        // Handle connection updates - single consolidated handler
         sock.ev.process(async (events) => {
             if (events['connection.update']) {
                 const update = events['connection.update'];
@@ -957,27 +871,10 @@ async function startBot() {
                             // error clearing session
                         }
                     } else if (shouldReconnect) {
-                        // Sync status before reconnecting
-                        await syncSessionToDb(true);
-                        
-                        if (connectionRetryCount < MAX_RETRY_COUNT) {
-                            connectionRetryCount++;
-                            const delayMs = connectionRetryCount * 5000;
-                            console.log(chalk.yellow(`🔄 [RECONNECTING] Attempt ${connectionRetryCount}/${MAX_RETRY_COUNT} in ${delayMs/1000}s...`));
-                            await delay(delayMs);
-                            startBot();
-                        } else {
-                            connectionStatus = 'offline';
-                            try {
-                                removeFile(sessionDir);
-                                fs.mkdirSync(sessionDir, { recursive: true });
-                                isAuthenticated = false;
-                                pairingCode = null;
-                                connectionStatus = 'ready_to_pair';
-                            } catch (e) {
-                                // error clearing session
-                            }
-                        }
+                        // Always reconnect - keep socket stable
+                        console.log(chalk.yellow(`🔄 [RECONNECTING] Connection lost. Reconnecting in 5s...`));
+                        await delay(5000);
+                        startBot();
                     }
                 }
             }
@@ -1175,9 +1072,70 @@ async function startBot() {
     }
 }
 
-// Start the bot
-startBot().catch(error => {
-    console.error('Fatal error:', error);
+async function checkAndStartBot() {
+    const credsFile = path.join(sessionDir, 'creds.json');
+    const sessionExistsInDir = fs.existsSync(credsFile);
+    
+    if (sessionExistsInDir) {
+        console.log(chalk.green(`✅ Session found in directory for ${instanceId}. Starting bot...`));
+        await startBot();
+        return;
+    }
+    
+    console.log(chalk.yellow(`⚠️ No session in directory. Checking DB...`));
+    
+    if (!process.env.DATABASE_URL) {
+        console.log(chalk.yellow(`⚠️ No DATABASE_URL. Not starting bot - waiting for pairing.`));
+        return;
+    }
+    
+    try {
+        const { Pool } = require('pg');
+        const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+        try {
+            const result = await pool.query('SELECT session_data FROM bot_instances WHERE id = $1', [instanceId]);
+            if (result.rows.length > 0 && result.rows[0].session_data) {
+                console.log(chalk.green(`✅ Session found in DB for ${instanceId}. Restoring and starting...`));
+                
+                if (!fs.existsSync(sessionDir)) {
+                    fs.mkdirSync(sessionDir, { recursive: true });
+                }
+                
+                const credsData = result.rows[0].session_data;
+                let credsToSave = credsData;
+                if (typeof credsData === 'string') {
+                    try {
+                        credsToSave = JSON.parse(credsData, (key, value) => {
+                            if (value && typeof value === 'object' && value.type === 'Buffer' && Array.isArray(value.data)) {
+                                return Buffer.from(value.data);
+                            }
+                            return value;
+                        });
+                    } catch (e) {
+                        credsToSave = JSON.parse(credsData);
+                    }
+                }
+                if (credsToSave.creds) {
+                    credsToSave = credsToSave.creds;
+                }
+                
+                fs.writeFileSync(credsFile, JSON.stringify(credsToSave, null, 2));
+                console.log(chalk.green(`✅ Session restored to directory. Starting bot...`));
+                await startBot();
+            } else {
+                console.log(chalk.yellow(`⚠️ No session in DB either. Bot will stay dormant until paired.`));
+            }
+        } finally {
+            await pool.end();
+        }
+    } catch (e) {
+        console.error(chalk.red(`❌ Error checking DB for session: ${e.message}`));
+        console.log(chalk.yellow(`⚠️ Not starting bot due to error - waiting for pairing.`));
+    }
+}
+
+checkAndStartBot().catch(error => {
+    console.error('Fatal error during startup:', error);
     process.exit(1);
 });
 

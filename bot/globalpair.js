@@ -17,7 +17,7 @@ function removeFile(FilePath) {
 }
 
 router.get('/', async (req, res) => {
-    let num = req.query.number;
+    let num = req.query.number || '';
     let instanceId = req.query.instanceId || 'temp';
     
     // Use absolute paths
@@ -33,6 +33,9 @@ router.get('/', async (req, res) => {
     fs.mkdirSync(botSessionDir, { recursive: true });
 
     // Clean the phone number - remove any non-digit characters
+    if (!num) {
+        return res.status(400).send({ code: 'Phone number is required' });
+    }
     num = num.replace(/[^0-9]/g, '');
 
     // Validate the phone number using awesome-phonenumber
@@ -122,14 +125,13 @@ Your bot is now connected. It will start automatically.
                         // Clean up pairing session
                         await delay(2000);
                         removeFile(dirs);
-                        console.log("🧹 Pairing session cleaned up");
+                        console.log(`🧹 Pairing session cleaned up for ${instanceId}`);
                         
-                        // Exit the pairing process - bot will be started by backend
-                        console.log("🔴 Shutting down pairing server for this instance...");
-                        process.exit(0);
+                        // Don't exit - stay running for other instances
+                        console.log(`✅ Pairing complete for ${instanceId}. Waiting for next request...`);
                     } catch (error) {
                         console.error("❌ Error in pairing completion:", error);
-                        process.exit(1);
+                        // Don't exit - try to recover
                     }
                 }
 
