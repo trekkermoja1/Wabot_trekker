@@ -1643,8 +1643,32 @@ app.post('/pair', async (req, res) => {
       const existingBot = existing.rows[0];
       const botStatus = existingBot.status;
       
-      if (botStatus === 'connected') {
+      // Check if session is actually valid by looking at session files
+      const botDir = path.join(__dirname, '..', 'bot');
+      const sessionDir = path.join(botDir, 'instances', existingBot.id, 'session');
+      const credsFile = path.join(sessionDir, 'creds.json');
+      let sessionValid = false;
+      
+      if (fs.existsSync(credsFile)) {
+        try {
+          const credsData = JSON.parse(fs.readFileSync(credsFile, 'utf-8'));
+          // Check if creds have required keys and are not empty
+          sessionValid = credsData && credsData.noiseKey && credsData.signedIdentityKey;
+        } catch (e) {
+          sessionValid = false;
+        }
+      }
+      
+      // Only allow re-pairing if session is invalid (not connected)
+      // If session is valid and status is connected, block it
+      if (botStatus === 'connected' && sessionValid) {
         return res.send(generatePairingResultHTML(null, 'This bot is already connected and active. No re-pairing needed.'));
+      }
+      
+      // Session is invalid or not connected - allow re-pairing
+      if (botStatus === 'connected' && !sessionValid) {
+        console.log(chalk.yellow(`[PAIR-FORM] DB shows connected but session is invalid. Updating status to offline.`));
+        await executeQuery('UPDATE bot_instances SET status = $1 WHERE id = $2', ['offline', existingBot.id]);
       }
       
       instanceId = existingBot.id;
@@ -1655,8 +1679,6 @@ app.post('/pair', async (req, res) => {
       
       await stopInstance(instanceId);
       
-      const botDir = path.join(__dirname, '..', 'bot');
-      const sessionDir = path.join(botDir, 'instances', instanceId, 'session');
       if (fs.existsSync(sessionDir)) {
         fs.rmSync(sessionDir, { recursive: true, force: true });
       }
