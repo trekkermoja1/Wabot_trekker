@@ -48,6 +48,9 @@ const instanceId = args[0] || 'default';
 const phoneNumber = args[1] || '';
 const apiPort = parseInt(args[2]) || 3001;
 
+// Set global instanceId for use in commands
+global.instanceId = instanceId;
+
 // Instance-specific paths
 const instanceDir = path.join(__dirname, 'instances', instanceId);
 const sessionDir = path.join(instanceDir, 'session');
@@ -356,14 +359,26 @@ async function startBot() {
                     (async () => {
                         await pool.query('ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS autoview BOOLEAN DEFAULT TRUE');
                         await pool.query('ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS botoff_list JSONB DEFAULT \'[]\'::jsonb');
+                        await pool.query('ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS chatbot_enabled BOOLEAN DEFAULT FALSE');
+                        await pool.query('ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS chatbot_api_key VARCHAR(500)');
+                        await pool.query('ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS chatbot_base_url VARCHAR(500)');
                         
-                        const result = await pool.query('SELECT autoview, botoff_list FROM bot_instances WHERE id = $1', [instanceId]);
+                        const result = await pool.query('SELECT autoview, botoff_list, chatbot_enabled, chatbot_api_key, chatbot_base_url FROM bot_instances WHERE id = $1', [instanceId]);
                         if (result.rows.length > 0) {
                             if (result.rows[0].autoview !== null) {
                                 global.autoviewState = result.rows[0].autoview;
                             }
                             if (result.rows[0].botoff_list) {
                                 global.botoffList = typeof result.rows[0].botoff_list === 'string' ? JSON.parse(result.rows[0].botoff_list) : result.rows[0].botoff_list;
+                            }
+                            if (result.rows[0].chatbot_enabled !== null) {
+                                global.chatbotEnabled = result.rows[0].chatbot_enabled;
+                            }
+                            if (result.rows[0].chatbot_api_key) {
+                                global.chatbotApiKey = result.rows[0].chatbot_api_key;
+                            }
+                            if (result.rows[0].chatbot_base_url) {
+                                global.chatbotBaseUrl = result.rows[0].chatbot_base_url;
                             }
                         }
                     })(),

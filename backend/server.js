@@ -595,6 +595,9 @@ async function initDatabase() {
         pid INTEGER,
         duration_months INTEGER,
         autoview BOOLEAN DEFAULT false,
+        chatbot_enabled BOOLEAN DEFAULT false,
+        chatbot_api_key VARCHAR(500),
+        chatbot_base_url VARCHAR(500),
         created_at TIMESTAMP NOT NULL DEFAULT ${useSQLite ? 'CURRENT_TIMESTAMP' : 'NOW()'},
         updated_at TIMESTAMP NOT NULL DEFAULT ${useSQLite ? 'CURRENT_TIMESTAMP' : 'NOW()'},
         approved_at TIMESTAMP,
@@ -1623,6 +1626,51 @@ app.post('/api/instances/:instanceId/approve', async (req, res) => {
 
 // Serve static pairing page from public directory
 app.use(express.static(path.join(__dirname, '..', 'public')));
+
+// Chatbot configuration API endpoints
+app.put('/api/instances/:instanceId/chatbot', async (req, res) => {
+  try {
+    const { instanceId } = req.params;
+    const { chatbot_enabled, chatbot_api_key, chatbot_base_url } = req.body;
+
+    const result = await executeQuery('SELECT * FROM bot_instances WHERE id = $1', [instanceId]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ detail: 'Instance not found' });
+    }
+
+    const nowFunc = useSQLite ? 'CURRENT_TIMESTAMP' : 'NOW()';
+    await executeQuery(`
+      UPDATE bot_instances 
+      SET chatbot_enabled = $1,
+          chatbot_api_key = $2,
+          chatbot_base_url = $3,
+          updated_at = ${nowFunc}
+      WHERE id = $4
+    `, [chatbot_enabled, chatbot_api_key, chatbot_base_url, instanceId]);
+
+    res.json({ success: true, message: 'Chatbot configuration updated' });
+  } catch (e) {
+    res.status(500).json({ detail: e.message });
+  }
+});
+
+app.get('/api/instances/:instanceId/chatbot', async (req, res) => {
+  try {
+    const { instanceId } = req.params;
+
+    const result = await executeQuery(
+      'SELECT chatbot_enabled, chatbot_api_key, chatbot_base_url FROM bot_instances WHERE id = $1', 
+      [instanceId]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ detail: 'Instance not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (e) {
+    res.status(500).json({ detail: e.message });
+  }
+});
 
 // HTML Form POST handler for pairing (works without JavaScript)
 // Supports both new bots and re-pairing existing offline/connecting bots

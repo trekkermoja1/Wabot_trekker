@@ -109,7 +109,7 @@ const { goodbyeCommand, handleLeaveEvent } = require('./commands/goodbye');
 const githubCommand = require('./commands/github');
 const { handleAntiBadwordCommand, handleBadwordDetection } = require('./lib/antibadword');
 const antibadwordCommand = require('./commands/antibadword');
-const { handleChatbotCommand, handleChatbotResponse } = require('./commands/chatbot');
+const { handleChatbotCommand, handleChatbotResponse } = require('./commands/chatbotdb');
 const takeCommand = require('./commands/take');
 const { flirtCommand } = require('./commands/flirt');
 const characterCommand = require('./commands/character');
@@ -1098,7 +1098,7 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
                 commandExecuted = true;
                 break;
             case userMessage.startsWith('.chatbot'):
-                await handleChatbotCommand(sock, chatId, message, userMessage.split(' ')[1]);
+                await handleChatbotCommand(sock, chatId, message, userMessage.split(' ')[1], global.instanceId);
                 commandExecuted = true;
                 break;
             case userMessage.startsWith('.take'):
@@ -1410,11 +1410,11 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
                 commandExecuted = true;
                 break;
             default:
+                // Handle non-command messages - both group and private
+                if (userMessage) {
+                    await handleChatbotResponse(sock, chatId, message, userMessage, senderId);
+                }
                 if (isGroup) {
-                    // Handle non-command group messages
-                    if (userMessage) {  // Make sure there's a message
-                        await handleChatbotResponse(sock, chatId, message, userMessage, senderId);
-                    }
                     await handleTagDetection(sock, chatId, message, senderId);
                     await handleMentionDetection(sock, chatId, message);
                 }

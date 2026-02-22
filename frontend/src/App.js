@@ -24,6 +24,7 @@ function App() {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [chatbotConfig, setChatbotConfig] = useState({ chatbot_enabled: false, chatbot_api_key: '', chatbot_base_url: '' });
 
   useEffect(() => {
     if (isLoggedIn) {
@@ -381,6 +382,41 @@ function App() {
     return `${days}d ${hours}h remaining`;
   };
 
+  const fetchChatbotConfig = async (botId) => {
+    try {
+      const response = await fetch(`${API_URL}/api/instances/${botId}/chatbot`);
+      const data = await response.json();
+      setChatbotConfig({
+        chatbot_enabled: data.chatbot_enabled || false,
+        chatbot_api_key: data.chatbot_api_key || '',
+        chatbot_base_url: data.chatbot_base_url || ''
+      });
+    } catch (error) {
+      console.error('Error fetching chatbot config:', error);
+    }
+  };
+
+  const handleSaveChatbotConfig = async (botId) => {
+    try {
+      const response = await fetch(`${API_URL}/api/instances/${botId}/chatbot`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(chatbotConfig)
+      });
+      
+      if (response.ok) {
+        alert('Chatbot configuration saved!');
+        fetchAllBots();
+        fetchServerBots();
+      } else {
+        const error = await response.json();
+        alert('Error: ' + (error.detail || 'Failed to save chatbot config'));
+      }
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
   const getStatusColor = (status) => {
     if (status === 'connected') return 'bg-emerald-100 text-emerald-700 border-emerald-300';
     if (status === 'connecting' || status === 'pairing') return 'bg-blue-100 text-blue-700 border-blue-300';
@@ -439,7 +475,7 @@ function App() {
           {isSearchResult && (
             <>
               <button 
-                onClick={() => { setSelectedBot(bot); setShowSettingsModal(true); }}
+                onClick={() => { setSelectedBot(bot); setShowSettingsModal(true); fetchChatbotConfig(bot.id); }}
                 className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition"
               >
                 ⚙️ Settings
@@ -461,7 +497,7 @@ function App() {
                 {bot.status === 'disabled' ? '✓ Enable' : '✗ Disable'}
               </button>
               <button onClick={() => getPairingCode(bot.id)} className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition">🔑 Code</button>
-              <button onClick={() => { setSelectedBot(bot); setShowSettingsModal(true); }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition">⚙️ Settings</button>
+              <button onClick={() => { setSelectedBot(bot); setShowSettingsModal(true); fetchChatbotConfig(bot.id); }} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition">⚙️ Settings</button>
               <button onClick={() => handleDeleteBot(bot.id)} className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition">🗑️ Delete</button>
             </>
           )}
@@ -517,6 +553,41 @@ function App() {
               >
                 {selectedBot.autoview ? '✅ AutoView ON' : '❌ AutoView OFF'}
               </button>
+            </div>
+
+            <div className="border-t pt-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">🤖 Chatbot Configuration</label>
+              
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Chatbot API Key</label>
+                  <input
+                    type="password"
+                    value={chatbotConfig.chatbot_api_key}
+                    onChange={(e) => setChatbotConfig({...chatbotConfig, chatbot_api_key: e.target.value})}
+                    placeholder="sk-mega-..."
+                    className="w-full px-4 py-2 border rounded-lg text-gray-900 bg-white"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Base URL</label>
+                  <input
+                    type="text"
+                    value={chatbotConfig.chatbot_base_url}
+                    onChange={(e) => setChatbotConfig({...chatbotConfig, chatbot_base_url: e.target.value})}
+                    placeholder="https://ai.megallm.io/v1"
+                    className="w-full px-4 py-2 border rounded-lg text-gray-900 bg-white"
+                  />
+                </div>
+
+                <button 
+                  onClick={() => handleSaveChatbotConfig(selectedBot.id)}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-medium transition"
+                >
+                  💾 Save Chatbot Config
+                </button>
+              </div>
             </div>
 
             {selectedBot.start_status === 'new' && (
