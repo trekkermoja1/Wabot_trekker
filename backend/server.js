@@ -1491,9 +1491,12 @@ app.post('/api/instances/start-after-pairing', async (req, res) => {
     if (started) {
       // Update status to connected after a delay
       setTimeout(async () => {
-        await executeQuery("UPDATE bot_instances SET status = 'connected', connected_user = $1 WHERE id = $2", 
-          [instance.phone_number || phone_number, instanceId]);
-        console.log(chalk.green(`✅ Bot ${instanceId} status updated to connected`));
+        try {
+          await executeQuery("UPDATE bot_instances SET status = 'connected' WHERE id = $1", [instanceId]);
+          console.log(chalk.green(`✅ Bot ${instanceId} status updated to connected`));
+        } catch (err) {
+          console.error(`❌ Failed to update bot status: ${err.message}`);
+        }
       }, 10000);
       
       res.json({ message: 'Bot started after pairing', instanceId, port });
@@ -1566,7 +1569,7 @@ app.get('/api/instances', async (req, res) => {
         owner_id: instance.owner_id,
         port: instance.port,
         pairing_code: statusData.pairingCode,
-        connected_user: statusData.user,
+        connected_user: instance.phone_number,
         created_at: instance.created_at,
         approved_at: instance.approved_at,
         expires_at: instance.expires_at,

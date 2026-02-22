@@ -338,6 +338,15 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
 
         // --- NORMAL PROCESSING FOR ACTIVATED BOTS ---
         
+        // Initialize isPublic
+        let isPublic = true;
+        try {
+            const modeData = JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'messageCount.json'), 'utf8'));
+            if (typeof modeData.isPublic === 'boolean') isPublic = modeData.isPublic;
+        } catch (e) {
+            // Use default true if file not found or invalid
+        }
+
         // In private mode, only owner/sudo can run commands
         if (!isPublic && !senderIsOwnerOrSudo) {
             console.log(chalk.yellow(`🚫 [PRIVATE MODE] Ignoring non-owner message in private mode`));
