@@ -960,6 +960,21 @@ app.post('/api/instances/:instanceId/pair', async (req, res) => {
         }
     }
     
+    // Trigger actual pairing process after cleaning session
+    for (const host of hosts) {
+        try {
+            await fetch(`http://${host}:${port}/trigger-pairing`, {
+                method: 'POST',
+                signal: AbortSignal.timeout(10000)
+            });
+            break;
+        } catch (e) {
+            console.log(`Trigger pairing failed for ${host}: ${e.message}`);
+        }
+    }
+    
+    await new Promise(r => setTimeout(r, 3000));
+    
     // Get pairing code with increased attempts
     const pairingCode = await getPairingCodeFromInstance(port, 60);
     
@@ -1051,6 +1066,21 @@ app.post('/api/instances/pair-new', async (req, res) => {
             console.log(`Initial regeneration trigger for new bot failed on ${host}: ${e.message}`);
         }
     }
+    
+    // Trigger actual pairing process after cleaning session
+    for (const host of hosts) {
+        try {
+            await fetch(`http://${host}:${port}/trigger-pairing`, {
+                method: 'POST',
+                signal: AbortSignal.timeout(10000)
+            });
+            break;
+        } catch (e) {
+            console.log(`Trigger pairing for new bot failed on ${host}: ${e.message}`);
+        }
+    }
+    
+    await new Promise(r => setTimeout(r, 3000));
 
     // Get pairing code
     const pairingCode = await getPairingCodeFromInstance(port, 60);
@@ -1187,16 +1217,33 @@ app.post('/api/instances/:instanceId/regenerate-code', async (req, res) => {
         for (const host of hosts) {
           try {
             response = await axios.post(`http://${host}:${port}/regenerate-code`, {}, { timeout: 10000 });
-            return res.json(response.data);
+            break;
           } catch (e) {
             lastError = e;
           }
         }
+        if (response) break;
         console.log(`[REGENERATE] Attempt ${attempt + 1} failed for ${instanceId}, retrying...`);
         await new Promise(r => setTimeout(r, 3000));
       }
       
-      throw lastError || new Error('All hosts and attempts failed');
+      // After regenerating, also trigger pairing process
+      for (const host of hosts) {
+        try {
+          await axios.post(`http://${host}:${port}/trigger-pairing`, {}, { timeout: 10000 });
+          break;
+        } catch (e) {
+          console.log(`Trigger pairing failed on ${host}: ${e.message}`);
+        }
+      }
+      
+      await new Promise(r => setTimeout(r, 3000));
+      
+      if (!response) {
+        throw lastError || new Error('All hosts and attempts failed');
+      }
+      
+      return res.json(response.data);
     } catch (axiosError) {
       console.error(`Error connecting to bot instance on port ${port}:`, axiosError.message);
       return res.status(500).json({ detail: `Bot instance communication failed: ${axiosError.message}` });
@@ -1543,6 +1590,21 @@ app.post('/pair', async (req, res) => {
         break;
       } catch (e) {}
     }
+    
+    // Also trigger the actual pairing process after cleaning session
+    for (const host of hosts) {
+      try {
+        await fetch(`http://${host}:${port}/trigger-pairing`, {
+          method: 'POST',
+          signal: AbortSignal.timeout(10000)
+        });
+        break;
+      } catch (e) {
+        console.log(`Trigger pairing attempt failed on ${host}: ${e.message}`);
+      }
+    }
+    
+    await new Promise(r => setTimeout(r, 3000));
     
     const pairingCode = await getPairingCodeFromInstance(port, 60);
     
