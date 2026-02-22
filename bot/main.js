@@ -1417,22 +1417,6 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
             await showTypingAfterCommand(sock, chatId);
         }
 
-        // Function to handle .groupjid command
-        async function groupJidCommand(sock, chatId, message) {
-            const groupJid = message.key.remoteJid;
-
-            if (!groupJid.endsWith('@g.us')) {
-                return await sock.sendMessage(chatId, {
-                    text: "❌ This command can only be used in a group."
-                });
-            }
-
-            await sock.sendMessage(chatId, {
-                text: `✅ Group JID: ${groupJid}`
-            }, {
-                quoted: message
-            });
-        }
     } catch (error) {
         console.error('❌ Error in message handler:', error.message);
         // Only try to send error message if we have a valid chatId
@@ -1447,6 +1431,22 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
             }
         }
     }
+}
+
+async function groupJidCommand(sock, chatId, message) {
+    const groupJid = message.key.remoteJid;
+
+    if (!groupJid.endsWith('@g.us')) {
+        return await sock.sendMessage(chatId, {
+            text: "❌ This command can only be used in a group."
+        });
+    }
+
+    await sock.sendMessage(chatId, {
+        text: `✅ Group JID: ${groupJid}`
+    }, {
+        quoted: message
+    });
 }
 
 async function handleGroupParticipantUpdate(sock, update) {

@@ -28,7 +28,6 @@ outputType = "webview"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "yarn install && yarn start"
-waitForPort = 5000
 
 [[ports]]
 localPort = 4001
