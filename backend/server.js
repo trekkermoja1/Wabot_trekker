@@ -11,10 +11,52 @@ const chalk = require('chalk');
 
 require('dotenv').config({ quiet: true });
 
+// Swagger setup
+const swaggerUi = require('swagger-ui-express');
+const swaggerJsDoc = require('swagger-jsdoc');
+
+const swaggerOptions = {
+  definition: {
+    openapi: '3.0.0',
+    info: {
+      title: 'Trekker WABOT API',
+      version: '1.0.0',
+      description: 'WhatsApp Bot Management API - Pairing & Management',
+    },
+    servers: [
+      { url: '/' }
+    ],
+    components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+        },
+      },
+    },
+    security: [],
+  },
+  apis: [],
+};
+
+const swaggerDocs = swaggerJsDoc(swaggerOptions);
+
 const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Swagger UI at /api-docs
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs, {
+  customCss: `
+    .swagger-ui .topbar { display: none }
+    .swagger-ui .info .title { font-size: 2.5em; }
+    .swagger-ui .info .description { font-size: 1.1em; line-height: 1.6; }
+  `,
+  customSiteTitle: 'Trekker WABOT API Docs',
+  customfavIcon: '/favicon.ico'
+}));
 
 // Environment configuration
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
@@ -60,7 +102,21 @@ app.post('/api/instances/:instanceId/autoview', async (req, res) => {
   }
 });
 
-// Search bots by phone number or ID
+/**
+ * @swagger
+ * /api/instances/search:
+ *   get:
+ *     summary: Search bots by phone number, ID, or name
+ *     parameters:
+ *       - in: query
+ *         name: query
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Search results
+ */
 app.get('/api/instances/search', async (req, res) => {
   try {
     const { query } = req.query;
@@ -127,7 +183,15 @@ app.put('/api/instances/:instanceId/name', async (req, res) => {
   }
 });
 
-// Get all bots in database (across all servers)
+/**
+ * @swagger
+ * /api/instances/all:
+ *   get:
+ *     summary: Get all bots across all servers
+ *     responses:
+ *       200:
+ *         description: List of all bots
+ */
 app.get('/api/instances/all', async (req, res) => {
   try {
     const result = await executeQuery('SELECT * FROM bot_instances ORDER BY created_at DESC');
@@ -154,7 +218,15 @@ app.get('/api/instances/all', async (req, res) => {
   }
 });
 
-// Get bots for this server only
+/**
+ * @swagger
+ * /api/instances/server-bots:
+ *   get:
+ *     summary: Get bots on this server only
+ *     responses:
+ *       200:
+ *         description: List of bots on current server
+ */
 app.get('/api/instances/server-bots', async (req, res) => {
   try {
     const result = await executeQuery(
@@ -735,6 +807,15 @@ async function updateServerStatus() {
 
 // ============ API Routes ============
 
+/**
+ * @swagger
+ * /api/server-info:
+ *   get:
+ *     summary: Get server information
+ *     responses:
+ *       200:
+ *         description: Server info
+ */
 app.get('/api/server-info', async (req, res) => {
   try {
     const total = await executeQuery('SELECT COUNT(*) as count FROM bot_instances WHERE server_name = $1', [SERVERNAME]);
@@ -792,7 +873,21 @@ app.get('/api/instances/by-phone/:phoneNumber', async (req, res) => {
   }
 });
 
-// Pair existing bot (generates pairing code for existing bot)
+/**
+ * @swagger
+ * /api/instances/{instanceId}/pair:
+ *   post:
+ *     summary: Generate pairing code for existing bot
+ *     parameters:
+ *       - in: path
+ *         name: instanceId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Pairing code generated
+ */
 app.post('/api/instances/:instanceId/pair', async (req, res) => {
   try {
     const { instanceId } = req.params;
@@ -978,7 +1073,26 @@ app.post('/api/instances/pair-new', async (req, res) => {
   }
 });
 
-// Legacy create instance endpoint
+/**
+ * @swagger
+ * /api/instances:
+ *   post:
+ *     summary: Create a new bot instance
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *               phone_number:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Instance created
+ */
 app.post('/api/instances', async (req, res) => {
   try {
     const { name, phone_number, owner_id, auto_start = true } = req.body;
@@ -1169,6 +1283,21 @@ app.post('/api/instances/:instanceId/sync-session', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/instances/{instanceId}/start:
+ *   post:
+ *     summary: Start a bot instance
+ *     parameters:
+ *       - in: path
+ *         name: instanceId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Bot started
+ */
 app.post('/api/instances/:instanceId/start', async (req, res) => {
   try {
     const { instanceId } = req.params;
@@ -1197,6 +1326,21 @@ app.post('/api/instances/:instanceId/start', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/instances/{instanceId}/stop:
+ *   post:
+ *     summary: Stop a bot instance
+ *     parameters:
+ *       - in: path
+ *         name: instanceId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Bot stopped
+ */
 app.post('/api/instances/:instanceId/stop', async (req, res) => {
   try {
     await stopInstance(req.params.instanceId);

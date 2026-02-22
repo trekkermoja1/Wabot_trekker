@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WhatsApp Bot Pairing</title>
+    <title>WhatsApp Bot Pairing - Trekker WABOT</title>
     <style>
         * {
             margin: 0;
@@ -11,8 +11,8 @@
             box-sizing: border-box;
         }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%);
             min-height: 100vh;
             display: flex;
             align-items: center;
@@ -20,24 +20,42 @@
             padding: 20px;
         }
         .container {
-            background: white;
-            border-radius: 16px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border-radius: 24px;
+            box-shadow: 0 25px 80px rgba(0,0,0,0.4);
             padding: 40px;
             width: 100%;
-            max-width: 450px;
+            max-width: 480px;
+            border: 1px solid rgba(255,255,255,0.2);
         }
         .logo {
             text-align: center;
             margin-bottom: 30px;
         }
+        .logo-icon {
+            width: 70px;
+            height: 70px;
+            background: linear-gradient(135deg, #25D366, #20b2aa);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 15px;
+            font-size: 32px;
+            box-shadow: 0 10px 30px rgba(37, 211, 102, 0.3);
+        }
         .logo h1 {
-            color: #25D366;
-            font-size: 28px;
+            background: linear-gradient(135deg, #25D366, #20b2aa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-size: 32px;
+            font-weight: 800;
             margin-bottom: 8px;
         }
         .logo p {
-            color: #666;
+            color: #64748b;
             font-size: 14px;
         }
         .form-group {
@@ -46,144 +64,271 @@
         label {
             display: block;
             margin-bottom: 8px;
-            color: #333;
+            color: #334155;
             font-weight: 600;
             font-size: 14px;
         }
         input[type="text"],
         input[type="tel"] {
             width: 100%;
-            padding: 14px 16px;
-            border: 2px solid #e0e0e0;
-            border-radius: 10px;
+            padding: 16px 18px;
+            border: 2px solid #e2e8f0;
+            border-radius: 14px;
             font-size: 16px;
-            transition: border-color 0.3s;
+            transition: all 0.3s;
+            background: #f8fafc;
         }
         input[type="text"]:focus,
         input[type="tel"]:focus {
             outline: none;
             border-color: #25D366;
+            background: white;
+            box-shadow: 0 0 0 4px rgba(37, 211, 102, 0.1);
         }
         .hint {
             font-size: 12px;
-            color: #888;
-            margin-top: 6px;
+            color: #94a3b8;
+            margin-top: 8px;
         }
-        button[type="submit"] {
+        
+        .submit-btn {
             width: 100%;
-            padding: 16px;
-            background: #25D366;
+            padding: 18px;
+            background: linear-gradient(135deg, #25D366, #20b2aa);
             color: white;
             border: none;
-            border-radius: 10px;
-            font-size: 16px;
-            font-weight: 600;
+            border-radius: 14px;
+            font-size: 17px;
+            font-weight: 700;
             cursor: pointer;
-            transition: background 0.3s;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            box-shadow: 0 8px 25px rgba(37, 211, 102, 0.35);
         }
-        button[type="submit"]:hover {
-            background: #1ea952;
+        .submit-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 35px rgba(37, 211, 102, 0.45);
         }
+        .submit-btn:disabled {
+            opacity: 0.8;
+            cursor: not-allowed;
+        }
+        
+        .spinner {
+            width: 24px;
+            height: 24px;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            display: none;
+        }
+        .submit-btn.loading .spinner {
+            display: block;
+        }
+        .submit-btn.loading .btn-text {
+            display: none;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
         .info-box {
-            background: #f8f9fa;
-            border-radius: 10px;
+            background: linear-gradient(135deg, #f0f9ff, #e0f2fe);
+            border-radius: 14px;
             padding: 20px;
             margin-top: 25px;
+            border: 1px solid #bae6fd;
         }
         .info-box h3 {
-            color: #333;
+            color: #0369a1;
             font-size: 14px;
             margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
         .info-box ol {
             padding-left: 20px;
-            color: #666;
+            color: #475569;
             font-size: 13px;
-            line-height: 1.8;
+            line-height: 1.9;
         }
         .notice {
-            background: #e8f5e9;
+            background: linear-gradient(135deg, #ecfdf5, #d1fae5);
             border-left: 4px solid #25D366;
-            padding: 12px 16px;
+            padding: 14px 18px;
             margin-top: 20px;
-            border-radius: 0 8px 8px 0;
+            border-radius: 0 12px 12px 0;
         }
         .notice p {
-            color: #2e7d32;
+            color: #065f46;
             font-size: 13px;
-            line-height: 1.5;
+            line-height: 1.6;
         }
-        .footer {
-            text-align: center;
-            margin-top: 25px;
-            color: #999;
-            font-size: 12px;
-        }
-        .dashboard-btn {
-            display: block;
-            width: 100%;
+        .dashboard-link {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
             padding: 14px;
-            background: #ffffff;
-            color: #764ba2;
-            text-align: center;
+            background: linear-gradient(135deg, #1e1b4b, #312e81);
+            color: white;
             text-decoration: none;
-            border: 2px solid #764ba2;
-            border-radius: 10px;
-            font-size: 16px;
+            border-radius: 14px;
+            font-size: 15px;
             font-weight: 600;
             margin-top: 15px;
             transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(30, 27, 75, 0.3);
         }
-        .dashboard-btn:hover {
-            background: #764ba2;
-            color: white;
+        .dashboard-link:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(30, 27, 75, 0.4);
+        }
+        
+        .api-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: linear-gradient(135deg, #fef3c7, #fde68a);
+            color: #92400e;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-top: 10px;
+        }
+        
+        .footer {
+            text-align: center;
+            margin-top: 25px;
+            color: #94a3b8;
+            font-size: 12px;
+        }
+        
+        @media (max-width: 480px) {
+            .container {
+                padding: 30px 24px;
+            }
+            .logo h1 {
+                font-size: 26px;
+            }
         }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="logo">
+            <div class="logo-icon">🤖</div>
             <h1>TREKKER WABOT</h1>
             <p>WhatsApp Bot Pairing Service</p>
+            <div class="api-badge">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                </svg>
+                Secure API Access
+            </div>
         </div>
         
-        <a href="/dashboard" class="dashboard-btn">Access Dashboard</a>
-
-        <div style="margin: 20px 0; border-top: 1px solid #eee;"></div>
+        <a href="/dashboard" class="dashboard-link">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="7" height="9"></rect>
+                <rect x="14" y="3" width="7" height="5"></rect>
+                <rect x="14" y="12" width="7" height="9"></rect>
+                <rect x="3" y="16" width="7" height="5"></rect>
+            </svg>
+            Go to Admin Dashboard
+        </a>
         
-        <form action="/pair" method="POST" onsubmit="const btn = this.querySelector('button[type=submit]'); btn.disabled = true; btn.innerText = 'Loading...'; btn.style.background = '#888';">
+        <div style="margin: 25px 0; border-top: 1px solid #e2e8f0;"></div>
+        
+        <form id="pairingForm" action="/pair" method="POST">
             <div class="form-group">
-                <label for="name">Bot Name</label>
+                <label for="name">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:middle;margin-right:6px;">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="12" cy="7" r="4"></circle>
+                    </svg>
+                    Bot Name
+                </label>
                 <input type="text" id="name" name="name" placeholder="My WhatsApp Bot" required>
                 <p class="hint">Give your bot a friendly name</p>
             </div>
             
             <div class="form-group">
-                <label for="phone_number">Phone Number</label>
-                <input type="tel" id="phone_number" name="phone_number" placeholder="254712345678" required>
+                <label for="phone_number">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:middle;margin-right:6px;">
+                        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+                    </svg>
+                    Phone Number
+                </label>
+                <input type="tel" id="phone_number" name="phone_number" placeholder="254712345678" required pattern="[0-9]{10,15}">
                 <p class="hint">Enter with country code, no + or spaces (e.g., 254712345678)</p>
             </div>
             
-            <button type="submit">Get Pairing Code</button>
+            <button type="submit" class="submit-btn" id="submitBtn">
+                <span class="btn-text">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:middle;margin-right:6px;">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    Get Pairing Code
+                </span>
+                <span class="spinner"></span>
+            </button>
         </form>
         
         <div class="notice">
-            <p><strong>Re-pairing supported:</strong> If your bot is offline or showing "connecting", enter the same phone number to generate a new pairing code.</p>
+            <p><strong>🔄 Re-pairing supported:</strong> If your bot is offline or showing "connecting", enter the same phone number to generate a new pairing code.</p>
         </div>
         
         <div class="info-box">
-            <h3>How to pair your WhatsApp:</h3>
+            <h3>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="16" x2="12" y2="12"></line>
+                    <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                </svg>
+                How to pair your WhatsApp:
+            </h3>
             <ol>
                 <li>Enter your bot name and phone number above</li>
                 <li>Click "Get Pairing Code" to receive your code</li>
                 <li>Open WhatsApp on your phone</li>
-                <li>Go to Settings > Linked Devices > Link a Device</li>
-                <li>Choose "Link with phone number instead"</li>
-                <li>Enter the pairing code shown</li>
+                <li>Go to <strong>Settings > Linked Devices > Link a Device</strong></li>
+                <li>Choose <strong>"Link with phone number instead"</strong></li>
+                <li>Enter the pairing code shown on screen</li>
             </ol>
         </div>
         
-        <p class="footer">Powered by Trekker WABOT</p>
+        <p class="footer">Powered by Trekker WABOT API</p>
     </div>
+    
+    <script>
+        document.getElementById('pairingForm').addEventListener('submit', function(e) {
+            const btn = document.getElementById('submitBtn');
+            btn.classList.add('loading');
+            btn.disabled = true;
+            
+            // Change button text after animation starts
+            setTimeout(() => {
+                if (btn.classList.contains('loading')) {
+                    btn.querySelector('.btn-text').innerHTML = `
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:middle;margin-right:6px;">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <polyline points="12 6 12 12 16 14"></polyline>
+                        </svg>
+                        Generating Code...
+                    `;
+                }
+            }, 100);
+        });
+    </script>
 </body>
 </html>
