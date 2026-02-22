@@ -60,6 +60,256 @@ app.post('/api/instances/:instanceId/autoview', async (req, res) => {
   }
 });
 
+// Search bots by phone number or ID
+app.get('/api/instances/search', async (req, res) => {
+  try {
+    const { query } = req.query;
+    if (!query || query.length < 2) {
+      return res.json({ instances: [] });
+    }
+    
+    const searchPattern = `%${query}%`;
+    const result = await executeQuery(
+      'SELECT * FROM bot_instances WHERE id LIKE $1 OR phone_number LIKE $1 OR name LIKE $1 ORDER BY created_at DESC LIMIT 20',
+      [searchPattern]
+    );
+    
+    const instances = [];
+    for (const instance of result.rows) {
+      let statusData = { status: instance.status, pairingCode: null, user: null };
+      
+      if (instance.start_status === 'approved' && instance.port && instance.server_name === SERVERNAME) {
+        statusData = await getInstanceStatus(instance.id, instance.port);
+      }
+      
+      instances.push({
+        id: instance.id,
+        name: instance.name,
+        phone_number: instance.phone_number,
+        status: statusData.status || instance.status,
+        start_status: instance.start_status,
+        server_name: instance.server_name,
+        owner_id: instance.owner_id,
+        port: instance.port,
+        created_at: instance.created_at,
+        approved_at: instance.approved_at,
+        expires_at: instance.expires_at,
+        duration_months: instance.duration_months,
+        autoview: instance.autoview
+      });
+    }
+    
+    res.json({ instances });
+  } catch (e) {
+    res.status(500).json({ detail: e.message });
+  }
+});
+
+// Update bot name
+app.put('/api/instances/:instanceId/name', async (req, res) => {
+  try {
+    const { instanceId } = req.params;
+    const { name } = req.body;
+    
+    if (!name || name.trim() === '') {
+      return res.status(400).json({ detail: 'Name is required' });
+    }
+    
+    const result = await executeQuery('UPDATE bot_instances SET name = $1 WHERE id = $2 RETURNING *', [name.trim(), instanceId]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ detail: 'Instance not found' });
+    }
+    
+    res.json({ success: true, message: 'Bot name updated', bot: result.rows[0] });
+  } catch (e) {
+    res.status(500).json({ detail: e.message });
+  }
+});
+
+// Get all bots in database (across all servers)
+app.get('/api/instances/all', async (req, res) => {
+  try {
+    const result = await executeQuery('SELECT * FROM bot_instances ORDER BY created_at DESC');
+    
+    const instances = result.rows.map(instance => ({
+      id: instance.id,
+      name: instance.name,
+      phone_number: instance.phone_number,
+      status: instance.status,
+      start_status: instance.start_status,
+      server_name: instance.server_name,
+      owner_id: instance.owner_id,
+      port: instance.port,
+      created_at: instance.created_at,
+      approved_at: instance.approved_at,
+      expires_at: instance.expires_at,
+      duration_months: instance.duration_months,
+      autoview: instance.autoview
+    }));
+    
+    res.json({ instances });
+  } catch (e) {
+    res.status(500).json({ detail: e.message });
+  }
+});
+
+// Get bots for this server only
+app.get('/api/instances/server-bots', async (req, res) => {
+  try {
+    const result = await executeQuery(
+      'SELECT * FROM bot_instances WHERE server_name = $1 ORDER BY created_at DESC',
+      [SERVERNAME]
+    );
+    
+    const instances = [];
+    for (const instance of result.rows) {
+      let statusData = { status: instance.status, pairingCode: null, user: null };
+      
+      if (instance.port) {
+        statusData = await getInstanceStatus(instance.id, instance.port);
+      }
+      
+      instances.push({
+        id: instance.id,
+        name: instance.name,
+        phone_number: instance.phone_number,
+        status: statusData.status || instance.status,
+        start_status: instance.start_status,
+        server_name: instance.server_name,
+        owner_id: instance.owner_id,
+        port: instance.port,
+        pid: instance.pid,
+        created_at: instance.created_at,
+        approved_at: instance.approved_at,
+        expires_at: instance.expires_at,
+        duration_months: instance.duration_months,
+        autoview: instance.autoview
+      });
+    }
+    
+    res.json({ instances });
+  } catch (e) {
+    res.status(500).json({ detail: e.message });
+  }
+});
+
+// Restart bot
+app.post('/api/instances/:instanceId/restart', async (req, res) => {
+  try {
+    const { instanceId } = req.params;
+    const result = await executeQuery('SELECT * FROM bot_instances WHERE id = $1', [instanceId]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ detail: 'Instance not found' });
+    }
+    
+    const instance = result.rows[0];
+    
+    if (instance.server_name !== SERVERNAME) {
+      return res.status(400).json({ detail: 'Bot is not on this server' });
+    }
+    
+    await stopInstance(instanceId);
+    await startInstanceInternal(instanceId, instance.phone_number, instance.port, instance.session_data);
+    
+    res.json({ success: true, message: 'Bot restarted' });
+  } catch (e) {
+    res.status(500).json({ detail: e.message });
+  }
+});
+
+// Toggle bot enabled status
+app.post('/api/instances/:instanceId/enable', async (req, res) => {
+  try {
+    const { instanceId } = req.params;
+    const { enabled } = req.body;
+    
+    const result = await executeQuery('UPDATE bot_instances SET status = $1 WHERE id = $2 RETURNING *', 
+      [enabled ? 'enabled' : 'disabled', instanceId]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ detail: 'Instance not found' });
+    }
+    
+    res.json({ success: true, message: enabled ? 'Bot enabled' : 'Bot disabled', bot: result.rows[0] });
+  } catch (e) {
+    res.status(500).json({ detail: e.message });
+  }
+});
+
+// Delete bot from database (for any server)
+app.delete('/api/instances/:instanceId/db', async (req, res) => {
+  try {
+    const { instanceId } = req.params;
+    
+    // Get bot info first
+    const result = await executeQuery('SELECT * FROM bot_instances WHERE id = $1', [instanceId]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ detail: 'Instance not found' });
+    }
+    
+    const instance = result.rows[0];
+    
+    // Stop if on this server
+    if (instance.server_name === SERVERNAME) {
+      await stopInstance(instanceId);
+    }
+    
+    // Delete from database
+    await executeQuery('DELETE FROM bot_instances WHERE id = $1', [instanceId]);
+    
+    // Clean up files if on this server
+    if (instance.server_name === SERVERNAME) {
+      const botDir = path.join(__dirname, '..', 'bot');
+      const instanceDir = path.join(botDir, 'instances', instanceId);
+      if (fs.existsSync(instanceDir)) {
+        fs.rmSync(instanceDir, { recursive: true, force: true });
+      }
+    }
+    
+    res.json({ success: true, message: 'Bot deleted from database', deleted_bot: instance });
+  } catch (e) {
+    res.status(500).json({ detail: e.message });
+  }
+});
+
+// Update bot server name in database
+app.put('/api/instances/:instanceId/server', async (req, res) => {
+  try {
+    const { instanceId } = req.params;
+    const { server_name } = req.body;
+    
+    // Get available servers
+    const serversResult = await executeQuery('SELECT * FROM server_manager WHERE status = $1', ['active']);
+    
+    if (!server_name) {
+      return res.json({ 
+        available_servers: serversResult.rows,
+        current_server: SERVERNAME 
+      });
+    }
+    
+    // Check if server exists
+    const serverExists = serversResult.rows.find(s => s.server_name === server_name);
+    if (!serverExists) {
+      return res.status(400).json({ detail: 'Server not available' });
+    }
+    
+    const result = await executeQuery('UPDATE bot_instances SET server_name = $1 WHERE id = $2 RETURNING *', 
+      [server_name, instanceId]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ detail: 'Instance not found' });
+    }
+    
+    res.json({ success: true, message: `Bot moved to ${server_name}`, bot: result.rows[0] });
+  } catch (e) {
+    res.status(500).json({ detail: e.message });
+  }
+});
+
 // Serve static files
 app.use(express.static(path.join(__dirname, '..', 'public')));
 app.use(express.static(path.join(__dirname, 'static')));
@@ -202,6 +452,7 @@ async function initDatabase() {
         port INTEGER,
         pid INTEGER,
         duration_months INTEGER,
+        autoview BOOLEAN DEFAULT 1,
         created_at TIMESTAMP NOT NULL DEFAULT ${useSQLite ? 'CURRENT_TIMESTAMP' : 'NOW()'},
         updated_at TIMESTAMP NOT NULL DEFAULT ${useSQLite ? 'CURRENT_TIMESTAMP' : 'NOW()'},
         approved_at TIMESTAMP,
