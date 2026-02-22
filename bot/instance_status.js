@@ -271,7 +271,13 @@ async function startBot() {
     try {
         const { Pool } = require('pg');
         if (process.env.DATABASE_URL) {
-            const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+            const pool = new Pool({ 
+                connectionString: process.env.DATABASE_URL, 
+                ssl: { rejectUnauthorized: false },
+                max: 1,
+                idleTimeoutMillis: 5000,
+                connectionTimeoutMillis: 10000
+            });
             // Ensure columns exist
             await pool.query('ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS autoview BOOLEAN DEFAULT TRUE');
             await pool.query('ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS botoff_list JSONB DEFAULT \'[]\'::jsonb');
