@@ -260,6 +260,8 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
 
         // Prioritize notify events, handle append in background if needed
         if (type === 'append') {
+            // Added closing brace for type === 'append' if it was intended to be a block
+        }
         
         const senderId = message.key.participant || message.key.remoteJid;
         console.log(chalk.blue(`📩 [MSG SENDER] ${senderId}`));
