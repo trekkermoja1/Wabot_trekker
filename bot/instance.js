@@ -604,7 +604,7 @@ async function startBot() {
                 try {
                     const myId = sock.user.id.split(':')[0] + '@s.whatsapp.net';
                     await sock.sendMessage(myId, {
-                        text: '🚀 *TREKKER WABOT is online..🔸 autoview_disabled!*',
+                        text: '🚀 *TREKKER WABOT is online..🔸 autoview_enabled!*',
                         contextInfo: {
                             forwardingScore: 1,
                             isForwarded: true,
