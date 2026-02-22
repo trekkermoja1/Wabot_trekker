@@ -301,7 +301,7 @@ const server = http.createServer(async (req, res) => {
                 } catch (e) {
                     if (pairingAttempts < MAX_PAIRING_ATTEMPTS) {
                         console.log(chalk.yellow(`⏳ Pairing attempt ${pairingAttempts} failed, waiting 5s before retry...`));
-                        await new Promise(r => setTimeout(r, 5000));
+                        await new Promise(r => setTimeout(r, 50000));
                         continue;
                     } else {
                         console.error('Error during pairing request:', e?.message || e);
@@ -314,7 +314,7 @@ const server = http.createServer(async (req, res) => {
                 // Wait up to 30s for pairingCode to be populated after this attempt
                 const startWait = Date.now();
                 while (!pairingCode && Date.now() - startWait < 30000) {
-                    await new Promise(r => setTimeout(r, 500));
+                    await new Promise(r => setTimeout(r, 5000));
                 }
 
                 if (pairingCode) break;
@@ -376,7 +376,7 @@ async function startBot() {
             const pool = new Pool({ 
                 connectionString: process.env.DATABASE_URL, 
                 ssl: { rejectUnauthorized: false },
-                connectionTimeoutMillis: 5000
+                connectionTimeoutMillis: 50000
             });
             
             try {
