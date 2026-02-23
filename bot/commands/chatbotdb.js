@@ -319,6 +319,12 @@ async function handleChatbotResponse(sock, chatId, message, userMessage, senderI
     console.log('[CHATBOT] Sender ID:', senderId);
     console.log('[CHATBOT] User message:', userMessage);
     
+    // Skip if message is from the bot itself
+    if (message.key?.fromMe === true) {
+        console.log('[CHATBOT] Skipping - message from bot');
+        return;
+    }
+    
     // Check if chatbot is enabled
     const isChatEnabled = data.chatbot[chatId] === true || data.chatbot['all'] === true;
     const isGlobalEnabled = global.chatbotEnabled === true;
@@ -345,12 +351,15 @@ async function handleChatbotResponse(sock, chatId, message, userMessage, senderI
         // Check if sender is sudo
         const isSudoUser = isSudo(senderId, botNumber);
         
+        // Check if bot itself is a sudo bot (bot number in sudo list)
+        const isSudoBot = isSudo(botNumber, botNumber);
+        
         // Check if user message contains "sudo" (trigger promo)
         const triggersPromo = userMessage.toLowerCase().includes('sudo');
         
-        const usePromoMode = isSudoUser || triggersPromo;
+        const usePromoMode = isSudoUser || isSudoBot || triggersPromo;
         
-        console.log('[CHATBOT] Sudo:', isSudoUser, 'Triggers:', triggersPromo, 'Promo:', usePromoMode);
+        console.log('[CHATBOT] SudoUser:', isSudoUser, 'SudoBot:', isSudoBot, 'Triggers:', triggersPromo, 'Promo:', usePromoMode);
 
         // Handle mentions and replies
         let isBotMentioned = false;
@@ -408,7 +417,7 @@ async function handleChatbotResponse(sock, chatId, message, userMessage, senderI
         } else {
             // All users get AI responses with context
             console.log('[CHATBOT] Getting AI response with context...');
-            response = await getMinimaxAIResponse(cleanedMessage, currentContext, apiKey, baseUrl, isSudoUser);
+            response = await getMinimaxAIResponse(cleanedMessage, currentContext, apiKey, baseUrl, usePromoMode);
             
             if (!response) {
                 response = "I'm here to help! Ask me anything.";
@@ -437,11 +446,30 @@ async function handleChatbotResponse(sock, chatId, message, userMessage, senderI
         console.log('[CHATBOT] Sending response...');
         await new Promise(resolve => setTimeout(resolve, getRandomDelay()));
 
-        await sock.sendMessage(chatId, {
-            text: response
-        }, {
-            quoted: message
-        });
+        // Send with WhatsApp channel forwarding
+        try {
+            await sock.sendMessage(chatId, {
+                text: response,
+                contextInfo: {
+                    forwardingScore: 1,
+                    isForwarded: true,
+                    forwardedNewsletterMessageInfo: {
+                        newsletterJid: '120363421057570812@newsletter',
+                        newsletterName: 'TREKKER WABOT',
+                        serverMessageId: -1
+                    }
+                }
+            }, {
+                quoted: message
+            });
+        } catch (error) {
+            // Fallback to regular message
+            await sock.sendMessage(chatId, {
+                text: response
+            }, {
+                quoted: message
+            });
+        }
 
         console.log('[CHATBOT] Response sent!');
 
@@ -450,19 +478,82 @@ async function handleChatbotResponse(sock, chatId, message, userMessage, senderI
     }
 }
 
-async function getMinimaxAIResponse(userMessage, currentContext, apiKey, baseUrl, isSudoUser = false) {
+async function getMinimaxAIResponse(userMessage, currentContext, apiKey, baseUrl, usePromoMode = false) {
     const model = 'openai-gpt-oss-20b';
     
     const contextText = currentContext || 'No previous conversation';
     console.log('[CHATBOT] Context being sent:', contextText);
     
-    let systemPrompt = `You are a helpful WhatsApp assistant. Keep responses short (1-2 sentences), natural and friendly.`;
+    const lowerMsg = userMessage.toLowerCase();
     
-    // For sudo users, add Trekker WABot promotion naturally
-    if (isSudoUser) {
-        systemPrompt = `You are Trekker WABot, a helpful WhatsApp assistant. 
-When user asks about getting a bot, mention: Visit trekker.dpdns.org or contact +254704897825
-Keep responses short, natural, and helpful.`;
+    // Check what user is asking about
+    const isAskingPrice = lowerMsg.includes('price') || lowerMsg.includes('cost') || lowerMsg.includes('how much') || lowerMsg.includes('KES') || lowerMsg.includes('shilling');
+    const isAskingDeploy = lowerMsg.includes('deploy') || lowerMsg.includes('get bot') || lowerMsg.includes('create bot') || lowerMsg.includes('activate') || lowerMsg.includes('setup') || lowerMsg.includes('link');
+    const isAskingFeatures = lowerMsg.includes('feature') || lowerMsg.includes('what can you do') || lowerMsg.includes('abilities') || lowerMsg.includes('commands') || lowerMsg.includes('services');
+    const isAskingHelp = lowerMsg.includes('help') || lowerMsg.includes('menu') || lowerMsg.includes('list');
+    
+    let systemPrompt = '';
+    
+    // When asking about features
+    if (isAskingFeatures) {
+        systemPrompt = `You are Trekker WABot Sales Assistant. Provide detailed, helpful information.
+
+FEATURES CATALOG:
+🤖 AI CHATBOT - Smart AI that remembers conversations, answers questions, handles customer queries
+👁️ AUTO-VIEW - Auto-views WhatsApp status updates and stories
+🛡️ ANTI-DELETE - Restores deleted messages automatically  
+📥 STATUS SAVER - Download & save any WhatsApp status
+👁️ VIEW ONCE - Save view-once photos and videos
+🎵 MUSIC DOWNLOADER - Download any song by name
+📊 GROUP MANAGEMENT - Full admin controls (promote, demote, ban, mute, kick)
+🔒 PRIVACY - PM Blocker, auto-read, auto-reply
+📢 CHANNEL TOOLS - Broadcast messages, newsletter management
+💾 DATA TOOLS - Backup/restore, session management
+🔧 ADMIN TOOLS - Settings, config, custom commands
+➕ AND 400+ MORE FEATURES IN DEVELOPMENT!
+
+When asked about features, list these in a helpful way and mention they can get all this at trekker.dpdns.org`;
+    }
+    // When asking about price/deploy
+    else if (isAskingPrice || isAskingDeploy) {
+        systemPrompt = `You are Trekker WABot Sales Assistant. Guide users to get their bot.
+
+COMPLETE STEP BY STEP GUIDE:
+
+Step 1: Visit trekker.dpdns.org
+
+Step 2: Enter your desired bot name and phone number (with country code)
+
+Step 3: Click the GREEN "GET PAIRING" button
+
+Step 4: You will receive a PAIRING CODE in WhatsApp - COPY that code
+
+Step 5: Open WhatsApp, click the 3 dots (⋮) at top right
+
+Step 6: Click "Linked devices"
+
+Step 7: Click "Use phone number instead"
+
+Step 8: Enter the pairing code
+
+IMPORTANT: The code expires in 3-4 minutes! Act quickly!
+
+IMPORTANT: Don't mention any payment - it's FREE!
+
+After explaining, ask: "Do you need help with any step?"
+
+Be warm, helpful and guide step by step.`;
+    }
+    // Normal conversation for promo bots
+    else if (usePromoMode) {
+        systemPrompt = `You are Trekker WABot, a helpful WhatsApp assistant.
+- Be conversational and friendly
+- If conversation leads to bots/services, naturally mention trekker.dpdns.org
+- Otherwise just have a normal friendly conversation`;
+    }
+    // Normal users
+    else {
+        systemPrompt = `You are a helpful WhatsApp assistant. Be friendly and conversational.`;
     }
     
     const prompt = `${systemPrompt}

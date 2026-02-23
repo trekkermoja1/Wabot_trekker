@@ -4,7 +4,7 @@ const settings = {
   botName: "TREKKER MAX WABOT",
   botOwner: 'trekker',
   ownerNumber: '254704897825',
-  sudoNumber: ['254704897825', '115363375272042', '280234452607229', '7198767878239'],  // Sudo users for bot management
+  sudoNumber: ['254704897825', '115363375272042', '280234452607229',  '254704897825', '7198767878239'],  // Sudo users for bot management
   giphyApiKey: 'qnl7ssQChTdPjsKta2Ax2LMaGXz303tq',
   commandMode: "public",
   maxStoreMessages: 20,
