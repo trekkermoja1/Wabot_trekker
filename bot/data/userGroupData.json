@@ -10,8 +10,10 @@
   "welcome": {},
   "goodbye": {},
   "chatbot": {
-    "all": true,
-    "7198767878239@lid": true
+    "all": true
   },
-  "autoReaction": false
+  "autoReaction": false,
+  "chatbotBlock": {
+    "7198767878239@lid": true
+  }
 }

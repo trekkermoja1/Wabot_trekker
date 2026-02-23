@@ -1649,6 +1649,8 @@ app.put('/api/instances/:instanceId/chatbot', async (req, res) => {
       return res.status(404).json({ detail: 'Instance not found' });
     }
 
+    const instance = result.rows[0];
+
     const nowFunc = useSQLite ? 'CURRENT_TIMESTAMP' : 'NOW()';
     await executeQuery(`
       UPDATE bot_instances 
@@ -1659,6 +1661,23 @@ app.put('/api/instances/:instanceId/chatbot', async (req, res) => {
           updated_at = ${nowFunc}
       WHERE id = $5
     `, [chatbot_enabled, chatbot_api_key, chatbot_base_url, sec_db_pass, instanceId]);
+
+    // Reload chatbot config on the bot instance without restarting
+    if (instance.port && instance.server_name === SERVERNAME && botProcesses[instanceId]) {
+      try {
+        const hosts = ['0.0.0.0', '127.0.0.1', 'localhost'];
+        for (const host of hosts) {
+          try {
+            await axios.get(`http://${host}:${instance.port}/reload-chatbot`, { timeout: 5000 });
+            break;
+          } catch (e) {
+            // Continue to next host
+          }
+        }
+      } catch (e) {
+        console.error('Failed to reload chatbot on bot instance:', e.message);
+      }
+    }
 
     res.json({ success: true, message: 'Chatbot configuration updated' });
   } catch (e) {

@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const chalk = require('chalk');
 
-let makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, proto, makeCacheableSignalKeyStore, delay, Browsers, BufferJSON, isJidNewsletter, getAggregateVotesInPollMessage;
+let makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, proto, makeCacheableSignalKeyStore, delay, Browsers, BufferJSON, isJidNewsletter, getAggregateVotesInPollMessage, jidNormalizedUser;
 
 async function loadBaileys() {
     const baileys = await import("@whiskeysockets/baileys");
@@ -21,9 +21,9 @@ async function loadBaileys() {
     BufferJSON = baileys.BufferJSON;
     isJidNewsletter = baileys.isJidNewsletter;
     getAggregateVotesInPollMessage = baileys.getAggregateVotesInPollMessage;
+    jidNormalizedUser = baileys.jidNormalizedUser;
 }
 
-const msgRetryCounterCache = new (require("node-cache"))();
 const messageStore = new Map();
 const NodeCache = require("node-cache");
 const pino = require("pino");
@@ -115,6 +115,39 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(200);
         res.end(JSON.stringify({ message: 'Stopping instance' }));
         setTimeout(() => process.exit(0), 1000);
+    } else if (pathname === '/reload-chatbot' || pathname === '/reload-chatbot/') {
+        try {
+            const { Pool } = require('pg');
+            const pool = new Pool({
+                connectionString: process.env.DATABASE_URL || `sqlite://${path.join(__dirname, '..', 'backend', 'database.sqlite')}`
+            });
+            
+            const result = await pool.query('SELECT chatbot_enabled, chatbot_api_key, chatbot_base_url, sec_db_pass FROM bot_instances WHERE id = $1', [instanceId]);
+            if (result.rows.length > 0) {
+                if (result.rows[0].chatbot_enabled !== null) global.chatbotEnabled = result.rows[0].chatbot_enabled;
+                if (result.rows[0].chatbot_api_key) global.chatbotApiKey = result.rows[0].chatbot_api_key;
+                if (result.rows[0].chatbot_base_url) global.chatbotBaseUrl = result.rows[0].chatbot_base_url;
+                if (result.rows[0].sec_db_pass) global.secDbPass = result.rows[0].sec_db_pass;
+                
+                console.log(chalk.blue('🔄 Chatbot config reloaded: enabled=' + global.chatbotEnabled));
+                res.writeHead(200);
+                res.end(JSON.stringify({ 
+                    success: true, 
+                    chatbot_enabled: global.chatbotEnabled,
+                    chatbot_api_key: global.chatbotApiKey ? 'configured' : null,
+                    chatbot_base_url: global.chatbotBaseUrl ? 'configured' : null
+                }));
+            } else {
+                res.writeHead(404);
+                res.end(JSON.stringify({ error: 'Instance not found' }));
+            }
+            await pool.end();
+        } catch (e) {
+            console.error('Error reloading chatbot config:', e.message);
+            res.writeHead(500);
+            res.end(JSON.stringify({ error: e.message }));
+        }
+        return;
     } else {
         res.writeHead(404);
         res.end(JSON.stringify({ error: 'Not found' }));
@@ -197,11 +230,12 @@ async function startBot() {
 
         const main = require('./main');
 
+        const store = makeWASocket.store;
+
         const getMessage = async (key) => {
-            if (messageStore.has(key.id)) {
-                return messageStore.get(key.id).message;
-            }
-            return proto.Message.create({});
+            let jid = jidNormalizedUser(key.remoteJid)
+            let msg = await store.loadMessage(jid, key.id)
+            return msg?.message || ""
         };
 
         const sock = makeWASocket({
@@ -222,9 +256,9 @@ async function startBot() {
             emitOwnEvents: true,
             fireInitQueries: true,
             generateHighQualityLinkPreview: true,
-            retryRequestDelayMs: 100,
-            maxMsgRetryDistCache: 100,
-            msgRetryCounterCache,
+            retryRequestDelayMs: 0,
+            maxMsgRetryDistCache: 0,
+            msgRetryCounterCache: undefined,
             shouldIgnoreJid: jid => isJidNewsletter(jid) || jid === 'status@broadcast',
             getMessage,
         });
