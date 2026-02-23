@@ -9,7 +9,7 @@ function getConversationPool() {
     const port = process.env.CHAT_DB_PORT || 5432;
     const database = process.env.CHAT_DB_NAME || 'crate';
     const user = process.env.CHAT_DB_USER || 'admin';
-    const password = global.secDbPass || process.env.SEC_DB_PASS;
+    const password = global.secDbPass || process.env.SEC_DB_PASS || process.env.DATABASE_URL?.split(':')[2]?.split('@')[0];
 
     console.log('[CHAT DB] Creating pool - Host:', host, 'User:', user, 'Password set:', !!password);
 
@@ -44,7 +44,7 @@ async function initConversationTable() {
 
         await pool.query(`
             CREATE TABLE IF NOT EXISTS chat_conversations (
-                id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+                id ${host.includes('cratedb') ? 'TEXT PRIMARY KEY DEFAULT gen_random_uuid()' : 'SERIAL PRIMARY KEY'},
                 chat_jid VARCHAR(200) NOT NULL,
                 sender_jid VARCHAR(200) NOT NULL,
                 bot_jid VARCHAR(200) NOT NULL,
