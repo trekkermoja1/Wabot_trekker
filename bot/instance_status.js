@@ -383,6 +383,7 @@ async function startBot() {
                             }
                             if (result.rows[0].sec_db_pass) {
                                 global.secDbPass = result.rows[0].sec_db_pass;
+                                console.log(chalk.green('✅ sec_db_pass loaded for chatbot'));
                             }
                         }
                     })(),

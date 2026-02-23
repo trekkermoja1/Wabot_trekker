@@ -267,11 +267,28 @@ async function handleChatbotResponse(sock, chatId, message, userMessage, senderI
         // Show typing indicator
         await showTyping(sock, chatId);
 
+        // --- NEW: USE PERSISTENT DB HISTORY ---
+        const { saveMessage, getConversationHistory } = require('../lib/chatDb');
+        const botJid = sock.user.id.split(':')[0] + '@s.whatsapp.net';
+        
+        // Save user message to DB
+        await saveMessage(chatId, senderId, botJid, 'user', cleanedMessage);
+        
+        // Get history from DB (last 20 messages)
+        const dbHistory = await getConversationHistory(chatId, senderId, botJid, 20);
+        const historyCount = dbHistory.length;
+        console.log(`[CHATBOT] Retrieved history count: ${historyCount}`);
+
         // Get AI response with context
         const response = await getAIResponse(cleanedMessage, {
-            messages: chatMemory.messages.get(senderId),
-            userInfo: chatMemory.userInfo.get(senderId)
+            messages: dbHistory.map(h => `${h.role === 'user' ? 'User' : 'Assistant'}: ${h.content}`),
+            userInfo: chatMemory.userInfo.get(senderId) || {}
         });
+
+        if (response) {
+            // Save bot response to DB
+            await saveMessage(chatId, senderId, botJid, 'assistant', response);
+        }
 
         if (!response) {
             await sock.sendMessage(chatId, { 

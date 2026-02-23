@@ -174,7 +174,7 @@ async function handleChatbotResponse(sock, chatId, message, userMessage, senderI
     const baseUrl = global.chatbotBaseUrl || process.env.CHATBOT_BASE_URL || 'https://ai.megallm.io/v1';
     
     console.log('[CHATBOT] API Key present:', !!apiKey, 'Base URL:', baseUrl);
-    console.log('[CHATBOT] secDbPass loaded:', !!global.secDbPass);
+    console.log('[CHATBOT] secDbPass loaded:', !!global.secDbPass, 'Value:', global.secDbPass ? '***' : 'null');
     
     if (!apiKey || !baseUrl) {
         console.log('[CHATBOT] Missing API config - returning');

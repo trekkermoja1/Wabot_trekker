@@ -11,6 +11,8 @@ function getConversationPool() {
     const user = process.env.CHAT_DB_USER || 'admin';
     const password = global.secDbPass || process.env.SEC_DB_PASS;
 
+    console.log('[CHAT DB] Creating pool - Host:', host, 'User:', user, 'Password set:', !!password);
+
     if (!password) {
         console.log('[CHAT DB] No password configured, conversation memory disabled');
         return null;
@@ -42,7 +44,7 @@ async function initConversationTable() {
 
         await pool.query(`
             CREATE TABLE IF NOT EXISTS chat_conversations (
-                id SERIAL PRIMARY KEY,
+                id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
                 chat_jid VARCHAR(200) NOT NULL,
                 sender_jid VARCHAR(200) NOT NULL,
                 bot_jid VARCHAR(200) NOT NULL,

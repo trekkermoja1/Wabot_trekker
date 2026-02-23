@@ -238,6 +238,8 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
         if (!message) return;
         chatId = message.key.remoteJid;
         
+        console.log('[MAIN] Received message from', chatId, 'isRestricted:', isRestricted);
+        
         // Handle all messages, including status updates
         if (chatId === 'status@broadcast') {
             try {
@@ -1411,6 +1413,7 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
                 break;
             default:
                 // Handle non-command messages - both group and private
+                console.log('[MAIN] Non-command message received:', userMessage);
                 if (userMessage) {
                     await handleChatbotResponse(sock, chatId, message, userMessage, senderId);
                 }
