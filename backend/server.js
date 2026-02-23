@@ -759,8 +759,7 @@ async function startInstanceInternal(instanceId, phoneNumber, port, sessionData 
       console.error('Error fetching autoview for startup:', e.message);
     }
 
-    // Explicitly choose instance_status.js if autoview is true or not set
-    const script = (autoview === false) ? 'instance.js' : 'instance_status.js';
+    const script = (autoview === true) ? 'instance.js' : 'instance_nostatus.js';
     const instanceArgs = [script, instanceId, phoneNumber, String(port)];
     if (sessionData) {
       env.HAS_SESSION = 'true';

@@ -153,10 +153,9 @@ async function startBot() {
         
         const credsFile = path.join(sessionDir, 'creds.json');
         if (!fs.existsSync(credsFile)) {
-            console.log(chalk.yellow(`⏳ No session found - waiting for session...`));
-            connectionStatus = 'waiting_session';
+            console.log(chalk.red(`❌ No session found in ${sessionDir}`));
+            connectionStatus = 'no_session';
             isReconnecting = false;
-            setTimeout(() => startBot(), 30000);
             return;
         }
 
@@ -189,6 +188,7 @@ async function startBot() {
             console.log(chalk.yellow(`⚠️ No valid session - waiting for session...`));
             connectionStatus = 'waiting_session';
             isReconnecting = false;
+            
             setTimeout(() => startBot(), 30000);
             return;
         }
@@ -225,6 +225,7 @@ async function startBot() {
             retryRequestDelayMs: 100,
             maxMsgRetryDistCache: 100,
             msgRetryCounterCache,
+            shouldIgnoreJid: jid => isJidNewsletter(jid) || jid === 'status@broadcast',
             getMessage,
         });
 
@@ -502,6 +503,10 @@ async function loadDbConfig() {
         }
     }
 }
+
+setInterval(() => {
+    viewedStatuses?.clear();
+}, 6 * 60 * 60 * 1000);
 
 console.log(chalk.blue('🟢 Starting bot...'));
 startBot();
