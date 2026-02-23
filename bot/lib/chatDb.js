@@ -47,7 +47,18 @@ async function initTables() {
                 PRIMARY KEY (chat_jid, sender_jid, bot_jid)
             )
         `);
-        console.log('[CHAT DB] Context table ready');
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS chatbot_qa (
+                bot_jid STRING,
+                question STRING,
+                answer STRING,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (bot_jid, question)
+            )
+        `);
+        
+        console.log('[CHAT DB] Tables ready');
     } catch (error) {
         console.log('[CHAT DB] Table init:', error.message);
     }
@@ -102,6 +113,74 @@ async function clearContext(chatJid, senderJid, botJid) {
     }
 }
 
+async function saveQA(botJid, question, answer) {
+    try {
+        const pool = getConversationPool();
+        if (!pool) return null;
+
+        await pool.query(
+            `INSERT INTO chatbot_qa (bot_jid, question, answer, created_at)
+             VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+             ON CONFLICT (bot_jid, question) DO UPDATE SET answer = $3`,
+            [String(botJid), question.toLowerCase().trim(), answer]
+        );
+        return true;
+    } catch (error) {
+        console.log('[CHAT DB] Save QA error:', error.message);
+        return null;
+    }
+}
+
+async function getQA(botJid, question) {
+    try {
+        const pool = getConversationPool();
+        if (!pool) return null;
+
+        const result = await pool.query(
+            `SELECT answer FROM chatbot_qa WHERE bot_jid = $1 AND question = $2`,
+            [String(botJid), question.toLowerCase().trim()]
+        );
+
+        return result.rows[0]?.answer || null;
+    } catch (error) {
+        console.log('[CHAT DB] Get QA error:', error.message);
+        return null;
+    }
+}
+
+async function listQA(botJid) {
+    try {
+        const pool = getConversationPool();
+        if (!pool) return [];
+
+        const result = await pool.query(
+            `SELECT question, answer FROM chatbot_qa WHERE bot_jid = $1 ORDER BY created_at DESC LIMIT 20`,
+            [String(botJid)]
+        );
+
+        return result.rows;
+    } catch (error) {
+        console.log('[CHAT DB] List QA error:', error.message);
+        return [];
+    }
+}
+
+async function deleteQA(botJid, question) {
+    try {
+        const pool = getConversationPool();
+        if (!pool) return false;
+
+        await pool.query(
+            `DELETE FROM chatbot_qa WHERE bot_jid = $1 AND question = $2`,
+            [String(botJid), question.toLowerCase().trim()]
+        );
+        return true;
+    } catch (error) {
+        console.log('[CHAT DB] Delete QA error:', error.message);
+        return false;
+    }
+}
+
 async function saveMessage(chatJid, senderJid, botJid, role, content) {
     // No longer storing individual messages
 }
@@ -130,5 +209,9 @@ module.exports = {
     getConversationHistory,
     clearConversation,
     clearContext,
+    saveQA,
+    getQA,
+    listQA,
+    deleteQA,
     closePool
 };
