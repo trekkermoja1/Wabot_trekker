@@ -254,6 +254,12 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
         // Skip newsletter/channel messages
         if (chatId && chatId.endsWith('@newsletter')) return;
 
+        // Handle message revocation
+        if (message.message?.protocolMessage?.type === 0) {
+            await handleMessageRevocation(sock, message);
+            return;
+        }
+
         // Log basic message info
         const rawText = message.message?.conversation || message.message?.extendedTextMessage?.text || message.message?.imageMessage?.caption || message.message?.videoMessage?.caption || '';
         if (rawText) {

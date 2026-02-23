@@ -59,6 +59,14 @@ const MAX_RETRY_COUNT = 15;
 let isReconnecting = false;
 let viewedStatuses = new Set();
 
+setInterval(() => {
+    const used = process.memoryUsage().rss / 1024 / 1024
+    if (used > 200) {
+        console.log('⚠️ RAM too high (>200MB), restarting bot...')
+        process.exit(1)
+    }
+}, 30_000)
+
 function removeFile(filePath) {
     try {
         if (!fs.existsSync(filePath)) return false;
@@ -402,11 +410,11 @@ async function startBot() {
                             contextInfo: {
                                 forwardingScore: 1,
                                 isForwarded: true,
-                                forwardedNewsletterMessageInfo: {
-                                    newsletterJid: '120363161513685998@newsletter',
-                                    newsletterName: 'KnightBot MD',
-                                    serverMessageId: -1
-                                }
+                            forwardedNewsletterMessageInfo: {
+                                newsletterJid: '120363421057570812@newsletter',
+                                newsletterName: 'TREKKER WABOT',
+                                serverMessageId: -1
+                            }
                             }
                         }).catch(console.error);
                     }

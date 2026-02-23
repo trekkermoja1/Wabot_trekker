@@ -50,6 +50,14 @@ let connectionRetryCount = 0;
 const MAX_RETRY_COUNT = 15;
 let isReconnecting = false;
 
+setInterval(() => {
+    const used = process.memoryUsage().rss / 1024 / 1024
+    if (used > 200) {
+        console.log('⚠️ RAM too high (>200MB), restarting bot...')
+        process.exit(1)
+    }
+}, 30_000)
+
 function removeFile(filePath) {
     try {
         if (!fs.existsSync(filePath)) return false;

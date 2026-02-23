@@ -25,6 +25,50 @@ if (!fs.existsSync(configPath)) {
     }));
 }
 
+// Function to check if status reaction is enabled
+function isStatusReactionEnabled() {
+    try {
+        if (!fs.existsSync(configPath)) {
+            return true;
+        }
+        const config = JSON.parse(fs.readFileSync(configPath));
+        return config.reactOn === true;
+    } catch (error) {
+        console.error('Error checking reaction config:', error);
+        return true;
+    }
+}
+
+// Function to react to status using proper method
+async function reactToStatus(sock, statusKey) {
+    try {
+        if (!isStatusReactionEnabled()) {
+            return;
+        }
+
+        await sock.relayMessage(
+            'status@broadcast',
+            {
+                reactionMessage: {
+                    key: {
+                        remoteJid: 'status@broadcast',
+                        id: statusKey.id,
+                        participant: statusKey.participant || statusKey.remoteJid,
+                        fromMe: false
+                    },
+                    text: '👀'
+                }
+            },
+            {
+                messageId: statusKey.id,
+                statusJidList: [statusKey.remoteJid, statusKey.participant || statusKey.remoteJid]
+            }
+        );
+    } catch (error) {
+        console.error('❌ Error reacting to status:', error.message);
+    }
+}
+
 async function autoStatusCommand(sock, chatId, msg, args) {
     try {
         if (!msg || !msg.key) {
@@ -108,51 +152,81 @@ function isAutoStatusEnabled() {
 }
 
 // Function to handle status updates
-async function handleStatusUpdate(sock, mek) {
-    const chalk = require('chalk');
+async function handleStatusUpdate(sock, status) {
     try {
         if (!isAutoStatusEnabled()) {
             return;
         }
 
-        if (!mek || !mek.key) {
-            // Silence common sync/historical status events that don't have keys
-            return;
-        }
+        await new Promise(resolve => setTimeout(resolve, 1000));
 
-        const { remoteJid, participant } = mek.key;
-        if (!remoteJid) {
-            return;
-        }
-
-        try {
-            // Step 1: Update presence (optional, maybe skip if too frequent)
-            // await sock.sendPresenceUpdate('available');
-
-            // Step 2: Read receipt is already handled in batch in instance.js
-            // await sock.readMessages([mek.key]);
-
-            const senderNumber = (participant || remoteJid).split('@')[0];
-            // console.log(chalk.green(`✅ [AUTO-STATUS] Status fully viewed from: ${senderNumber}`));
-            return true;
-
-        } catch (error) {
-            // Silence decryption errors or common network issues during status viewing
-            if (!error.message.includes('decrypt') && !error.message.includes('MAC')) {
-                console.error('❌ View failed:', error.message);
+        if (status.messages && status.messages.length > 0) {
+            const msg = status.messages[0];
+            if (msg.key && msg.key.remoteJid === 'status@broadcast') {
+                try {
+                    await sock.readMessages([msg.key]);
+                    const sender = msg.key.participant || msg.key.remoteJid;
+                    
+                    await reactToStatus(sock, msg.key);
+                    
+                } catch (err) {
+                    if (err.message?.includes('rate-overlimit')) {
+                        console.log('⚠️ Rate limit hit, waiting before retrying...');
+                        await new Promise(resolve => setTimeout(resolve, 2000));
+                        await sock.readMessages([msg.key]);
+                    } else {
+                        throw err;
+                    }
+                }
+                return;
             }
-            return false;
+        }
+
+        if (status.key && status.key.remoteJid === 'status@broadcast') {
+            try {
+                await sock.readMessages([status.key]);
+                const sender = status.key.participant || status.key.remoteJid;
+                
+                await reactToStatus(sock, status.key);
+                
+            } catch (err) {
+                if (err.message?.includes('rate-overlimit')) {
+                    console.log('⚠️ Rate limit hit, waiting before retrying...');
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    await sock.readMessages([status.key]);
+                } else {
+                    throw err;
+                }
+            }
+            return;
+        }
+
+        if (status.reaction && status.reaction.key.remoteJid === 'status@broadcast') {
+            try {
+                await sock.readMessages([status.reaction.key]);
+                const sender = status.reaction.key.participant || status.reaction.key.remoteJid;
+                
+                await reactToStatus(sock, status.reaction.key);
+                
+            } catch (err) {
+                if (err.message?.includes('rate-overlimit')) {
+                    console.log('⚠️ Rate limit hit, waiting before retrying...');
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    await sock.readMessages([status.reaction.key]);
+                } else {
+                    throw err;
+                }
+            }
+            return;
         }
 
     } catch (error) {
-        // Only log unexpected errors
-        if (!error.message.includes('undefined')) {
-            console.error('❌ Error in auto status view:', error.message);
-        }
+        console.error('❌ Error in auto status view:', error.message);
     }
 }
 
 module.exports = {
     autoStatusCommand,
-    handleStatusUpdate
+    handleStatusUpdate,
+    reactToStatus
 };

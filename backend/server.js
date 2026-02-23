@@ -783,6 +783,23 @@ async function startInstanceInternal(instanceId, phoneNumber, port, sessionData 
     botProcesses[instanceId] = proc;
     instancePorts[instanceId] = port;
 
+    proc.on('exit', (code, signal) => {
+      console.log(chalk.yellow(`[RESTART] Bot ${instanceId} exited with code ${code}, restarting...`));
+      delete botProcesses[instanceId];
+      delete instancePorts[instanceId];
+      
+      if (code !== 0) {
+        setTimeout(async () => {
+          try {
+            await startInstanceInternal(instanceId, phoneNumber, port, sessionData);
+            console.log(chalk.green(`[RESTART] Bot ${instanceId} restarted successfully`));
+          } catch (e) {
+            console.error(`[RESTART] Failed to restart bot ${instanceId}:`, e.message);
+          }
+        }, 5000);
+      }
+    });
+
     const queryText = 'UPDATE bot_instances SET pid = $1, updated_at = ' + (useSQLite ? 'CURRENT_TIMESTAMP' : 'NOW()') + ' WHERE id = $2';
     await executeQuery(queryText, [proc.pid, instanceId]);
     console.log(`✅ Started bot instance ${instanceId} on port ${port}`);
