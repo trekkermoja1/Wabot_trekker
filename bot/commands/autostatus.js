@@ -20,7 +20,7 @@ const configPath = path.join(__dirname, '../data/autoStatus.json');
 // Initialize config file if it doesn't exist
 if (!fs.existsSync(configPath)) {
     fs.writeFileSync(configPath, JSON.stringify({ 
-        enabled: false, 
+        enabled: true, 
         reactOn: true 
     }));
 }
@@ -91,14 +91,19 @@ async function autoStatusCommand(sock, chatId, msg, args) {
 // Function to check if auto status is enabled
 function isAutoStatusEnabled() {
     try {
+        // Priority: global.db config first, then file config
         if (global.autoviewState !== undefined) {
             return global.autoviewState;
+        }
+        // If no global setting, default to true
+        if (!fs.existsSync(configPath)) {
+            return true;
         }
         const config = JSON.parse(fs.readFileSync(configPath));
         return config.enabled;
     } catch (error) {
         console.error('Error checking auto status config:', error);
-        return false;
+        return true; // Default to enabled
     }
 }
 

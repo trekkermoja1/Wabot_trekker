@@ -5,10 +5,11 @@ let conversationPool = null;
 function getConversationPool() {
     if (conversationPool) return conversationPool;
 
-    const host = process.env.CHAT_DB_HOST || 'turquoise-wilhuff-tarkin.aks1.eastus2.azure.cratedb.net';
-    const port = process.env.CHAT_DB_PORT || 5432;
-    const database = process.env.CHAT_DB_NAME || 'crate';
-    const user = process.env.CHAT_DB_USER || 'admin';
+    // Use CrateDB config from global or defaults
+    const host = global.secDbHost || process.env.CHAT_DB_HOST || 'turquoise-wilhuff-tarkin.aks1.eastus2.azure.cratedb.net';
+    const port = global.secDbPort || process.env.CHAT_DB_PORT || 5432;
+    const database = global.secDbName || process.env.CHAT_DB_NAME || 'crate';
+    const user = global.secDbUser || process.env.CHAT_DB_USER || 'admin';
     const password = global.secDbPass || process.env.SEC_DB_PASS;
 
     if (!password) {
@@ -37,6 +38,7 @@ async function initTables() {
         const pool = getConversationPool();
         if (!pool) return;
 
+        // Chat context table
         await pool.query(`
             CREATE TABLE IF NOT EXISTS chat_context (
                 chat_jid STRING,
@@ -48,13 +50,17 @@ async function initTables() {
             )
         `);
 
+        // Deleted messages storage (for antidelete)
         await pool.query(`
-            CREATE TABLE IF NOT EXISTS chatbot_qa (
-                bot_jid STRING,
-                question STRING,
-                answer STRING,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (bot_jid, question)
+            CREATE TABLE IF NOT EXISTS deleted_messages (
+                id LONG PRIMARY KEY,
+                chat_jid STRING,
+                sender_jid STRING,
+                message_id STRING,
+                message_content STRING,
+                message_type STRING,
+                deleted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP
             )
         `);
         
@@ -181,6 +187,57 @@ async function deleteQA(botJid, question) {
     }
 }
 
+// Antidelete functions - store deleted messages in CrateDB, auto-delete after 1 hour
+async function saveDeletedMessage(chatJid, senderJid, messageId, messageContent, messageType) {
+    try {
+        const pool = getConversationPool();
+        if (!pool) return;
+
+        const id = Date.now() + Math.floor(Math.random() * 1000);
+        const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
+
+        await pool.query(
+            `INSERT INTO deleted_messages (id, chat_jid, sender_jid, message_id, message_content, message_type, deleted_at, expires_at)
+             VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP, $7)`,
+            [id, String(chatJid), String(senderJid), String(messageId), String(messageContent), String(messageType), expiresAt]
+        );
+        
+        // Clean up expired messages
+        await cleanupExpiredMessages();
+    } catch (error) {
+        console.log('[CHAT DB] Save deleted message error:', error.message);
+    }
+}
+
+async function cleanupExpiredMessages() {
+    try {
+        const pool = getConversationPool();
+        if (!pool) return;
+
+        await pool.query(`DELETE FROM deleted_messages WHERE expires_at < CURRENT_TIMESTAMP`);
+    } catch (error) {
+        console.log('[CHAT DB] Cleanup error:', error.message);
+    }
+}
+
+async function getDeletedMessages(chatJid, senderJid) {
+    try {
+        const pool = getConversationPool();
+        if (!pool) return [];
+
+        const result = await pool.query(
+            `SELECT message_content, message_type, deleted_at FROM deleted_messages 
+             WHERE chat_jid = $1 AND sender_jid = $2 AND expires_at > CURRENT_TIMESTAMP
+             ORDER BY deleted_at DESC LIMIT 20`,
+            [String(chatJid), String(senderJid)]
+        );
+        return result.rows;
+    } catch (error) {
+        console.log('[CHAT DB] Get deleted messages error:', error.message);
+        return [];
+    }
+}
+
 async function saveMessage(chatJid, senderJid, botJid, role, content) {
     // No longer storing individual messages
 }
@@ -213,5 +270,8 @@ module.exports = {
     getQA,
     listQA,
     deleteQA,
+    saveDeletedMessage,
+    getDeletedMessages,
+    cleanupExpiredMessages,
     closePool
 };

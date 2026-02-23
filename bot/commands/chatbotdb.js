@@ -259,16 +259,62 @@ Q&A Set: ${qaList.length} items`,
         });
     }
 
+    // Block chatbot from this chat
+    if (match === 'block') {
+        await showTyping(sock, chatId);
+        
+        // Add to blocked list
+        if (!data.chatbotBlock) data.chatbotBlock = {};
+        data.chatbotBlock[chatId] = true;
+        
+        const fs = require('fs');
+        const path = require('path');
+        const userGroupPath = path.join(__dirname, '../data/userGroupData.json');
+        fs.writeFileSync(userGroupPath, JSON.stringify(data, null, 2));
+
+        console.log(`Chatbot blocked for ${chatId}`);
+        return sock.sendMessage(chatId, { 
+            text: '🚫 *Chatbot Blocked*\n\nThis chat will no longer receive AI responses.',
+            quoted: message
+        });
+    }
+
+    // Unblock chatbot for this chat
+    if (match === 'unblock') {
+        await showTyping(sock, chatId);
+        
+        if (data.chatbotBlock && data.chatbotBlock[chatId]) {
+            delete data.chatbotBlock[chatId];
+            
+            const fs = require('fs');
+            const path = require('path');
+            const userGroupPath = path.join(__dirname, '../data/userGroupData.json');
+            fs.writeFileSync(userGroupPath, JSON.stringify(data, null, 2));
+        }
+
+        console.log(`Chatbot unblocked for ${chatId}`);
+        return sock.sendMessage(chatId, { 
+            text: '✅ *Chatbot Unblocked*\n\nThis chat will now receive AI responses.',
+            quoted: message
+        });
+    }
+
     if (match === 'on') {
         await showTyping(sock, chatId);
-        if (data.chatbot[chatId]) {
-            return sock.sendMessage(chatId, { 
-                text: '*Chatbot is already enabled*',
-                quoted: message
-            });
+        
+        // Remove from blocked list first
+        if (data.chatbotBlock && data.chatbotBlock[chatId]) {
+            delete data.chatbotBlock[chatId];
         }
+        
+        // Enable for this chat
         data.chatbot[chatId] = true;
+        const fs = require('fs');
+        const path = require('path');
+        const userGroupPath = path.join(__dirname, '../data/userGroupData.json');
+        fs.writeFileSync(userGroupPath, JSON.stringify(data, null, 2));
 
+        // Update DB 
         if (instanceId) {
             await callBackend('put', `/api/instances/${instanceId}/chatbot`, {
                 chatbot_enabled: true
@@ -276,22 +322,34 @@ Q&A Set: ${qaList.length} items`,
         }
 
         console.log(`Chatbot enabled for ${chatId}`);
+        
+        // Restart bot to apply changes
+        await callBackend('post', `/api/instances/${instanceId}/restart`, {});
+        
         return sock.sendMessage(chatId, { 
-            text: '*Chatbot has been enabled*',
+            text: '✅ *Chatbot Enabled*\n\nBot restarting...',
             quoted: message
         });
     }
 
     if (match === 'off') {
         await showTyping(sock, chatId);
-        if (!data.chatbot[chatId]) {
-            return sock.sendMessage(chatId, { 
-                text: '*Chatbot is already disabled*',
-                quoted: message
-            });
+        
+        // Disable for this chat
+        if (data.chatbot[chatId]) {
+            delete data.chatbot[chatId];
         }
-        delete data.chatbot[chatId];
+        
+        // Block this chat
+        if (!data.chatbotBlock) data.chatbotBlock = {};
+        data.chatbotBlock[chatId] = true;
+        
+        const fs = require('fs');
+        const path = require('path');
+        const userGroupPath = path.join(__dirname, '../data/userGroupData.json');
+        fs.writeFileSync(userGroupPath, JSON.stringify(data, null, 2));
 
+        // Update DB 
         if (instanceId) {
             await callBackend('put', `/api/instances/${instanceId}/chatbot`, {
                 chatbot_enabled: false
@@ -299,8 +357,12 @@ Q&A Set: ${qaList.length} items`,
         }
 
         console.log(`Chatbot disabled for ${chatId}`);
+        
+        // Restart bot to apply changes
+        await callBackend('post', `/api/instances/${instanceId}/restart`, {});
+        
         return sock.sendMessage(chatId, { 
-            text: '*Chatbot has been disabled*',
+            text: '❌ *Chatbot Disabled*\n\nBot restarting...',
             quoted: message
         });
     }
@@ -313,6 +375,7 @@ Q&A Set: ${qaList.length} items`,
 }
 
 async function handleChatbotResponse(sock, chatId, message, userMessage, senderId) {
+    // Reload data each time to get latest state
     const data = loadUserGroupData();
     
     console.log('[CHATBOT] Chat ID:', chatId);
@@ -325,12 +388,21 @@ async function handleChatbotResponse(sock, chatId, message, userMessage, senderI
         return;
     }
     
-    // Check if chatbot is enabled
-    const isChatEnabled = data.chatbot[chatId] === true || data.chatbot['all'] === true;
-    const isGlobalEnabled = global.chatbotEnabled === true;
+    // Check if chatbot is enabled - prioritize chat-specific setting, then global
+    const chatEnabled = data.chatbot[chatId] === true;
+    const allEnabled = data.chatbot['all'] === true;
+    const globalEnabled = global.chatbotEnabled === true;
     
-    if (!isChatEnabled && !isGlobalEnabled) {
-        console.log('[CHATBOT] Chatbot not enabled');
+    // Check if chat is blocked
+    const isChatBlocked = data.chatbotBlock && data.chatbotBlock[chatId] === true;
+    
+    // Must be enabled either in chat, all chats, or globally, AND not blocked
+    const isChatEnabled = (chatEnabled || allEnabled || globalEnabled) && !isChatBlocked;
+    
+    console.log('[CHATBOT] Enabled - Chat:', chatEnabled, 'All:', allEnabled, 'Global:', globalEnabled, 'Blocked:', isChatBlocked);
+    
+    if (!isChatEnabled) {
+        console.log('[CHATBOT] Chatbot disabled or blocked - not responding');
         return;
     }
 

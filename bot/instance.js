@@ -459,6 +459,21 @@ async function loadDbConfig() {
                 await pool.query('ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS chatbot_base_url VARCHAR(500)');
                 await pool.query('ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS sec_db_pass VARCHAR(500)');
                 
+                // Load global chatbot config
+                try {
+                    const globalConfig = await pool.query('SELECT * FROM global_chatbot_config WHERE id = 1');
+                    if (globalConfig.rows.length > 0) {
+                        const gc = globalConfig.rows[0];
+                        if (gc.chatbot_api_key) global.chatbotApiKey = gc.chatbot_api_key;
+                        if (gc.chatbot_base_url) global.chatbotBaseUrl = gc.chatbot_base_url;
+                        if (gc.sec_db_pass) global.secDbPass = gc.sec_db_pass;
+                        if (gc.sec_db_host) global.secDbHost = gc.sec_db_host;
+                        console.log('✅ Global chatbot config loaded');
+                    }
+                } catch (e) {
+                    console.log('Global config not available');
+                }
+                
                 const result = await pool.query('SELECT autoview, botoff_list, chatbot_enabled, chatbot_api_key, chatbot_base_url, sec_db_pass FROM bot_instances WHERE id = $1', [instanceId]);
                 if (result.rows.length > 0) {
                     if (result.rows[0].autoview !== null) global.autoviewState = result.rows[0].autoview;

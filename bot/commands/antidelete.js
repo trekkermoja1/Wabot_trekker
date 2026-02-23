@@ -3,6 +3,7 @@ const path = require('path');
 const { tmpdir } = require('os');
 const { downloadContentFromMessage } = require('@whiskeysockets/baileys');
 const { writeFile } = require('fs/promises');
+const { saveDeletedMessage, getDeletedMessages, cleanupExpiredMessages } = require('../lib/chatDb');
 
 const messageStore = new Map();
 const CONFIG_PATH = path.join(__dirname, '../data/antidelete.json');
@@ -53,11 +54,21 @@ const cleanTempFolderIfLarge = () => {
 // Start periodic cleanup check every 1 minute
 setInterval(cleanTempFolderIfLarge, 60 * 1000);
 
-// Load config
+// Load config - default to ENABLED
 function loadAntideleteConfig() {
     try {
-        if (!fs.existsSync(CONFIG_PATH)) return { enabled: true };
-        return JSON.parse(fs.readFileSync(CONFIG_PATH));
+        if (!fs.existsSync(CONFIG_PATH)) {
+            // Default to enabled
+            const defaultConfig = { enabled: true };
+            fs.writeFileSync(CONFIG_PATH, JSON.stringify(defaultConfig, null, 2));
+            return defaultConfig;
+        }
+        const config = JSON.parse(fs.readFileSync(CONFIG_PATH));
+        // Default to enabled if not specified
+        if (config.enabled === undefined) {
+            config.enabled = true;
+        }
+        return config;
     } catch {
         return { enabled: true };
     }
