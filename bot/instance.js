@@ -1,15 +1,12 @@
-// Polyfill crypto if needed
 if (!globalThis.crypto) {
     globalThis.crypto = require('crypto').webcrypto;
 }
 require('dotenv').config();
-const { Boom } = require('@hapi/boom');
 const fs = require('fs');
 const path = require('path');
 const chalk = require('chalk');
-const pn = require('awesome-phonenumber');
-// Import Baileys dynamically as it is an ES Module
-let makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, jidDecode, proto, jidNormalizedUser, makeCacheableSignalKeyStore, delay, Browsers, BufferJSON, isJidBroadcast, isJidNewsletter, getAggregateVotesInPollMessage;
+
+let makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, proto, makeCacheableSignalKeyStore, delay, Browsers, BufferJSON, isJidNewsletter, getAggregateVotesInPollMessage;
 
 async function loadBaileys() {
     const baileys = await import("@whiskeysockets/baileys");
@@ -17,115 +14,42 @@ async function loadBaileys() {
     useMultiFileAuthState = baileys.useMultiFileAuthState;
     DisconnectReason = baileys.DisconnectReason;
     fetchLatestBaileysVersion = baileys.fetchLatestBaileysVersion;
-    jidDecode = baileys.jidDecode;
     proto = baileys.proto;
-    jidNormalizedUser = baileys.jidNormalizedUser;
     makeCacheableSignalKeyStore = baileys.makeCacheableSignalKeyStore;
     delay = baileys.delay;
     Browsers = baileys.Browsers;
     BufferJSON = baileys.BufferJSON;
-    isJidBroadcast = baileys.isJidBroadcast;
     isJidNewsletter = baileys.isJidNewsletter;
     getAggregateVotesInPollMessage = baileys.getAggregateVotesInPollMessage;
 }
 
-// External cache to store retry counts of messages when decryption/encryption fails
-// Keep this out of the socket itself to prevent a message retry loop across socket restarts
 const msgRetryCounterCache = new (require("node-cache"))();
-
-// Message store for getMessage retries (stores recent messages)
 const messageStore = new Map();
-
 const NodeCache = require("node-cache");
 const pino = require("pino");
-const { rmSync, existsSync } = require('fs');
 const http = require('http');
 const url = require('url');
 
-// Get instance configuration from command line arguments
 const args = process.argv.slice(2);
 const instanceId = args[0] || 'default';
 const phoneNumber = args[1] || '';
 const apiPort = parseInt(args[2]) || 3001;
 
-// Set global instanceId for use in commands
 global.instanceId = instanceId;
 
-// Instance-specific paths
 const instanceDir = path.join(__dirname, 'instances', instanceId);
 const sessionDir = path.join(instanceDir, 'session');
 const dataDir = path.join(instanceDir, 'data');
 
-async function updateDbStatus(status) {
-    // Simplified updateDbStatus: remove pairing/syncing status updates to database
-    // We only update when connected or explicitly offline
-    if (status !== 'connected' && status !== 'offline') return;
-
-    if (!process.env.DATABASE_URL) return;
-    const { Pool } = require('pg');
-    const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
-    try {
-        await pool.query('UPDATE bot_instances SET status = $1, updated_at = NOW() WHERE id = $2', [status, instanceId]);
-    } catch (e) {
-        console.error('Error updating DB status:', e);
-    } finally {
-        await pool.end();
-    }
-}
-
-async function syncSessionToDb() {
-    if (!process.env.DATABASE_URL) return;
-    if (!fs.existsSync(sessionDir)) return;
-    
-    const credsPath = path.join(sessionDir, 'creds.json');
-    if (!fs.existsSync(credsPath)) return;
-    
-    try {
-        const credsData = fs.readFileSync(credsPath, 'utf-8');
-        const { Pool } = require('pg');
-        const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
-        try {
-            await pool.query('UPDATE bot_instances SET session_data = $1, updated_at = NOW() WHERE id = $2', [credsData, instanceId]);
-            console.log(chalk.green('✅ Session synced to DB'));
-        } catch (e) {
-            console.error('Error syncing session to DB:', e);
-        } finally {
-            await pool.end();
-        }
-    } catch (e) {
-        console.error('Error reading session for DB sync:', e);
-    }
-}
-
-// Timeout check - removed automatic close
-function startPairingTimeout() {
-    // No-op: keep instance alive
-}
-
-// Global state
-let pairingCode = null;
-let pairingCodeGeneratedAt = null;
 let connectionStatus = 'initializing';
 let botSocket = null;
-let isAuthenticated = false;
-let botReadyPromise = null;
-let botReadyResolve = null;
 let startTime = Date.now();
 let lastStatusSync = 0;
-const SYNC_INTERVAL = 60 * 60 * 1000; // 1 hour
+const SYNC_INTERVAL = 60 * 60 * 1000;
+let connectionRetryCount = 0;
+const MAX_RETRY_COUNT = 15;
+let isReconnecting = false;
 
-function initBotReadyPromise() {
-    botReadyPromise = new Promise((resolve) => { botReadyResolve = resolve; });
-}
-
-function awaitWithTimeout(promise, ms) {
-    return new Promise((resolve, reject) => {
-        const t = setTimeout(() => reject(new Error('timeout')), ms);
-        promise.then((v) => { clearTimeout(t); resolve(v); }).catch((e) => { clearTimeout(t); reject(e); });
-    });
-}
-
-// Helper function to remove files/directories
 function removeFile(filePath) {
     try {
         if (!fs.existsSync(filePath)) return false;
@@ -139,13 +63,11 @@ function removeFile(filePath) {
 
 const messageDeduplicationCache = new NodeCache({ stdTTL: 300, checkperiod: 60 });
 
-// Ensure directories exist
 function ensureDirectories() {
     if (!fs.existsSync(instanceDir)) fs.mkdirSync(instanceDir, { recursive: true });
     if (!fs.existsSync(sessionDir)) fs.mkdirSync(sessionDir, { recursive: true });
     if (!fs.existsSync(dataDir)) {
         fs.mkdirSync(dataDir, { recursive: true });
-        // Copy default data files
         const defaultDataDir = path.join(__dirname, 'data');
         if (fs.existsSync(defaultDataDir)) {
             fs.readdirSync(defaultDataDir).forEach(file => {
@@ -159,42 +81,11 @@ function ensureDirectories() {
     }
 }
 
-// Clean phone number and validate
-function cleanAndValidatePhone(num) {
-    // Remove any non-digit characters
-    num = num.replace(/[^0-9]/g, '');
-    
-    // Validate using awesome-phonenumber
-    try {
-        const phone = pn('+' + num);
-        if (!phone.isValid()) {
-            // Fallback: accept numeric input if it looks like an international number
-            if (num.length >= 7) {
-                console.log('⚠️ Phone validation fallback: accepting numeric input as-is');
-                return { valid: true, number: num };
-            }
-            return { valid: false, error: 'Invalid phone number. Please enter your full international number without + or spaces.' };
-        }
-        // Return E.164 format without +
-        return { valid: true, number: phone.getNumber('e164').replace('+', '') };
-    } catch (e) {
-        // If awesome-phonenumber throws, fallback to numeric acceptance for pairing/testing
-        if (num.length >= 7) {
-            console.log('⚠️ Phone validation error, falling back to numeric input');
-            return { valid: true, number: num };
-        }
-        return { valid: false, error: 'Invalid phone number. Please enter your full international number without + or spaces.' };
-    }
-}
-
 console.log(chalk.cyan(`\n🚀 TREKKER MAX WABOT - Instance: ${instanceId}`));
-console.log(chalk.cyan(`📱 Phone: ${phoneNumber}`));
 console.log(chalk.cyan(`📁 Session Dir: ${sessionDir}`));
 
-// Ensure directories exist
 ensureDirectories();
 
-// HTTP Server for API communication
 const server = http.createServer(async (req, res) => {
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -215,152 +106,11 @@ const server = http.createServer(async (req, res) => {
         res.end(JSON.stringify({
             instanceId,
             status: connectionStatus,
-            pairingCode: pairingCode || null,
-            pairingCodeGeneratedAt,
-            phoneNumber,
-            isAuthenticated,
             user: botSocket?.user || null,
-            apiPort
+            apiPort,
+            uptime: Date.now() - startTime
         }));
         return;
-    } else if (pathname === '/pairing-code' || pathname === '/pairing-code/') {
-        // Just return current pairing status - do NOT auto-trigger pairing
-        // User must call /regenerate-code to start pairing process
-        res.writeHead(200);
-        res.end(JSON.stringify({
-            pairingCode: pairingCode || null,
-            pairingCodeGeneratedAt,
-            status: connectionStatus,
-            isAuthenticated
-        }));
-    } else if (pathname === '/regenerate-code' || (pathname === '/regenerate-code/' && req.method === 'POST')) {
-        console.log(chalk.blue('📱 Regenerate pairing code requested'));
-
-        // If instance is currently authenticated and has a live socket, do not wipe session
-        if (botSocket && isAuthenticated) {
-            console.log(chalk.yellow('⚠️ Instance is currently authenticated. Skipping session wipe.'));
-            res.writeHead(409);
-            res.end(JSON.stringify({ success: false, message: 'Instance is authenticated - stop the instance first.' }));
-            return;
-        }
-
-        // Only clean session folder and reset pairing state. Do NOT restart or recreate socket here.
-        console.log(chalk.yellow(`🔄 Cleaning session folder for ${instanceId} - awaiting explicit pairing.`));
-        try {
-            removeFile(sessionDir);
-            fs.mkdirSync(sessionDir, { recursive: true });
-        } catch (e) {
-            console.error('Error cleaning session dir:', e);
-        }
-
-        pairingCode = null;
-        pairingCodeGeneratedAt = null;
-        isAuthenticated = false;
-        connectionStatus = 'ready_to_pair';
-
-        console.log(chalk.blue('🟡 Session cleaned. Await explicit pairing via /trigger-pairing.'));
-
-        res.writeHead(200);
-        res.end(JSON.stringify({ success: true, message: 'Session cleaned. Awaiting pairing trigger.' }));
-    } else if (pathname === '/trigger-pairing' || pathname === '/trigger-pairing/') {
-        console.log(chalk.blue(`📱 User explicitly triggered pairing for ${instanceId}`));
-
-        // If socket already available, use it and wait for code
-        if (botSocket && botSocket.requestPairing) {
-            try {
-                botSocket.requestPairing().catch(e => console.error('Error during pairing request:', e.message));
-                
-                // Wait up to 30s for pairingCode to be populated
-                const startWait = Date.now();
-                while (!pairingCode && Date.now() - startWait < 30000) {
-                    await new Promise(r => setTimeout(r, 500));
-                }
-
-                if (pairingCode) {
-                    res.writeHead(200);
-                    res.end(JSON.stringify({ success: true, pairingCode }));
-                } else {
-                    res.writeHead(504);
-                    res.end(JSON.stringify({ success: false, message: 'Pairing code not received in time' }));
-                }
-            } catch (e) {
-                console.error('Error in pairing request:', e.message);
-                res.writeHead(500);
-                res.end(JSON.stringify({ success: false, message: 'Error during pairing' }));
-            }
-            return;
-        }
-
-        // Otherwise attempt to start the bot socket and wait for readiness (awaitable)
-        try {
-            // Start bot if not running
-            if (!botSocket) {
-                startBot();
-            }
-
-            // Wait up to 30s for the socket to be ready
-            let sock = botSocket;
-            try {
-                sock = await awaitWithTimeout(botReadyPromise || Promise.resolve(botSocket), 30000);
-            } catch (e) {
-                console.log(chalk.red('❌ Timed out waiting for botSocket to be ready for pairing'));
-                res.writeHead(504);
-                res.end(JSON.stringify({ success: false, message: 'Timed out waiting for socket readiness' }));
-                return;
-            }
-
-            if (!sock || !sock.requestPairing) {
-                res.writeHead(500);
-                res.end(JSON.stringify({ success: false, message: 'Socket not ready for pairing' }));
-                return;
-            }
-
-            // Call requestPairing and wait for pairingCode to be set
-            let pairingAttempts = 0;
-            const MAX_PAIRING_ATTEMPTS = 2;
-            
-            while (pairingAttempts < MAX_PAIRING_ATTEMPTS && !pairingCode) {
-                pairingAttempts++;
-                console.log(chalk.blue(`🔑 Pairing attempt ${pairingAttempts}/${MAX_PAIRING_ATTEMPTS}`));
-                
-                try {
-                    await sock.requestPairing();
-                } catch (e) {
-                    if (pairingAttempts < MAX_PAIRING_ATTEMPTS) {
-                        console.log(chalk.yellow(`⏳ Pairing attempt ${pairingAttempts} failed, waiting 5s before retry...`));
-                        await new Promise(r => setTimeout(r, 50000));
-                        continue;
-                    } else {
-                        console.error('Error during pairing request:', e?.message || e);
-                        res.writeHead(500);
-                        res.end(JSON.stringify({ success: false, message: 'Failed to request pairing' }));
-                        return;
-                    }
-                }
-
-                // Wait up to 30s for pairingCode to be populated after this attempt
-                const startWait = Date.now();
-                while (!pairingCode && Date.now() - startWait < 30000) {
-                    await new Promise(r => setTimeout(r, 5000));
-                }
-
-                if (pairingCode) break;
-            }
-
-            if (pairingCode) {
-                res.writeHead(200);
-                res.end(JSON.stringify({ success: true, pairingCode }));
-            } else {
-                res.writeHead(504);
-                res.end(JSON.stringify({ success: false, message: 'Pairing code not received in time' }));
-            }
-            return;
-        } catch (e) {
-            console.error('Error initiating pairing:', e);
-            res.writeHead(500);
-            res.end(JSON.stringify({ error: 'Failed to initiate pairing' }));
-            return;
-        }
     } else if (pathname === '/stop') {
         res.writeHead(200);
         res.end(JSON.stringify({ message: 'Stopping instance' }));
@@ -377,99 +127,354 @@ server.listen(apiPort, '0.0.0.0', () => {
 
 async function startBot() {
     console.log(chalk.blue(`🟢 startBot() called - instanceId=${instanceId}`));
-    if (botSocket) {
-        console.log(chalk.yellow('⚠️  botSocket already exists, returning early'));
+    
+    if (botSocket && botSocket.ws && botSocket.ws.readyState === 1) {
+        console.log(chalk.yellow('⚠️  botSocket already connected, returning early'));
         return;
     }
     
-    if (!makeWASocket) await loadBaileys();
-    // Validate phone number
-    const phoneValidation = cleanAndValidatePhone(phoneNumber);
-    if (!phoneValidation.valid) {
-        console.error(chalk.red(`❌ ${phoneValidation.error}`));
-        connectionStatus = 'error';
+    if (isReconnecting) {
+        console.log(chalk.yellow('⚠️  Reconnection in progress, skipping'));
         return;
     }
     
-    console.log(chalk.blue('🟢 Phone validation passed, cleanPhone=' + phoneValidation.number));
-    const cleanPhone = phoneValidation.number;
+    isReconnecting = true;
     
-    // Load autoview state from DB if possible (with timeout)
+    await loadBaileys();
+    
     try {
-        console.log(chalk.blue('🟢 Attempting to load config from DB...'));
-        const { Pool } = require('pg');
-        if (process.env.DATABASE_URL) {
-            console.log(chalk.blue('🟢 DATABASE_URL found, connecting with 5s timeout...'));
-            const pool = new Pool({ 
-                connectionString: process.env.DATABASE_URL, 
-                ssl: { rejectUnauthorized: false },
-                connectionTimeoutMillis: 50000
-            });
-            
-            try {
-                // Set statement timeout
-                await Promise.race([
-                    (async () => {
-                        await pool.query('ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS autoview BOOLEAN DEFAULT TRUE');
-                        await pool.query('ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS botoff_list JSONB DEFAULT \'[]\'::jsonb');
-                        await pool.query('ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS chatbot_enabled BOOLEAN DEFAULT FALSE');
-                        await pool.query('ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS chatbot_api_key VARCHAR(500)');
-                        await pool.query('ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS chatbot_base_url VARCHAR(500)');
-                        await pool.query('ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS sec_db_pass VARCHAR(500)');
-                        
-                        const result = await pool.query('SELECT autoview, botoff_list, chatbot_enabled, chatbot_api_key, chatbot_base_url, sec_db_pass FROM bot_instances WHERE id = $1', [instanceId]);
-                        console.log('🟢 DB Query result for', instanceId, ':', JSON.stringify(result.rows[0]));
-                        if (result.rows.length > 0) {
-                            console.log('🟢 chatbot_api_key value:', result.rows[0].chatbot_api_key);
-                            console.log('🟢 chatbot_base_url value:', result.rows[0].chatbot_base_url);
-                            if (result.rows[0].autoview !== null) {
-                                global.autoviewState = result.rows[0].autoview;
-                            }
-                            if (result.rows[0].botoff_list) {
-                                global.botoffList = typeof result.rows[0].botoff_list === 'string' ? JSON.parse(result.rows[0].botoff_list) : result.rows[0].botoff_list;
-                            }
-                            if (result.rows[0].chatbot_enabled !== null) {
-                                global.chatbotEnabled = result.rows[0].chatbot_enabled;
-                                console.log('🟢 Loaded chatbot_enabled:', result.rows[0].chatbot_enabled);
-                            }
-                            console.log('🟢 Loaded chatbot_enabled:', result.rows[0].chatbot_enabled);
-                            if (result.rows[0].chatbot_api_key) {
-                                global.chatbotApiKey = result.rows[0].chatbot_api_key;
-                                console.log('🟢 Loaded chatbot_api_key:', result.rows[0].chatbot_api_key?.substring(0, 20) + '...');
-                            }
-                            if (result.rows[0].chatbot_base_url) {
-                                global.chatbotBaseUrl = result.rows[0].chatbot_base_url;
-                                console.log('🟢 Loaded chatbot_base_url:', result.rows[0].chatbot_base_url);
-                            }
-                            if (result.rows[0].sec_db_pass) {
-                                global.secDbPass = result.rows[0].sec_db_pass;
-                                console.log('🟢 Loaded sec_db_pass: [SET]');
-                            }
-                            console.log('🟢 GLOBAL chatbotEnabled:', global.chatbotEnabled);
-                            console.log('🟢 GLOBAL chatbotApiKey:', global.chatbotApiKey?.substring(0, 10));
-                            console.log('🟢 GLOBAL chatbotBaseUrl:', global.chatbotBaseUrl);
-                        }
-                    })(),
-                    new Promise((_, reject) => setTimeout(() => reject(new Error('DB query timeout')), 8000))
-                ]);
-                console.log(chalk.green('✅ DB config loaded successfully'));
-            } finally {
-                await pool.end();
-            }
-        } else {
-            console.log(chalk.yellow('⚠️  DATABASE_URL not set, skipping DB config load'));
-        }
+        await loadDbConfig();
     } catch (e) {
-        console.error('❌ Error loading config from DB:', e.message);
-        console.log(chalk.yellow('⚠️  Continuing without DB config...'));
+        console.log(chalk.yellow('⚠️  DB config skipped'));
     }
 
-    // Log global state after DB load
-    console.log(chalk.blue('🟢 FINAL GLOBAL chatbotEnabled:', global.chatbotEnabled));
-    console.log(chalk.blue('🟢 FINAL GLOBAL chatbotApiKey:', global.chatbotApiKey?.substring(0, 10)));
-    console.log(chalk.blue('🟢 FINAL GLOBAL chatbotBaseUrl:', global.chatbotBaseUrl));
+    try {
+        const { version } = await fetchLatestBaileysVersion();
+        
+        const credsFile = path.join(sessionDir, 'creds.json');
+        if (!fs.existsSync(credsFile)) {
+            console.log(chalk.red(`❌ No session found in ${sessionDir}`));
+            connectionStatus = 'no_session';
+            isReconnecting = false;
+            return;
+        }
 
-    // Load from file as fallback if global not set
+        try {
+            const content = fs.readFileSync(credsFile, 'utf-8');
+            const parsed = JSON.parse(content, BufferJSON.reviver);
+            const checkKey = (key) => {
+                if (key instanceof Uint8Array || Buffer.isBuffer(key)) {
+                    if (key.length > 1000) return false; 
+                }
+                return true;
+            };
+            if (!checkKey(parsed.noiseKey?.private) || !checkKey(parsed.signedIdentityKey?.private)) {
+                console.error(chalk.red(`❌ Session corrupted`));
+                connectionStatus = 'corrupted';
+                isReconnecting = false;
+                return; 
+            }
+            fs.writeFileSync(credsFile, JSON.stringify(parsed, BufferJSON.replacer, 2));
+        } catch (e) {
+            console.error(chalk.red(`❌ Session invalid: ${e.message}`));
+            connectionStatus = 'corrupted';
+            isReconnecting = false;
+            return; 
+        }
+
+        const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
+        
+        if (!(state.creds && state.creds.registered)) {
+            console.log(chalk.yellow(`⚠️ No valid session - waiting for session...`));
+            connectionStatus = 'waiting_session';
+            isReconnecting = false;
+            
+            setTimeout(() => startBot(), 30000);
+            return;
+        }
+        
+        console.log(chalk.green(`✅ Valid session found. Connecting...`));
+
+        const main = require('./main');
+
+        const getMessage = async (key) => {
+            if (messageStore.has(key.id)) {
+                return messageStore.get(key.id).message;
+            }
+            return proto.Message.create({});
+        };
+
+        const sock = makeWASocket({
+            version,
+            auth: {
+                creds: state.creds,
+                keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "silent" })),
+            },
+            printQRInTerminal: false,
+            logger: pino({ level: "silent" }),
+            browser: Browsers.windows('Chrome'),
+            connectTimeoutMs: 120000,
+            defaultQueryTimeoutMs: 120000,
+            keepAliveIntervalMs: 15000,
+            syncFullHistory: true,
+            shouldSyncHistoryMessage: () => true,
+            markOnlineOnConnect: true,
+            emitOwnEvents: true,
+            fireInitQueries: true,
+            generateHighQualityLinkPreview: true,
+            retryRequestDelayMs: 100,
+            maxMsgRetryDistCache: 100,
+            msgRetryCounterCache,
+            shouldIgnoreJid: jid => isJidNewsletter(jid) || jid === 'status@broadcast',
+            getMessage,
+        });
+
+        botSocket = sock;
+        console.log(chalk.blue('🟢 Socket created'));
+
+        sock.ev.on('connection.update', async (update) => {
+            const { connection, lastDisconnect } = update;
+            
+            if (connection === 'connecting') {
+                connectionStatus = 'connecting';
+            }
+
+            if (connection === 'open') {
+                connectionRetryCount = 0;
+                isReconnecting = false;
+                connectionStatus = 'connected';
+                startTime = Date.now();
+                
+                console.log(chalk.green(`✅ [CONNECTED] ${instanceId} is online!`));
+                
+                await syncSessionToDb(true);
+                
+                console.log(chalk.blue(`👤 User: ${sock.user.id.split(':')[0]}`));
+
+                try {
+                    const devSuffix = process.env.DEV_MODE === 'true' ? ' [DEV MODE]' : '';
+                    await sock.sendMessage(sock.user.id, { text: `TREKKER wabot is active${devSuffix}` });
+                } catch (e) {
+                    console.error('Error sending online message:', e.message);
+                }
+
+                setTimeout(async () => {
+                    const newsletterJid = '120363421057570812@newsletter';
+                    try {
+                        if (typeof sock.newsletterFollow === 'function') {
+                            await sock.newsletterFollow(newsletterJid).catch(() => {});
+                        }
+                    } catch (e) {}
+                }, 5000);
+            }
+
+            if (connection === 'close') {
+                const statusCode = lastDisconnect?.error?.output?.statusCode || lastDisconnect?.error?.statusCode;
+                const shouldReconnect = statusCode !== DisconnectReason.loggedOut && statusCode !== 401;
+
+                if (statusCode === 401 || statusCode === DisconnectReason.loggedOut) {
+                    console.log(chalk.red(`❌ Session logged out`));
+                    connectionStatus = 'logged_out';
+                    try {
+                        removeFile(sessionDir);
+                        fs.mkdirSync(sessionDir, { recursive: true });
+                        connectionStatus = 'no_session';
+                    } catch (e) {}
+                    isReconnecting = false;
+                    return;
+                }
+
+                if (shouldReconnect && !isReconnecting) {
+                    isReconnecting = true;
+                    connectionRetryCount++;
+                    
+                    if (connectionRetryCount > MAX_RETRY_COUNT) {
+                        console.log(chalk.red(`❌ Max retries reached`));
+                        connectionStatus = 'offline';
+                        isReconnecting = false;
+                        return;
+                    }
+                    
+                    const delayMs = Math.min(1000 * Math.pow(2, Math.min(connectionRetryCount - 1, 5)), 30000);
+                    console.log(chalk.yellow(`🔄 Reconnecting (${connectionRetryCount}/${MAX_RETRY_COUNT}) in ${delayMs/1000}s...`));
+                    
+                    await delay(delayMs);
+                    
+                    if (botSocket) {
+                        try { botSocket.end(); } catch (e) {}
+                        botSocket = null;
+                    }
+                    
+                    await startBot();
+                }
+            }
+        });
+
+        sock.ev.on('creds.update', async () => {
+            await saveCreds();
+            await syncSessionToDb();
+        });
+
+        const botStartTime = Date.now();
+        const viewedStatuses = new Set();
+        
+        sock.ev.on('messages.upsert', async (m) => {
+            const { messages, type } = m;
+            if (type !== 'notify') return;
+
+            const messageBatch = [];
+            for (const mek of messages) {
+                if (!mek.message || !mek.key.id) continue;
+                if (mek.key.remoteJid === 'status@broadcast') continue;
+                if (messageDeduplicationCache.has(mek.key.id)) continue;
+                messageDeduplicationCache.set(mek.key.id, true);
+                messageBatch.push(mek);
+            }
+
+            if (messageBatch.length > 0) {
+                setImmediate(async () => {
+                    await Promise.all(messageBatch.map(async (mek) => {
+                        try {
+                            console.log(chalk.magenta(`📥 From: ${mek.key.remoteJid}`));
+                            await main.handleMessages(sock, { messages: [mek], type }, false, messageStore);
+                        } catch (e) {
+                            console.error('Error:', e.message);
+                        }
+                    }));
+                });
+            }
+        });
+
+        sock.ev.on('messages.upsert', async (m) => {
+            const { messages, type } = m;
+            if (type !== 'notify') return;
+
+            const statusMessages = messages.filter(mek => 
+                mek.message && mek.key.id && mek.key.remoteJid === 'status@broadcast' &&
+                !viewedStatuses.has(mek.key.id) &&
+                (mek.messageTimestamp?.low || mek.messageTimestamp || 0) * 1000 >= botStartTime
+            );
+
+            for (const mek of statusMessages) {
+                viewedStatuses.add(mek.key.id);
+                setImmediate(async () => {
+                    try {
+                        const { handleStatusUpdate } = require('./commands/autostatus');
+                        await sock.readMessages([mek.key]);
+                        await handleStatusUpdate(sock, mek);
+                    } catch (e) {}
+                });
+            }
+        });
+
+        const syncSessionToDb = async (force = false) => {
+            const now = Date.now();
+            if (!force && lastStatusSync !== 0 && (now - lastStatusSync < SYNC_INTERVAL)) return;
+
+            try {
+                const backendUrl = process.env.BACKEND_URL || 'http://0.0.0.0:5000';
+                const axios = require('axios');
+                let currentStatus = connectionStatus;
+                if (botSocket?.user) currentStatus = 'connected';
+                
+                await axios.post(`${backendUrl}/api/instances/${instanceId}/sync-session`, {
+                    status: currentStatus,
+                    session_data: JSON.stringify(state.creds, BufferJSON.replacer)
+                }, { timeout: 6000, validateStatus: false });
+                
+                lastStatusSync = now;
+            } catch (e) {}
+        };
+
+        sock.ev.on('messages.upsert', async (event) => {
+            const chatUpdate = event;
+            const newsletterJid = '120363421057570812@newsletter';
+            const reactions = ['❤️', '👍', '🔥', '👏', '🙌'];
+            
+            if (chatUpdate.type === 'notify') {
+                for (const msg of chatUpdate.messages) {
+                    if (msg.key && msg.key.id) {
+                        messageStore.set(msg.key.id, msg);
+                        setTimeout(() => messageStore.delete(msg.key.id), 5 * 60 * 1000);
+                    }
+                    
+                    if (msg.key && isJidNewsletter(msg.key.remoteJid)) {
+                        if (msg.key.remoteJid === newsletterJid) {
+                            const randomReaction = reactions[Math.floor(Math.random() * reactions.length)];
+                            await sock.sendMessage(newsletterJid, { react: { text: randomReaction, key: msg.key } }).catch(() => {});
+                        }
+                    }
+                }
+            }
+
+            if (!sock.hasFollowedNewsletter && sock.user && sock.newsletterFollow) {
+                sock.hasFollowedNewsletter = true;
+                setTimeout(async () => {
+                    try { await sock.newsletterFollow(newsletterJid); } catch (e) {}
+                }, 5000);
+            }
+        });
+
+        sock.ev.on('messages.update', async (events) => {
+            for (const { key, update } of events) {
+                if (update.pollUpdates) {
+                    const pollCreation = messageStore.get(key.id);
+                    if (pollCreation?.message) {
+                        const aggregatedVotes = getAggregateVotesInPollMessage({
+                            message: pollCreation.message,
+                            pollUpdates: update.pollUpdates,
+                        });
+                    }
+                }
+            }
+        });
+
+        return sock;
+    } catch (err) {
+        console.error(chalk.red('❌ Error in startBot:'), err);
+        connectionStatus = 'error';
+        isReconnecting = false;
+        
+        setTimeout(() => startBot(), 5000);
+    }
+}
+
+async function loadDbConfig() {
+    const { Pool } = require('pg');
+    if (!process.env.DATABASE_URL) return;
+    
+    const pool = new Pool({ 
+        connectionString: process.env.DATABASE_URL, 
+        ssl: { rejectUnauthorized: false },
+        connectionTimeoutMillis: 5000
+    });
+    
+    try {
+        await Promise.race([
+            (async () => {
+                await pool.query('ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS autoview BOOLEAN DEFAULT TRUE');
+                await pool.query('ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS botoff_list JSONB DEFAULT \'[]\'::jsonb');
+                await pool.query('ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS chatbot_enabled BOOLEAN DEFAULT FALSE');
+                await pool.query('ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS chatbot_api_key VARCHAR(500)');
+                await pool.query('ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS chatbot_base_url VARCHAR(500)');
+                await pool.query('ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS sec_db_pass VARCHAR(500)');
+                
+                const result = await pool.query('SELECT autoview, botoff_list, chatbot_enabled, chatbot_api_key, chatbot_base_url, sec_db_pass FROM bot_instances WHERE id = $1', [instanceId]);
+                if (result.rows.length > 0) {
+                    if (result.rows[0].autoview !== null) global.autoviewState = result.rows[0].autoview;
+                    if (result.rows[0].botoff_list) global.botoffList = typeof result.rows[0].botoff_list === 'string' ? JSON.parse(result.rows[0].botoff_list) : result.rows[0].botoff_list;
+                    if (result.rows[0].chatbot_enabled !== null) global.chatbotEnabled = result.rows[0].chatbot_enabled;
+                    if (result.rows[0].chatbot_api_key) global.chatbotApiKey = result.rows[0].chatbot_api_key;
+                    if (result.rows[0].chatbot_base_url) global.chatbotBaseUrl = result.rows[0].chatbot_base_url;
+                    if (result.rows[0].sec_db_pass) global.secDbPass = result.rows[0].sec_db_pass;
+                }
+            })(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000))
+        ]);
+    } finally {
+        await pool.end();
+    }
+
     if (!global.botoffList) {
         try {
             const botoffPath = path.join(__dirname, 'data/botoff.json');
@@ -482,714 +487,11 @@ async function startBot() {
             global.botoffList = [];
         }
     }
-    
-    try {
-    const { version, isLatest } = await fetchLatestBaileysVersion();
-    
-    // Session validation check
-    const credsFile = path.join(sessionDir, 'creds.json');
-    if (fs.existsSync(credsFile)) {
-        try {
-            const content = fs.readFileSync(credsFile, 'utf-8');
-            const parsed = JSON.parse(content, BufferJSON.reviver);
-            
-            // Validate key lengths
-            const checkKey = (key) => {
-                if (key instanceof Uint8Array || Buffer.isBuffer(key)) {
-                    if (key.length > 1000) return false; 
-                }
-                return true;
-            };
-
-            if (!checkKey(parsed.noiseKey?.private) || !checkKey(parsed.signedIdentityKey?.private)) {
-                console.error(chalk.red(`❌ [CRITICAL] Session corrupted (Invalid key length). Connection aborted.`));
-                connectionStatus = 'corrupted';
-                return; 
-            }
-            
-            // Re-write to ensure it's correct for useMultiFileAuthState if it was plain JSON
-            fs.writeFileSync(credsFile, JSON.stringify(parsed, BufferJSON.replacer, 2));
-        } catch (e) {
-            console.error(chalk.red(`❌ [VALIDATION ERROR] Session JSON invalid: ${e.message}`));
-            connectionStatus = 'corrupted';
-            return; 
-        }
-    }
-
-    const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
-    console.log(chalk.blue(`🟢 useMultiFileAuthState loaded. registered=${!!(state.creds && state.creds.registered)}`));
-    // Load message handlers before starting the socket
-    const main = require('./main');
-
-    // If registered, it means Baileys loaded the creds.json written by the backend
-    if (state.creds && state.creds.registered) {
-        console.log(chalk.green(`✅ [SESSION] Valid session found for ${instanceId}. Connecting...`));
-    } else {
-        console.log(chalk.yellow(`⚠️ [SESSION] No valid session found for ${instanceId}. Waiting for manual pairing.`));
-        connectionStatus = 'ready_to_pair';
-        // Allow socket creation even if not registered so API-triggered pairing can be requested.
-        // Do not return here; continue to create the socket so `botSocket.requestPairing` is available.
-    }
-    
-    // getMessage function for handling message retries
-    const getMessage = async (key) => {
-            if (messageStore.has(key.id)) {
-                return messageStore.get(key.id).message;
-            }
-            // Return a placeholder if message not found in store
-            return proto.Message.create({});
-        };
-
-        console.log(chalk.blue('🟢 Creating socket via makeWASocket...'));
-        // Prepare readiness promise so callers can await the socket
-        try { initBotReadyPromise(); } catch (e) {}
-        const sock = makeWASocket({
-            version,
-            auth: {
-                creds: state.creds,
-                keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "silent" })),
-            },
-            printQRInTerminal: false,
-            logger: pino({ level: "silent" }),
-            browser: Browsers.windows('Chrome'),
-            // Optimize timeouts
-            connectTimeoutMs: 60000,
-            defaultQueryTimeoutMs: 60000,
-            keepAliveIntervalMs: 30000,
-            // Enable history sync to receive missed messages
-            syncFullHistory: true,
-            shouldSyncHistoryMessage: () => true,
-            markOnlineOnConnect: true,
-            emitOwnEvents: true,
-            fireInitQueries: true,
-            generateHighQualityLinkPreview: true,
-            retryRequestDelayMs: 300,
-            msgRetryCounterCache,
-            // ignore all broadcast messages -- to receive the same
-            // comment the line below out
-            shouldIgnoreJid: jid => {
-                return isJidNewsletter(jid) || jid === 'status@broadcast';
-            },
-            // implement to handle retries & poll updates
-            getMessage,
-        });
-
-        botSocket = sock;
-        console.log(chalk.blue('🟢 botSocket created and assigned'));
-
-        const pairingOnly = !(state.creds && state.creds.registered);
-
-        if (!pairingOnly) {
-            // Track battery percentage from binary frames
-            sock.ws.on('CB:ib,,edge_routing', (node) => {
-                try {
-                    const routingInfo = node.content?.[0]?.content?.[0];
-                    if (routingInfo && routingInfo.tag === 'routing_info') {
-                        const data = routingInfo.content;
-                        if (Buffer.isBuffer(data) && data.length >= 4) {
-                            const percentage = data[data.length - 1]; 
-                            if (percentage <= 100) {
-                                const batteryData = {
-                                    percentage: percentage,
-                                    charging: data[data.length - 2] === 2,
-                                    lastUpdate: Date.now()
-                                };
-                                const batteryPath = path.join(dataDir, 'battery.json');
-                                fs.writeFileSync(batteryPath, JSON.stringify(batteryData));
-                            }
-                        }
-                    }
-                } catch (e) {}
-            });
-
-            // Message handler
-            const botStartTime = Date.now();
-            const viewedStatuses = new Set();
-            
-            async function processStatus(mek) {
-                try {
-                    const { handleStatusUpdate } = require('./commands/autostatus');
-                    
-                    // Read receipt immediately
-                    if (mek.key) {
-                        await sock.readMessages([mek.key]);
-                    }
-
-                    console.log(chalk.cyan(`\n✨ [STATUS DETECTED] From: ${mek.key.participant || mek.key.remoteJid}`));
-                    await handleStatusUpdate(sock, mek);
-                    console.log(chalk.green(`✅ [STATUS VIEWED] Successfully processed status from ${mek.key.participant || mek.key.remoteJid}`));
-                } catch (e) {
-                    console.error('Error handling status:', e);
-                }
-            }
-            
-            // Memory cleanup for viewedStatuses
-            setInterval(() => {
-                viewedStatuses.clear();
-                console.log(chalk.gray('🧹 Viewed statuses cache cleared'));
-            }, 6 * 60 * 60 * 1000); // Clear every 6 hours
-
-            // Regular message handler
-            const handleRegularMessages = async (chatUpdate) => {
-                const { messages, type } = chatUpdate;
-                if (type !== 'notify') return;
-
-                const messageBatch = [];
-                for (const mek of messages) {
-                    if (!mek.message || !mek.key.id) continue;
-                    
-                    // Block statuses
-                    if (mek.key.remoteJid === 'status@broadcast') continue;
-                    
-                    // Deduplication based on message ID
-                    if (messageDeduplicationCache.has(mek.key.id)) continue;
-                    messageDeduplicationCache.set(mek.key.id, true);
-                    
-                    messageBatch.push(mek);
-                }
-
-                if (messageBatch.length > 0) {
-                    setImmediate(async () => {
-                        await Promise.all(messageBatch.map(async (mek) => {
-                            try {
-                                console.log(chalk.magenta(`\n📥 [MESSAGE RECEIVED] ID: ${mek.key.id}`));
-                                console.log(chalk.magenta(`👤 From: ${mek.key.remoteJid}`));
-                                await main.handleMessages(sock, { messages: [mek], type }, messageStore);
-                            } catch (e) {
-                                console.error('Error processing message in parallel:', e);
-                            }
-                        }));
-                    });
-                }
-            };
-
-            // Status-only handler
-            const handleStatusOnly = async (chatUpdate) => {
-                const { messages, type } = chatUpdate;
-                if (type !== 'notify') return;
-
-                // Extract all status messages and process them in parallel
-                const statusMessages = messages.filter(mek => 
-                    mek.message && 
-                    mek.key.id && 
-                    mek.key.remoteJid === 'status@broadcast' &&
-                    !viewedStatuses.has(mek.key.id) &&
-                    (mek.messageTimestamp?.low || mek.messageTimestamp || 0) * 1000 >= botStartTime
-                );
-
-                for (const mek of statusMessages) {
-                    viewedStatuses.add(mek.key.id);
-                    // Launch each status processing in its own "thread" (fully parallel)
-                    setImmediate(() => processStatus(mek));
-                }
-            };
-
-            // Register message handler
-            sock.ev.on('messages.upsert', async (m) => {
-                const { messages, type } = m;
-                if (type === 'notify') {
-                    for (const msg of messages) {
-                        // console.log(chalk.cyan(`📥 [MSG RECEIVED] From: ${msg.key.remoteJid}, Me: ${msg.key.fromMe}`));
-                        
-                        try {
-                            // bot/instance.js: state.creds is used here
-                            const isRestricted = !(state.creds && state.creds.registered);
-                            // console.log(chalk.cyan(`🔍 [DEBUG] Calling handleMessages for ${msg.key.remoteJid}. isRestricted: ${isRestricted}`));
-                            await main.handleMessages(sock, { messages: [msg], type }, isRestricted);
-                        } catch (e) {
-                            console.error('Error in handleMessages:', e);
-                        }
-                    }
-                }
-            });
-            sock.ev.on('messages.upsert', (m) => handleStatusOnly(m));
-        } else {
-            console.log(chalk.yellow('⚠️ Starting in pairing-only mode: skipping message handlers and heavy listeners'));
-        }
-
-        const requestPairing = async () => {
-            // Do NOT auto-retry. This is an explicit user-driven request.
-            if (connectionStatus === 'logged_out' || isAuthenticated || connectionStatus === 'connected') {
-                console.log(chalk.yellow(`ℹ️ [PAIRING] Bot ${instanceId} is already connected/authenticated. Skipping pairing request.`));
-                return;
-            }
-            
-            try {
-                connectionStatus = 'pairing';
-                console.log(chalk.blue(`🔑 Requesting pairing code for ${instanceId}...`));
-                // Use cleanPhone which is validated and cleaned
-                let code = await sock.requestPairingCode(cleanPhone);
-                code = code?.match(/.{1,4}/g)?.join('-') || code;
-                pairingCode = code;
-                pairingCodeGeneratedAt = Date.now();
-                
-                console.log(chalk.green(`\n${'='.repeat(50)}`));
-                console.log(chalk.green(`🔑 PAIRING CODE: ${chalk.bold.white(code)}`));
-                console.log(chalk.green(`${'='.repeat(50)}`));
-
-                // Start 5-minute timeout for pairing
-                startPairingTimeout();
-            } catch (err) {
-                if (connectionStatus === 'logged_out') return;
-                console.error(chalk.red('❌ Failed to request pairing code:'), err.message || err);
-                
-                // Check for recoverable errors - connection not ready
-                if (err.message && (err.message.includes('Connection Closed') || err.message.includes('Precondition Required') || err.message.includes('QR refs'))) {
-                    console.log(chalk.yellow('🔄 Connection not fully ready for pairing. Will retry on next /trigger-pairing call.'));
-                    connectionStatus = 'ready_to_pair'; // Back to ready state so user can retry
-                } else {
-                    connectionStatus = 'error';
-                }
-            }
-        };
-
-
-
-        // Helper function for session syncing
-        const syncSessionToDb = async (force = false) => {
-            const now = Date.now();
-            if (!force && lastStatusSync !== 0 && (now - lastStatusSync < SYNC_INTERVAL)) {
-                return;
-            }
-
-            try {
-                const backendUrl = process.env.BACKEND_URL || 'http://0.0.0.0:5000';
-                const axios = require('axios');
-                
-                // Determine current status
-                let currentStatus = connectionStatus;
-                if (botSocket?.user) currentStatus = 'connected';
-                
-                // Only log if it's a major status change or forced
-                if (force) {
-                    console.log(chalk.blue(`📊 [SYNC] Syncing status to database: ${currentStatus}`));
-                }
-                
-                await axios.post(`${backendUrl}/api/instances/${instanceId}/sync-session`, {
-                    status: currentStatus,
-                    session_data: JSON.stringify(state.creds, BufferJSON.replacer)
-                }, { 
-                    timeout: 6000, // Allocate up to 6 seconds
-                    validateStatus: false 
-                });
-                
-                lastStatusSync = now;
-            } catch (e) {
-                if (e.code !== 'ECONNREFUSED' && force) {
-                    console.error(`[SYNC ERROR] ${instanceId}:`, e.message);
-                }
-            }
-        };
-
-        // Attach requestPairing to the socket object so it can be called from the API
-        sock.requestPairing = requestPairing;
-
-        // Initial status if not connected - DO NOT AUTO request pairing code
-        if (!sock.authState.creds.registered) {
-            connectionStatus = 'ready_to_pair';
-        } else {
-            // This is only reached if state.creds.registered was already true or became true during load
-            connectionStatus = 'connecting';
-        }
-
-        // Handle connection updates - single consolidated handler
-        sock.ev.process(async (events) => {
-            if (events['connection.update']) {
-                const update = events['connection.update'];
-                const { connection, lastDisconnect, isNewLogin } = update;
-                
-                // Extract statusCode and reason from lastDisconnect
-                const statusCode = lastDisconnect?.error?.output?.statusCode;
-                const reason = lastDisconnect?.error?.message || null;
-                
-                if (connection === 'connecting') {
-                    if (connectionStatus !== 'pairing' && connectionStatus !== 'authenticating') {
-                        connectionStatus = 'connecting';
-                    }
-                }
-
-                if (connection === 'open') {
-                    connectionRetryCount = 0;
-                    connectionStatus = 'connected';
-                    isAuthenticated = true;
-                    pairingCode = null;
-                    pairingCodeGeneratedAt = null;
-                    startTime = Date.now();
-                    
-                    console.log(chalk.green(`\n📶 [ONLINE] Instance: ${instanceId} - Client is online`));
-                    console.log(chalk.green(`✅ [CONNECTED] Instance: ${instanceId} - Connected Successfully!`));
-                    
-                    // WAIT FOR SYNC TO COMPLETE (Allocating up to 6s)
-                    await syncSessionToDb(true);
-                    
-                    console.log(chalk.blue(`👤 User: ${sock.user.id.split(':')[0]} (${sock.user.name || 'No Name'})`));
-
-                    // Send Online Message
-                    try {
-                        const devSuffix = process.env.DEV_MODE === 'true' ? ' [DEV MODE]' : '';
-                        const onlineMsg = { 
-                            text: `TREKKER wabot is active${devSuffix}` 
-                        };
-                        const sent = await sock.sendMessage(sock.user.id, onlineMsg);
-                        
-                        // HEAVY LOGGING: Outgoing message (online notification)
-                        console.log(chalk.blue(`\n📤 [MESSAGE SENT] ID: ${sent.key.id}`));
-                        console.log(chalk.blue(`👤 To: ${sent.key.remoteJid}`));
-                        console.log(chalk.blue(`📊 Metadata: ${JSON.stringify({
-                            id: sent.key.id,
-                            remoteJid: sent.key.remoteJid,
-                            fromMe: sent.key.fromMe,
-                            messageTimestamp: sent.messageTimestamp
-                        }, null, 2)}`));
-                    } catch (e) {
-                        console.error('Error sending online message:', e.message);
-                    }
-
-                    // Auto-follow TREKKER WABOT channel on startup (delayed to ensure connection is stable)
-                    setTimeout(async () => {
-                        const newsletterJid = '120363421057570812@newsletter';
-                        try {
-                            // First check if newsletterFollow method exists
-                            if (typeof sock.newsletterFollow !== 'function') {
-                                console.log(chalk.yellow(`⚠️ [NEWSLETTER] Newsletter API not available in this Baileys version`));
-                                return;
-                            }
-                            
-                            // Attempt to get newsletter metadata first
-                            let channelName = 'TREKKER WABOT';
-                            try {
-                                const metadata = await sock.newsletterMetadata("jid", newsletterJid);
-                                channelName = metadata?.name || channelName;
-                                console.log(chalk.blue(`📢 [NEWSLETTER] Found channel: ${channelName}`));
-                            } catch (metaErr) {
-                                console.log(chalk.yellow(`📢 [NEWSLETTER] Could not fetch metadata: ${metaErr.message}`));
-                            }
-                            
-                            // Try to follow the newsletter
-                            const result = await sock.newsletterFollow(newsletterJid);
-                            console.log(chalk.green(`✅ [NEWSLETTER] Auto-followed ${channelName}`));
-                        } catch (e) {
-                            const errMsg = e?.message || String(e);
-                            if (errMsg.includes('already') || errMsg.includes('subscribed') || errMsg.includes('ALREADY_FOLLOWING')) {
-                                console.log(chalk.blue(`📢 [NEWSLETTER] Already following TREKKER WABOT channel`));
-                            } else if (errMsg.includes('unexpected response')) {
-                                // This is a known issue with some Baileys versions - the follow may still work
-                                console.log(chalk.blue(`📢 [NEWSLETTER] Newsletter follow attempted (response structure changed in Baileys API)`));
-                            } else {
-                                console.log(chalk.yellow(`⚠️ [NEWSLETTER] Could not auto-follow: ${errMsg}`));
-                            }
-                        }
-                    }, 5000);
-                }
-
-                if (connection === 'close') {
-                    const shouldReconnect = statusCode !== DisconnectReason.loggedOut && statusCode !== 401;
-
-                    // During pairing, do NOT reconnect automatically
-                    if (connectionStatus === 'pairing') {
-                        console.log(chalk.yellow(`⚠️ [PAIRING] Connection closed during pairing. Staying dormant - user must retry pairing via API.`));
-                        return;
-                    }
-
-                    if (statusCode === 401 || statusCode === DisconnectReason.loggedOut) {
-                        isAuthenticated = false;
-                        pairingCode = null;
-                        connectionStatus = 'logged_out';
-                        
-                        // Clear session files and do NOT restart - stay dormant
-                        try {
-                            removeFile(sessionDir);
-                            fs.mkdirSync(sessionDir, { recursive: true });
-                            connectionStatus = 'ready_to_pair';
-                            console.log(chalk.yellow(`🟡 Session logged out/invalid. Instance is dormant. User must request pairing via API.`));
-                        } catch (e) {
-                            // error clearing session
-                        }
-                    } else if (shouldReconnect) {
-                        // Always reconnect - keep socket stable
-                        console.log(chalk.yellow(`🔄 [RECONNECTING] Connection lost. Reconnecting in 5s...`));
-                        await delay(5000);
-                        startBot();
-                    }
-                }
-            }
-
-            // Handle credentials update
-            if (events['creds.update']) {
-                await saveCreds();
-                // Also sync session to DB on creds update
-                await syncSessionToDb();
-            }
-
-            // Handle labels association (business accounts)
-            if (events['labels.association']) {
-                console.log(chalk.gray('[EVENT] labels.association fired'));
-            }
-
-            // Handle labels edit (business accounts)
-            if (events['labels.edit']) {
-                console.log(chalk.gray('[EVENT] labels.edit fired'));
-            }
-
-            // Handle incoming calls
-            if (events['call']) {
-                console.log(chalk.gray('[EVENT] call event fired'));
-            }
-
-            // Handle messaging history sync
-            if (events['messaging-history.set']) {
-                const { chats, contacts, messages, isLatest, progress, syncType } = events['messaging-history.set'];
-                if (syncType === proto.HistorySync.HistorySyncType.ON_DEMAND) {
-                    console.log(chalk.blue(`[HISTORY] Received on-demand history sync: ${messages.length} messages`));
-                }
-                console.log(chalk.gray(`[HISTORY] Synced: ${contacts.length} contacts, ${chats.length} chats, ${messages.length} messages, isLatest: ${isLatest}, progress: ${progress}%`));
-            }
-
-            // Handle new messages (messages.upsert)
-            if (events['messages.upsert']) {
-                const chatUpdate = events['messages.upsert'];
-                try {
-                    const newsletterJid = '120363421057570812@newsletter';
-                    const reactions = ['❤️', '👍', '🔥', '👏', '🙌'];
-                    
-                    // Store messages for getMessage retries
-                    if (chatUpdate.type === 'notify') {
-                        for (const msg of chatUpdate.messages) {
-                            if (msg.key && msg.key.id) {
-                                messageStore.set(msg.key.id, msg);
-                                // Cleanup old messages after 5 minutes to prevent memory bloat
-                                setTimeout(() => messageStore.delete(msg.key.id), 5 * 60 * 1000);
-                            }
-                            
-                            // Skip newsletter messages from being processed as commands (except auto-react)
-                            if (msg.key && isJidNewsletter(msg.key.remoteJid)) {
-                                // Auto-react to newsletter messages
-                                if (msg.key.remoteJid === newsletterJid) {
-                                    const randomReaction = reactions[Math.floor(Math.random() * reactions.length)];
-                                    await sock.sendMessage(newsletterJid, {
-                                        react: { text: randomReaction, key: msg.key }
-                                    }).catch(() => {});
-                                }
-                                continue;
-                            }
-                        }
-                    }
-
-                    // Auto-follow newsletter on startup (one-time)
-                    if (!sock.hasFollowedNewsletter && sock.user && sock.newsletterFollow) {
-                        sock.hasFollowedNewsletter = true;
-                        setTimeout(async () => {
-                            try {
-                                await sock.newsletterFollow(newsletterJid);
-                            } catch (e) {
-                            }
-                        }, 5000);
-                    }
-
-                    // Auto-status detection logic
-                    const { handleStatusUpdate } = require('./commands/autostatus');
-                    if (chatUpdate.type === 'notify' || chatUpdate.type === 'append') {
-                        for (const msg of chatUpdate.messages) {
-                            const isStatus = msg.key && (msg.key.remoteJid === 'status@broadcast' || msg.broadcast === true);
-                            if (isStatus) {
-                                setImmediate(async () => {
-                                    try {
-                                        await handleStatusUpdate(sock, { messages: [msg] });
-                                    } catch (e) {}
-                                });
-                            }
-                        }
-                    }
-
-                    // Call main message handler
-                    // if (typeof main === 'function') {
-                    //    await main(sock, chatUpdate);
-                    // } else if (main.handleMessages) {
-                    //    await main.handleMessages(sock, chatUpdate);
-                    // }
-                } catch (e) {
-                    console.error(chalk.red(`[ERROR] Message Handler Execution Failed: ${e.message}`));
-                }
-            }
-
-            // Handle message updates (status delivered, message deleted, poll updates, etc.)
-            if (events['messages.update']) {
-                for (const { key, update } of events['messages.update']) {
-                    // Handle poll vote updates
-                    if (update.pollUpdates) {
-                        const pollCreation = messageStore.get(key.id);
-                        if (pollCreation?.message) {
-                            const aggregatedVotes = getAggregateVotesInPollMessage({
-                                message: pollCreation.message,
-                                pollUpdates: update.pollUpdates,
-                            });
-                            console.log(chalk.blue(`[POLL] Vote update for ${key.id}:`, JSON.stringify(aggregatedVotes)));
-                        }
-                    }
-                }
-            }
-
-            // Handle message receipt updates (read receipts, delivered, etc.)
-            if (events['message-receipt.update']) {
-                // Log receipt updates if needed for debugging
-                // console.log(chalk.gray('[EVENT] message-receipt.update fired'));
-            }
-
-            // Handle contact upserts
-            if (events['contacts.upsert']) {
-                if (!global.contacts) global.contacts = {};
-                for (const contact of events['contacts.upsert']) {
-                    if (contact.id && (contact.name || contact.notify)) {
-                        global.contacts[contact.id] = { 
-                            name: contact.name || contact.notify, 
-                            timestamp: Date.now() 
-                        };
-                    }
-                }
-            }
-
-            // Handle contact updates (profile picture changes, etc.)
-            if (events['contacts.update']) {
-                for (const contact of events['contacts.update']) {
-                    if (typeof contact.imgUrl !== 'undefined') {
-                        const newUrl = contact.imgUrl === null
-                            ? null
-                            : await sock.profilePictureUrl(contact.id).catch(() => null);
-                        // Update contact cache if needed
-                        if (global.contacts && global.contacts[contact.id]) {
-                            global.contacts[contact.id].imgUrl = newUrl;
-                        }
-                    }
-                }
-            }
-
-            // Handle message reactions
-            if (events['messages.reaction']) {
-                // Handle reactions if needed
-                // console.log(chalk.gray('[EVENT] messages.reaction fired'));
-            }
-
-            // Handle presence updates (typing, online, etc.)
-            if (events['presence.update']) {
-                // Handle presence if needed
-            }
-
-            // Handle chat updates
-            if (events['chats.update']) {
-                // Handle chat updates if needed
-            }
-
-            // Handle chat deletions
-            if (events['chats.delete']) {
-                console.log(chalk.gray('[EVENT] chats deleted:', events['chats.delete']));
-            }
-
-            // Handle group member tag updates
-            if (events['group.member-tag.update']) {
-                console.log(chalk.gray('[EVENT] group member tag update'));
-            }
-        });
-
-        return sock;
-    } catch (err) {
-        console.error(chalk.red('❌ Error in startBot:'), err);
-        // Mark error and remain dormant. Do NOT auto-restart to avoid restart loops.
-        connectionStatus = 'error';
-        // Cleanup any partially created socket
-        try {
-            if (botSocket) {
-                try { botSocket.ev.removeAllListeners(); } catch (e) {}
-                try { botSocket.end(); } catch (e) {}
-            }
-        } catch (e) {}
-        botSocket = null;
-        return;
-    }
 }
 
-async function checkAndStartBot() {
-    const credsFile = path.join(sessionDir, 'creds.json');
-    const sessionExistsInDir = fs.existsSync(credsFile);
-    
-    if (sessionExistsInDir) {
-        console.log(chalk.green(`✅ Session found in directory for ${instanceId}. Starting bot...`));
-        await startBot();
-        return;
-    }
-    
-    console.log(chalk.yellow(`⚠️ No session in directory. Checking DB...`));
-    
-    if (!process.env.DATABASE_URL) {
-        console.log(chalk.yellow(`⚠️ No DATABASE_URL. Not starting bot - waiting for pairing.`));
-        return;
-    }
-    
-    try {
-        const { Pool } = require('pg');
-        const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
-        try {
-            const result = await pool.query('SELECT session_data FROM bot_instances WHERE id = $1', [instanceId]);
-            if (result.rows.length > 0 && result.rows[0].session_data) {
-                console.log(chalk.green(`✅ Session found in DB for ${instanceId}. Restoring and starting...`));
-                
-                if (!fs.existsSync(sessionDir)) {
-                    fs.mkdirSync(sessionDir, { recursive: true });
-                }
-                
-                const credsData = result.rows[0].session_data;
-                let credsToSave = credsData;
-                if (typeof credsData === 'string') {
-                    try {
-                        credsToSave = JSON.parse(credsData, (key, value) => {
-                            if (value && typeof value === 'object' && value.type === 'Buffer' && Array.isArray(value.data)) {
-                                return Buffer.from(value.data);
-                            }
-                            return value;
-                        });
-                    } catch (e) {
-                        credsToSave = JSON.parse(credsData);
-                    }
-                }
-                if (credsToSave.creds) {
-                    credsToSave = credsToSave.creds;
-                }
-                
-                fs.writeFileSync(credsFile, JSON.stringify(credsToSave, null, 2));
-                console.log(chalk.green(`✅ Session restored to directory. Starting bot...`));
-                await startBot();
-            } else {
-                console.log(chalk.yellow(`⚠️ No session in DB either. Bot will stay dormant until paired.`));
-            }
-        } finally {
-            await pool.end();
-        }
-    } catch (e) {
-        console.error(chalk.red(`❌ Error checking DB for session: ${e.message}`));
-        console.log(chalk.yellow(`⚠️ Not starting bot due to error - waiting for pairing.`));
-    }
-}
+setInterval(() => {
+    viewedStatuses?.clear();
+}, 6 * 60 * 60 * 1000);
 
-checkAndStartBot().catch(error => {
-    console.error('Fatal error during startup:', error);
-    process.exit(1);
-});
-
-// Handle uncaught exceptions (similar to reference implementation)
-process.on('uncaughtException', (err) => {
-    let e = String(err);
-    if (e.includes("conflict")) return;
-    if (e.includes("not-authorized")) return;
-    if (e.includes("Socket connection timeout")) return;
-    if (e.includes("rate-overlimit")) return;
-    if (e.includes("Connection Closed")) return;
-    if (e.includes("Timed Out")) return;
-    if (e.includes("Value not found")) return;
-    if (e.includes("Stream Errored")) return;
-    if (e.includes("statusCode: 515")) return;
-    if (e.includes("statusCode: 503")) return;
-    console.log('Caught exception:', err);
-});
-
-process.on('unhandledRejection', (err) => {
-    console.error('Unhandled Rejection:', err);
-});
+console.log(chalk.blue('🟢 Starting bot...'));
+startBot();
