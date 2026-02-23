@@ -598,6 +598,7 @@ async function initDatabase() {
         chatbot_enabled BOOLEAN DEFAULT false,
         chatbot_api_key VARCHAR(500),
         chatbot_base_url VARCHAR(500),
+        sec_db_pass VARCHAR(500),
         created_at TIMESTAMP NOT NULL DEFAULT ${useSQLite ? 'CURRENT_TIMESTAMP' : 'NOW()'},
         updated_at TIMESTAMP NOT NULL DEFAULT ${useSQLite ? 'CURRENT_TIMESTAMP' : 'NOW()'},
         approved_at TIMESTAMP,
@@ -1631,7 +1632,7 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 app.put('/api/instances/:instanceId/chatbot', async (req, res) => {
   try {
     const { instanceId } = req.params;
-    const { chatbot_enabled, chatbot_api_key, chatbot_base_url } = req.body;
+    const { chatbot_enabled, chatbot_api_key, chatbot_base_url, sec_db_pass } = req.body;
 
     const result = await executeQuery('SELECT * FROM bot_instances WHERE id = $1', [instanceId]);
     if (result.rows.length === 0) {
@@ -1644,9 +1645,10 @@ app.put('/api/instances/:instanceId/chatbot', async (req, res) => {
       SET chatbot_enabled = $1,
           chatbot_api_key = $2,
           chatbot_base_url = $3,
+          sec_db_pass = $4,
           updated_at = ${nowFunc}
-      WHERE id = $4
-    `, [chatbot_enabled, chatbot_api_key, chatbot_base_url, instanceId]);
+      WHERE id = $5
+    `, [chatbot_enabled, chatbot_api_key, chatbot_base_url, sec_db_pass, instanceId]);
 
     res.json({ success: true, message: 'Chatbot configuration updated' });
   } catch (e) {
@@ -1659,7 +1661,7 @@ app.get('/api/instances/:instanceId/chatbot', async (req, res) => {
     const { instanceId } = req.params;
 
     const result = await executeQuery(
-      'SELECT chatbot_enabled, chatbot_api_key, chatbot_base_url FROM bot_instances WHERE id = $1', 
+      'SELECT chatbot_enabled, chatbot_api_key, chatbot_base_url, sec_db_pass FROM bot_instances WHERE id = $1', 
       [instanceId]
     );
     if (result.rows.length === 0) {

@@ -1,28 +1,14 @@
 const axios = require('axios');
-const fs = require('fs');
-const path = require('path');
+const { saveMessage, getConversationHistory, clearConversation } = require('../lib/chatDb');
 
-const USER_GROUP_DATA = path.join(__dirname, '../data/userGroupData.json');
-
-const chatMemory = {
-    messages: new Map(),
-    userInfo: new Map()
-};
+const USER_GROUP_DATA = require('../data/userGroupData.json');
 
 function loadUserGroupData() {
     try {
-        return JSON.parse(fs.readFileSync(USER_GROUP_DATA, 'utf-8'));
+        return USER_GROUP_DATA;
     } catch (error) {
         console.error('Error loading user group data:', error.message);
         return { groups: [], chatbot: {} };
-    }
-}
-
-function saveUserGroupData(data) {
-    try {
-        fs.writeFileSync(USER_GROUP_DATA, JSON.stringify(data, null, 2));
-    } catch (error) {
-        console.error('Error saving user group data:', error.message);
     }
 }
 
@@ -38,20 +24,6 @@ async function showTyping(sock, chatId) {
     } catch (error) {
         console.error('Typing indicator error:', error);
     }
-}
-
-function extractUserInfo(message) {
-    const info = {};
-    if (message.toLowerCase().includes('my name is')) {
-        info.name = message.split('my name is')[1].trim().split(' ')[0];
-    }
-    if (message.toLowerCase().includes('i am') && message.toLowerCase().includes('years old')) {
-        info.age = message.match(/\d+/)?.[0];
-    }
-    if (message.toLowerCase().includes('i live in') || message.toLowerCase().includes('i am from')) {
-        info.location = message.split(/(?:i live in|i am from)/i)[1].trim().split(/[.,!?]/)[0];
-    }
-    return info;
 }
 
 async function callBackend(method, endpoint, data) {
@@ -76,7 +48,21 @@ async function handleChatbotCommand(sock, chatId, message, match, instanceId) {
     if (!match) {
         await showTyping(sock, chatId);
         return sock.sendMessage(chatId, {
-            text: `*CHATBOT SETUP*\n\n*.chatbot on*\nEnable chatbot\n\n*.chatbot off*\nDisable chatbot\n\n*.chatbot status*\nCheck chatbot status\n\n*Note:* Configure API key and base URL from dashboard first.`,
+            text: `*CHATBOT SETUP*
+
+*.chatbot on*
+Enable chatbot
+
+*.chatbot off*
+Disable chatbot
+
+*.chatbot status*
+Check chatbot status
+
+*.chatbot clear*
+Clear conversation history
+
+*Note:* Configure API key and base URL from dashboard first.`,
             quoted: message
         });
     }
@@ -88,7 +74,26 @@ async function handleChatbotCommand(sock, chatId, message, match, instanceId) {
         const isEnabled = data.chatbot[chatId] === true;
         const globalEnabled = global.chatbotEnabled === true;
         return sock.sendMessage(chatId, {
-            text: `*Chatbot Status*\n\nChat: ${isEnabled ? '✅ Enabled' : '❌ Disabled'}\nGlobal: ${globalEnabled ? '✅ Enabled' : '❌ Disabled'}\nAPI: ${global.chatbotApiKey ? '✅ Configured' : '❌ Not Set'}\nBase URL: ${global.chatbotBaseUrl ? '✅ Set' : '❌ Not Set'}`,
+            text: `*Chatbot Status*
+
+Chat: ${isEnabled ? '✅ Enabled' : '❌ Disabled'}
+Global: ${globalEnabled ? '✅ Enabled' : '❌ Disabled'}
+API: ${global.chatbotApiKey ? '✅ Configured' : '❌ Not Set'}
+Base URL: ${global.chatbotBaseUrl ? '✅ Set' : '❌ Not Set'}`,
+            quoted: message
+        });
+    }
+
+    if (match === 'clear') {
+        const botId = sock.user.id;
+        const botNumber = botId.split(':')[0];
+        const senderId = message.key.participant || message.key.remoteJid;
+        
+        await clearConversation(chatId, senderId, botId);
+        
+        await showTyping(sock, chatId);
+        return sock.sendMessage(chatId, {
+            text: '*Conversation history cleared*',
             quoted: message
         });
     }
@@ -110,7 +115,6 @@ async function handleChatbotCommand(sock, chatId, message, match, instanceId) {
             });
         }
         data.chatbot[chatId] = true;
-        saveUserGroupData(data);
 
         if (instanceId) {
             await callBackend('put', `/api/instances/${instanceId}/chatbot`, {
@@ -134,7 +138,6 @@ async function handleChatbotCommand(sock, chatId, message, match, instanceId) {
             });
         }
         delete data.chatbot[chatId];
-        saveUserGroupData(data);
 
         if (instanceId) {
             await callBackend('put', `/api/instances/${instanceId}/chatbot`, {
@@ -157,22 +160,28 @@ async function handleChatbotCommand(sock, chatId, message, match, instanceId) {
 }
 
 async function handleChatbotResponse(sock, chatId, message, userMessage, senderId) {
+    console.log('[CHATBOT] =================== HANDLER CALLED ===================');
+    console.log('[CHATBOT] Chat ID:', chatId);
+    console.log('[CHATBOT] Sender ID:', senderId);
+    console.log('[CHATBOT] User message:', userMessage);
+    
     const data = loadUserGroupData();
+    console.log('[CHATBOT] Bot enabled for chats:', JSON.stringify(data.chatbot));
+    console.log('[CHATBOT] Global chatbotEnabled:', global.chatbotEnabled);
     
-    if (!data.chatbot[chatId]) {
-        return;
-    }
-    
-    // If file says enabled, and we have API config, use it
+    // For testing: always process if we have API key
     const apiKey = global.chatbotApiKey || process.env.CHATBOT_API_KEY;
     const baseUrl = global.chatbotBaseUrl || process.env.CHATBOT_BASE_URL || 'https://ai.megallm.io/v1';
     
     console.log('[CHATBOT] API Key present:', !!apiKey, 'Base URL:', baseUrl);
+    console.log('[CHATBOT] secDbPass loaded:', !!global.secDbPass);
     
     if (!apiKey || !baseUrl) {
-        console.log('[CHATBOT] Missing API config');
+        console.log('[CHATBOT] Missing API config - returning');
         return;
     }
+    
+    console.log('[CHATBOT] Processing message...');
 
     try {
         const botId = sock.user.id;
@@ -224,33 +233,17 @@ async function handleChatbotResponse(sock, chatId, message, userMessage, senderI
 
         if (!cleanedMessage) return;
 
-        if (!chatMemory.messages.has(senderId)) {
-            chatMemory.messages.set(senderId, []);
-            chatMemory.userInfo.set(senderId, {});
-        }
-
-        const userInfo = extractUserInfo(cleanedMessage);
-        if (Object.keys(userInfo).length > 0) {
-            chatMemory.userInfo.set(senderId, {
-                ...chatMemory.userInfo.get(senderId),
-                ...userInfo
-            });
-        }
-
-        const messages = chatMemory.messages.get(senderId);
-        messages.push(cleanedMessage);
-        if (messages.length > 20) {
-            messages.shift();
-        }
-        chatMemory.messages.set(senderId, messages);
+        await saveMessage(chatId, senderId, botId, 'user', cleanedMessage);
+        console.log('[CHATBOT] Message saved to DB:', cleanedMessage.substring(0, 30));
 
         await showTyping(sock, chatId);
 
+        const conversationHistory = await getConversationHistory(chatId, senderId, botId, 20);
+        console.log('[CHATBOT] Retrieved history count:', conversationHistory.length);
+        console.log('[CHATBOT] History:', conversationHistory.map(m => m.role + ':' + m.content.substring(0, 20)).join(' | '));
+
         console.log('[CHATBOT] Getting AI response...');
-        const response = await getMinimaxAIResponse(cleanedMessage, {
-            messages: chatMemory.messages.get(senderId),
-            userInfo: chatMemory.userInfo.get(senderId)
-        }, apiKey, baseUrl);
+        const response = await getMinimaxAIResponse(cleanedMessage, conversationHistory, apiKey, baseUrl);
 
         console.log('[CHATBOT] Response received:', response ? response.substring(0, 50) : 'null');
 
@@ -261,6 +254,8 @@ async function handleChatbotResponse(sock, chatId, message, userMessage, senderI
             });
             return;
         }
+
+        await saveMessage(chatId, senderId, botId, 'assistant', response);
 
         console.log('[CHATBOT] Sending response to', chatId);
         await new Promise(resolve => setTimeout(resolve, getRandomDelay()));
@@ -278,23 +273,23 @@ async function handleChatbotResponse(sock, chatId, message, userMessage, senderI
     }
 }
 
-async function getMinimaxAIResponse(userMessage, userContext, apiKey, baseUrl) {
+async function getMinimaxAIResponse(userMessage, conversationHistory, apiKey, baseUrl) {
     const model = 'openai-gpt-oss-20b';
+    
+    const historyText = conversationHistory
+        .map(msg => `${msg.role}: ${msg.content}`)
+        .join('\n');
     
     const prompt = `You are a friendly WhatsApp chatbot. Keep responses short (1-2 sentences), casual and natural. Be helpful and friendly.
 
-Previous conversation:
-${userContext.messages.join('\n')}
-
-User information:
-${JSON.stringify(userContext.userInfo)}
+Conversation history:
+${historyText}
 
 Current message: ${userMessage}
 
 Response:`;
 
     try {
-        // Use /chat/completions without /v1 prefix based on curl example
         let apiUrl = baseUrl.includes('ai.megallm.io') 
             ? baseUrl.replace('/v1', '') + '/chat/completions' 
             : `${baseUrl}/v1/chat/completions`;

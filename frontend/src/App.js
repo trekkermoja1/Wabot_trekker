@@ -24,7 +24,7 @@ function App() {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [chatbotConfig, setChatbotConfig] = useState({ chatbot_enabled: false, chatbot_api_key: '', chatbot_base_url: '' });
+  const [chatbotConfig, setChatbotConfig] = useState({ chatbot_enabled: false, chatbot_api_key: '', chatbot_base_url: '', sec_db_pass: '' });
 
   useEffect(() => {
     if (isLoggedIn) {
@@ -389,7 +389,8 @@ function App() {
       setChatbotConfig({
         chatbot_enabled: data.chatbot_enabled || false,
         chatbot_api_key: data.chatbot_api_key || '',
-        chatbot_base_url: data.chatbot_base_url || ''
+        chatbot_base_url: data.chatbot_base_url || '',
+        sec_db_pass: data.sec_db_pass || ''
       });
     } catch (error) {
       console.error('Error fetching chatbot config:', error);
@@ -577,6 +578,17 @@ function App() {
                     value={chatbotConfig.chatbot_base_url}
                     onChange={(e) => setChatbotConfig({...chatbotConfig, chatbot_base_url: e.target.value})}
                     placeholder="https://ai.megallm.io/v1"
+                    className="w-full px-4 py-2 border rounded-lg text-gray-900 bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Conversation DB Password (sec_db_pass)</label>
+                  <input
+                    type="password"
+                    value={chatbotConfig.sec_db_pass}
+                    onChange={(e) => setChatbotConfig({...chatbotConfig, sec_db_pass: e.target.value})}
+                    placeholder="CrateDB password for storing conversations"
                     className="w-full px-4 py-2 border rounded-lg text-gray-900 bg-white"
                   />
                 </div>

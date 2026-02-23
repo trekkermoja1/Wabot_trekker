@@ -415,8 +415,9 @@ async function startBot() {
                         await pool.query('ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS chatbot_enabled BOOLEAN DEFAULT FALSE');
                         await pool.query('ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS chatbot_api_key VARCHAR(500)');
                         await pool.query('ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS chatbot_base_url VARCHAR(500)');
+                        await pool.query('ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS sec_db_pass VARCHAR(500)');
                         
-                        const result = await pool.query('SELECT autoview, botoff_list, chatbot_enabled, chatbot_api_key, chatbot_base_url FROM bot_instances WHERE id = $1', [instanceId]);
+                        const result = await pool.query('SELECT autoview, botoff_list, chatbot_enabled, chatbot_api_key, chatbot_base_url, sec_db_pass FROM bot_instances WHERE id = $1', [instanceId]);
                         console.log('🟢 DB Query result for', instanceId, ':', JSON.stringify(result.rows[0]));
                         if (result.rows.length > 0) {
                             console.log('🟢 chatbot_api_key value:', result.rows[0].chatbot_api_key);
@@ -439,6 +440,10 @@ async function startBot() {
                             if (result.rows[0].chatbot_base_url) {
                                 global.chatbotBaseUrl = result.rows[0].chatbot_base_url;
                                 console.log('🟢 Loaded chatbot_base_url:', result.rows[0].chatbot_base_url);
+                            }
+                            if (result.rows[0].sec_db_pass) {
+                                global.secDbPass = result.rows[0].sec_db_pass;
+                                console.log('🟢 Loaded sec_db_pass: [SET]');
                             }
                             console.log('🟢 GLOBAL chatbotEnabled:', global.chatbotEnabled);
                             console.log('🟢 GLOBAL chatbotApiKey:', global.chatbotApiKey?.substring(0, 10));
