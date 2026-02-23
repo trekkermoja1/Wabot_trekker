@@ -540,5 +540,23 @@ setInterval(() => {
     viewedStatuses?.clear();
 }, 6 * 60 * 60 * 1000);
 
-console.log(chalk.blue('🟢 Starting bot...'));
-startBot();
+startBot().catch(error => {
+    console.error('Fatal error:', error)
+    process.exit(1)
+})
+
+process.on('uncaughtException', (err) => {
+    console.error('Uncaught Exception:', err)
+})
+
+process.on('unhandledRejection', (err) => {
+    console.error('Unhandled Rejection:', err)
+})
+
+let file = require.resolve(__filename)
+fs.watchFile(file, () => {
+    fs.unwatchFile(file)
+    console.log(chalk.redBright(`Update ${__filename}`))
+    delete require.cache[file]
+    require(file)
+})
