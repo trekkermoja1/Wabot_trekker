@@ -231,6 +231,7 @@ async function startBot() {
         const main = require('./main');
 
         const store = makeWASocket.store;
+        const msgRetryCounterCache = new NodeCache();
 
         const getMessage = async (key) => {
             let jid = jidNormalizedUser(key.remoteJid)
@@ -256,9 +257,6 @@ async function startBot() {
             emitOwnEvents: true,
             fireInitQueries: true,
             generateHighQualityLinkPreview: true,
-            retryRequestDelayMs: 0,
-            maxMsgRetryDistCache: 0,
-            msgRetryCounterCache: undefined,
             shouldIgnoreJid: jid => isJidNewsletter(jid) || jid === 'status@broadcast',
             getMessage,
         });
