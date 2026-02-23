@@ -9,7 +9,7 @@ function getConversationPool() {
     const port = process.env.CHAT_DB_PORT || 5432;
     const database = process.env.CHAT_DB_NAME || 'crate';
     const user = process.env.CHAT_DB_USER || 'admin';
-    const password = global.secDbPass || process.env.SEC_DB_PASS || process.env.DATABASE_URL?.split(':')[2]?.split('@')[0];
+    const password = global.secDbPass || process.env.SEC_DB_PASS || '28*t.PDB--w8r!v.5HzC342M';
 
     console.log('[CHAT DB] Creating pool - Host:', host, 'User:', user, 'Password set:', !!password);
 
