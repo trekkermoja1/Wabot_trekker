@@ -68,14 +68,22 @@ async function initConversationTable() {
 async function saveMessage(chatJid, senderJid, botJid, role, content) {
     try {
         const pool = getConversationPool();
-        if (!pool) return;
+        if (!pool) {
+            console.log('[CHAT DB] No pool, skipping save');
+            return;
+        }
 
+        console.log('[CHAT DB] Saving:', chatJid, role, content.substring(0, 30));
+        
+        const id = Date.now() + Math.floor(Math.random() * 1000);
+        
         await pool.query(
-            `INSERT INTO chat_conversations (chat_jid, sender_jid, bot_jid, role, content) VALUES ($1, $2, $3, $4, $5)`,
-            [chatJid, senderJid, botJid, role, content]
+            `INSERT INTO chat_conversations (id, chat_jid, sender_jid, bot_jid, role, content) VALUES ($1, $2, $3, $4, $5, $6)`,
+            [id, String(chatJid), String(senderJid), String(botJid), String(role), String(content)]
         );
+        console.log('[CHAT DB] Saved OK, id:', id);
     } catch (error) {
-        console.error('[CHAT DB] Save message error:', error.message);
+        console.error('[CHAT DB] Save error:', error.message);
     }
 }
 
@@ -84,13 +92,16 @@ async function getConversationHistory(chatJid, senderJid, botJid, limit = 20) {
         const pool = getConversationPool();
         if (!pool) return [];
 
+        console.log('[CHAT DB] Getting history for:', chatJid, senderJid, botJid);
+
         const result = await pool.query(
             `SELECT role, content FROM chat_conversations 
              WHERE chat_jid = $1 AND sender_jid = $2 AND bot_jid = $3 
              ORDER BY created_at DESC LIMIT $4`,
-            [chatJid, senderJid, botJid, limit]
+            [String(chatJid), String(senderJid), String(botJid), limit]
         );
 
+        console.log('[CHAT DB] History rows:', result.rows.length);
         return result.rows.reverse();
     } catch (error) {
         console.error('[CHAT DB] Get history error:', error.message);
