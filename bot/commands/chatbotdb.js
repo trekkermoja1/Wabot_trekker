@@ -59,10 +59,7 @@ Disable chatbot
 *.chatbot status*
 Check chatbot status
 
-*.chatbot clear*
-Clear conversation history
-
-*Note:* Configure API key and base URL from dashboard first.`,
+*Note:* Configure from dashboard`,
             quoted: message
         });
     }
@@ -80,20 +77,6 @@ Chat: ${isEnabled ? '✅ Enabled' : '❌ Disabled'}
 Global: ${globalEnabled ? '✅ Enabled' : '❌ Disabled'}
 API: ${global.chatbotApiKey ? '✅ Configured' : '❌ Not Set'}
 Base URL: ${global.chatbotBaseUrl ? '✅ Set' : '❌ Not Set'}`,
-            quoted: message
-        });
-    }
-
-    if (match === 'clear') {
-        const botId = sock.user.id;
-        const botNumber = botId.split(':')[0];
-        const senderId = message.key.participant || message.key.remoteJid;
-        
-        await clearConversation(chatId, senderId, botId);
-        
-        await showTyping(sock, chatId);
-        return sock.sendMessage(chatId, {
-            text: '*Conversation history cleared*',
             quoted: message
         });
     }

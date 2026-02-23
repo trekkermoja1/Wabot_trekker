@@ -604,6 +604,17 @@ async function initDatabase() {
         approved_at TIMESTAMP,
         expires_at TIMESTAMP,
         session_data ${useSQLite ? 'TEXT' : 'JSONB'}
+      )`,
+      `CREATE TABLE IF NOT EXISTS global_chatbot_config (
+        id INTEGER PRIMARY KEY,
+        chatbot_api_key VARCHAR(500),
+        chatbot_base_url VARCHAR(500),
+        sec_db_host VARCHAR(200),
+        sec_db_port INTEGER DEFAULT 5432,
+        sec_db_name VARCHAR(100) DEFAULT 'crate',
+        sec_db_user VARCHAR(100) DEFAULT 'admin',
+        sec_db_pass VARCHAR(500),
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )`
     ];
 
@@ -1669,6 +1680,44 @@ app.get('/api/instances/:instanceId/chatbot', async (req, res) => {
     }
 
     res.json(result.rows[0]);
+  } catch (e) {
+    res.status(500).json({ detail: e.message });
+  }
+});
+
+// Global chatbot config for all bots
+app.get('/api/chatbot/global-config', async (req, res) => {
+  try {
+    const result = await executeQuery('SELECT * FROM global_chatbot_config WHERE id = 1');
+    if (result.rows.length === 0) {
+      return res.json({});
+    }
+    res.json(result.rows[0]);
+  } catch (e) {
+    res.status(500).json({ detail: e.message });
+  }
+});
+
+app.put('/api/chatbot/global-config', async (req, res) => {
+  try {
+    const { chatbot_api_key, chatbot_base_url, sec_db_host, sec_db_port, sec_db_name, sec_db_user, sec_db_pass } = req.body;
+
+    const nowFunc = useSQLite ? 'CURRENT_TIMESTAMP' : 'NOW()';
+    await executeQuery(`
+      INSERT INTO global_chatbot_config (id, chatbot_api_key, chatbot_base_url, sec_db_host, sec_db_port, sec_db_name, sec_db_user, sec_db_pass, updated_at)
+      VALUES (1, $1, $2, $3, $4, $5, $6, $7, ${nowFunc})
+      ON CONFLICT (id) DO UPDATE SET
+        chatbot_api_key = $1,
+        chatbot_base_url = $2,
+        sec_db_host = $3,
+        sec_db_port = $4,
+        sec_db_name = $5,
+        sec_db_user = $6,
+        sec_db_pass = $7,
+        updated_at = ${nowFunc}
+    `, [chatbot_api_key, chatbot_base_url, sec_db_host, sec_db_port || 5432, sec_db_name || 'crate', sec_db_user || 'admin', sec_db_pass]);
+
+    res.json({ success: true, message: 'Global chatbot configuration updated' });
   } catch (e) {
     res.status(500).json({ detail: e.message });
   }

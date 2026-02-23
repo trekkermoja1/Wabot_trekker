@@ -24,7 +24,16 @@ function App() {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [chatbotConfig, setChatbotConfig] = useState({ chatbot_enabled: false, chatbot_api_key: '', chatbot_base_url: '', sec_db_pass: '' });
+  const [chatbotConfig, setChatbotConfig] = useState({ 
+    chatbot_enabled: true, 
+    chatbot_api_key: '', 
+    chatbot_base_url: 'https://ai.megallm.io/v1',
+    sec_db_host: 'turquoise-wilhuff-tarkin.aks1.eastus2.azure.cratedb.net',
+    sec_db_port: 5432,
+    sec_db_name: 'crate',
+    sec_db_user: 'admin',
+    sec_db_pass: '' 
+  });
 
   useEffect(() => {
     if (isLoggedIn) {
@@ -384,13 +393,19 @@ function App() {
 
   const fetchChatbotConfig = async (botId) => {
     try {
-      const response = await fetch(`${API_URL}/api/instances/${botId}/chatbot`);
-      const data = await response.json();
+      // Fetch global config
+      const globalResponse = await fetch(`${API_URL}/api/chatbot/global-config`);
+      const globalData = await globalResponse.json();
+      
       setChatbotConfig({
-        chatbot_enabled: data.chatbot_enabled || false,
-        chatbot_api_key: data.chatbot_api_key || '',
-        chatbot_base_url: data.chatbot_base_url || '',
-        sec_db_pass: data.sec_db_pass || ''
+        chatbot_enabled: true,
+        chatbot_api_key: globalData.chatbot_api_key || '',
+        chatbot_base_url: globalData.chatbot_base_url || 'https://ai.megallm.io/v1',
+        sec_db_host: globalData.sec_db_host || 'turquoise-wilhuff-tarkin.aks1.eastus2.azure.cratedb.net',
+        sec_db_port: globalData.sec_db_port || 5432,
+        sec_db_name: globalData.sec_db_name || 'crate',
+        sec_db_user: globalData.sec_db_user || 'admin',
+        sec_db_pass: globalData.sec_db_pass || ''
       });
     } catch (error) {
       console.error('Error fetching chatbot config:', error);
@@ -399,14 +414,15 @@ function App() {
 
   const handleSaveChatbotConfig = async (botId) => {
     try {
-      const response = await fetch(`${API_URL}/api/instances/${botId}/chatbot`, {
+      // Save global config for all bots
+      const response = await fetch(`${API_URL}/api/chatbot/global-config`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(chatbotConfig)
       });
       
       if (response.ok) {
-        alert('Chatbot configuration saved!');
+        alert('Global chatbot configuration saved for all bots!');
         fetchAllBots();
         fetchServerBots();
       } else {
@@ -557,7 +573,7 @@ function App() {
             </div>
 
             <div className="border-t pt-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">🤖 Chatbot Configuration</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">🤖 Chatbot Configuration (Global for All Bots)</label>
               
               <div className="space-y-3">
                 <div>
@@ -582,15 +598,61 @@ function App() {
                   />
                 </div>
 
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Conversation DB Password (sec_db_pass)</label>
-                  <input
-                    type="password"
-                    value={chatbotConfig.sec_db_pass}
-                    onChange={(e) => setChatbotConfig({...chatbotConfig, sec_db_pass: e.target.value})}
-                    placeholder="CrateDB password for storing conversations"
-                    className="w-full px-4 py-2 border rounded-lg text-gray-900 bg-white"
-                  />
+                <div className="border-t pt-3 mt-3">
+                  <label className="block text-xs font-medium text-gray-700 mb-2">💾 Conversation Database (CrateDB)</label>
+                  
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Host</label>
+                      <input
+                        type="text"
+                        value={chatbotConfig.sec_db_host}
+                        onChange={(e) => setChatbotConfig({...chatbotConfig, sec_db_host: e.target.value})}
+                        placeholder="turquoise-...cratedb.net"
+                        className="w-full px-2 py-1 border rounded text-gray-900 bg-white text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Port</label>
+                      <input
+                        type="number"
+                        value={chatbotConfig.sec_db_port}
+                        onChange={(e) => setChatbotConfig({...chatbotConfig, sec_db_port: parseInt(e.target.value)})}
+                        placeholder="5432"
+                        className="w-full px-2 py-1 border rounded text-gray-900 bg-white text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Database</label>
+                      <input
+                        type="text"
+                        value={chatbotConfig.sec_db_name}
+                        onChange={(e) => setChatbotConfig({...chatbotConfig, sec_db_name: e.target.value})}
+                        placeholder="crate"
+                        className="w-full px-2 py-1 border rounded text-gray-900 bg-white text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Username</label>
+                      <input
+                        type="text"
+                        value={chatbotConfig.sec_db_user}
+                        onChange={(e) => setChatbotConfig({...chatbotConfig, sec_db_user: e.target.value})}
+                        placeholder="admin"
+                        className="w-full px-2 py-1 border rounded text-gray-900 bg-white text-sm"
+                      />
+                    </div>
+                  </div>
+                  <div className="mt-2">
+                    <label className="block text-xs text-gray-500 mb-1">Password</label>
+                    <input
+                      type="password"
+                      value={chatbotConfig.sec_db_pass}
+                      onChange={(e) => setChatbotConfig({...chatbotConfig, sec_db_pass: e.target.value})}
+                      placeholder="CrateDB password"
+                      className="w-full px-4 py-2 border rounded-lg text-gray-900 bg-white"
+                    />
+                  </div>
                 </div>
 
                 <button 
