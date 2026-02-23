@@ -6,7 +6,8 @@ const fs = require('fs');
 const path = require('path');
 const chalk = require('chalk');
 
-let makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, proto, makeCacheableSignalKeyStore, delay, Browsers, BufferJSON, isJidNewsletter, getAggregateVotesInPollMessage, jidNormalizedUser;
+let makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, proto, makeCacheableSignalKeyStore, delay, Browsers, BufferJSON, isJidNewsletter, getAggregateVotesInPollMessage, jidNormalizedUser, jidDecode;
+let PhoneNumber;
 
 async function loadBaileys() {
     const baileys = await import("@whiskeysockets/baileys");
@@ -22,6 +23,13 @@ async function loadBaileys() {
     isJidNewsletter = baileys.isJidNewsletter;
     getAggregateVotesInPollMessage = baileys.getAggregateVotesInPollMessage;
     jidNormalizedUser = baileys.jidNormalizedUser;
+    jidDecode = baileys.jidDecode;
+    try {
+        const phoneNumberUtil = await import('google-libphonenumber');
+        PhoneNumber = phoneNumberUtil.PhoneNumberUtil.getInstance;
+    } catch (e) {
+        PhoneNumber = null;
+    }
 }
 
 const messageStore = new Map();
@@ -49,6 +57,7 @@ const SYNC_INTERVAL = 60 * 60 * 1000;
 let connectionRetryCount = 0;
 const MAX_RETRY_COUNT = 15;
 let isReconnecting = false;
+let viewedStatuses = new Set();
 
 function removeFile(filePath) {
     try {
@@ -348,34 +357,99 @@ async function startBot() {
         });
 
         const botStartTime = Date.now();
-        const viewedStatuses = new Set();
+
+        const handleStatus = async (sock, chatUpdate) => {
+            try {
+                const { handleStatusUpdate } = require('./commands/autostatus');
+                for (const mek of chatUpdate.messages) {
+                    if (mek.key && mek.key.id) {
+                        viewedStatuses.add(mek.key.id);
+                        await sock.readMessages([mek.key]);
+                        await handleStatusUpdate(sock, mek);
+                    }
+                }
+            } catch (e) {
+                console.error('Error handling status:', e.message);
+            }
+        }
         
-        sock.ev.on('messages.upsert', async (m) => {
-            const { messages, type } = m;
-            if (type !== 'notify') return;
+        sock.ev.on('messages.upsert', async chatUpdate => {
+            try {
+                const mek = chatUpdate.messages[0]
+                if (!mek.message) return
+                mek.message = (Object.keys(mek.message)[0] === 'ephemeralMessage') ? mek.message.ephemeralMessage.message : mek.message
+                if (mek.key && mek.key.remoteJid === 'status@broadcast') {
+                    await handleStatus(sock, chatUpdate);
+                    return;
+                }
+                if (!sock.public && !mek.key.fromMe && chatUpdate.type === 'notify') {
+                    const isGroup = mek.key?.remoteJid?.endsWith('@g.us')
+                    if (!isGroup) return
+                }
+                if (mek.key.id.startsWith('BAE5') && mek.key.id.length === 16) return
 
-            const messageBatch = [];
-            for (const mek of messages) {
-                if (!mek.message || !mek.key.id) continue;
-                if (mek.key.remoteJid === 'status@broadcast') continue;
-                if (messageDeduplicationCache.has(mek.key.id)) continue;
-                messageDeduplicationCache.set(mek.key.id, true);
-                messageBatch.push(mek);
-            }
+                if (sock?.msgRetryCounterCache) {
+                    sock.msgRetryCounterCache.clear()
+                }
 
-            if (messageBatch.length > 0) {
-                setImmediate(async () => {
-                    await Promise.all(messageBatch.map(async (mek) => {
-                        try {
-                            console.log(chalk.magenta(`📥 From: ${mek.key.remoteJid}`));
-                            await main.handleMessages(sock, { messages: [mek], type }, false, messageStore);
-                        } catch (e) {
-                            console.error('Error:', e.message);
-                        }
-                    }));
-                });
+                try {
+                    await main.handleMessages(sock, chatUpdate, true)
+                } catch (err) {
+                    console.error("Error in handleMessages:", err)
+                    if (mek.key && mek.key.remoteJid) {
+                        await sock.sendMessage(mek.key.remoteJid, {
+                            text: '❌ An error occurred while processing your message.',
+                            contextInfo: {
+                                forwardingScore: 1,
+                                isForwarded: true,
+                                forwardedNewsletterMessageInfo: {
+                                    newsletterJid: '120363161513685998@newsletter',
+                                    newsletterName: 'KnightBot MD',
+                                    serverMessageId: -1
+                                }
+                            }
+                        }).catch(console.error);
+                    }
+                }
+            } catch (err) {
+                console.error("Error in messages.upsert:", err)
             }
-        });
+        })
+
+        sock.decodeJid = (jid) => {
+            if (!jid) return jid
+            if (/:\d+@/gi.test(jid)) {
+                let decode = jidDecode(jid) || {}
+                return decode.user && decode.server && decode.user + '@' + decode.server || jid
+            } else return jid
+        }
+
+        sock.ev.on('contacts.update', update => {
+            for (let contact of update) {
+                let id = sock.decodeJid(contact.id)
+                if (store && store.contacts) store.contacts[id] = { id, name: contact.notify }
+            }
+        })
+
+        sock.getName = (jid, withoutContact = false) => {
+            id = sock.decodeJid(jid)
+            withoutContact = sock.withoutContact || withoutContact
+            let v
+            if (id.endsWith("@g.us")) return new Promise(async (resolve) => {
+                v = store.contacts[id] || {}
+                if (!(v.name || v.subject)) v = sock.groupMetadata(id) || {}
+                resolve(v.name || v.subject || PhoneNumber('+' + id.replace('@s.whatsapp.net', '')).getNumber('international'))
+            })
+            else v = id === '0@s.whatsapp.net' ? {
+                id,
+                name: 'WhatsApp'
+            } : id === sock.decodeJid(sock.user.id) ?
+                sock.user :
+                (store.contacts[id] || {})
+            return (withoutContact ? '' : v.name) || v.subject || v.verifiedName || PhoneNumber('+' + jid.replace('@s.whatsapp.net', '')).getNumber('international')
+        }
+
+        sock.public = true
 
         sock.ev.on('messages.upsert', async (m) => {
             const { messages, type } = m;
