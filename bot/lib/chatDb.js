@@ -9,12 +9,10 @@ function getConversationPool() {
     const port = process.env.CHAT_DB_PORT || 5432;
     const database = process.env.CHAT_DB_NAME || 'crate';
     const user = process.env.CHAT_DB_USER || 'admin';
-    const password = global.secDbPass || process.env.SEC_DB_PASS || '28*t.PDB--w8r!v.5HzC342M';
-
-    console.log('[CHAT DB] Creating pool - Host:', host, 'User:', user, 'Password set:', !!password);
+    const password = global.secDbPass || process.env.SEC_DB_PASS;
 
     if (!password) {
-        console.log('[CHAT DB] No password configured, conversation memory disabled');
+        console.log('[CHAT DB] No password configured');
         return null;
     }
 
@@ -30,97 +28,91 @@ function getConversationPool() {
         connectionTimeoutMillis: 10000
     });
 
-    console.log('[CHAT DB] Pool created for', host);
-
-    initConversationTable();
-
+    initTables();
     return conversationPool;
 }
 
-async function initConversationTable() {
+async function initTables() {
     try {
         const pool = getConversationPool();
         if (!pool) return;
 
         await pool.query(`
-            CREATE TABLE IF NOT EXISTS chat_conversations (
-                id ${host.includes('cratedb') ? 'TEXT PRIMARY KEY DEFAULT gen_random_uuid()' : 'SERIAL PRIMARY KEY'},
-                chat_jid VARCHAR(200) NOT NULL,
-                sender_jid VARCHAR(200) NOT NULL,
-                bot_jid VARCHAR(200) NOT NULL,
-                role VARCHAR(20) NOT NULL,
-                content TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            CREATE TABLE IF NOT EXISTS chat_context (
+                chat_jid STRING,
+                sender_jid STRING,
+                bot_jid STRING,
+                context STRING,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (chat_jid, sender_jid, bot_jid)
             )
         `);
-
-        await pool.query(`
-            CREATE INDEX IF NOT EXISTS idx_chat_conversations_chat 
-            ON chat_conversations(chat_jid, sender_jid, bot_jid)
-        `);
-
-        console.log('[CHAT DB] Table initialized');
+        console.log('[CHAT DB] Context table ready');
     } catch (error) {
-        console.error('[CHAT DB] Table init error:', error.message);
+        console.log('[CHAT DB] Table init:', error.message);
+    }
+}
+
+async function getContext(chatJid, senderJid, botJid) {
+    try {
+        const pool = getConversationPool();
+        if (!pool) return '';
+
+        const result = await pool.query(
+            `SELECT context FROM chat_context 
+             WHERE chat_jid = $1 AND sender_jid = $2 AND bot_jid = $3`,
+            [String(chatJid), String(senderJid), String(botJid)]
+        );
+
+        return result.rows[0]?.context || '';
+    } catch (error) {
+        console.log('[CHAT DB] Get context error:', error.message);
+        return '';
+    }
+}
+
+async function updateContext(chatJid, senderJid, botJid, newContext) {
+    try {
+        const pool = getConversationPool();
+        if (!pool) return;
+
+        await pool.query(
+            `INSERT INTO chat_context (chat_jid, sender_jid, bot_jid, context, updated_at)
+             VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+             ON CONFLICT (chat_jid, sender_jid, bot_jid) DO UPDATE SET context = $4, updated_at = CURRENT_TIMESTAMP`,
+            [String(chatJid), String(senderJid), String(botJid), newContext]
+        );
+        console.log('[CHAT DB] Context updated');
+    } catch (error) {
+        console.log('[CHAT DB] Update context error:', error.message);
+    }
+}
+
+async function clearContext(chatJid, senderJid, botJid) {
+    try {
+        const pool = getConversationPool();
+        if (!pool) return;
+
+        await pool.query(
+            `DELETE FROM chat_context WHERE chat_jid = $1 AND sender_jid = $2 AND bot_jid = $3`,
+            [String(chatJid), String(senderJid), String(botJid)]
+        );
+    } catch (error) {
+        console.log('[CHAT DB] Clear context error:', error.message);
     }
 }
 
 async function saveMessage(chatJid, senderJid, botJid, role, content) {
-    try {
-        const pool = getConversationPool();
-        if (!pool) {
-            console.log('[CHAT DB] No pool, skipping save');
-            return;
-        }
-
-        console.log('[CHAT DB] Saving:', chatJid, role, content.substring(0, 30));
-        
-        const id = Date.now() + Math.floor(Math.random() * 1000);
-        
-        await pool.query(
-            `INSERT INTO chat_conversations (id, chat_jid, sender_jid, bot_jid, role, content) VALUES ($1, $2, $3, $4, $5, $6)`,
-            [id, String(chatJid), String(senderJid), String(botJid), String(role), String(content)]
-        );
-        console.log('[CHAT DB] Saved OK, id:', id);
-    } catch (error) {
-        console.error('[CHAT DB] Save error:', error.message);
-    }
+    // No longer storing individual messages
 }
 
 async function getConversationHistory(chatJid, senderJid, botJid, limit = 20) {
-    try {
-        const pool = getConversationPool();
-        if (!pool) return [];
-
-        console.log('[CHAT DB] Getting history for:', chatJid, senderJid, botJid);
-
-        const result = await pool.query(
-            `SELECT role, content FROM chat_conversations 
-             WHERE chat_jid = $1 AND sender_jid = $2 AND bot_jid = $3 
-             ORDER BY created_at DESC LIMIT $4`,
-            [String(chatJid), String(senderJid), String(botJid), limit]
-        );
-
-        console.log('[CHAT DB] History rows:', result.rows.length);
-        return result.rows.reverse();
-    } catch (error) {
-        console.error('[CHAT DB] Get history error:', error.message);
-        return [];
-    }
+    // Returns empty - using context instead
+    return [];
 }
 
 async function clearConversation(chatJid, senderJid, botJid) {
-    try {
-        const pool = getConversationPool();
-        if (!pool) return;
-
-        await pool.query(
-            `DELETE FROM chat_conversations WHERE chat_jid = $1 AND sender_jid = $2 AND bot_jid = $3`,
-            [chatJid, senderJid, botJid]
-        );
-    } catch (error) {
-        console.error('[CHAT DB] Clear conversation error:', error.message);
-    }
+    await clearContext(chatJid, senderJid, botJid);
 }
 
 function closePool() {
@@ -132,8 +124,11 @@ function closePool() {
 
 module.exports = {
     getConversationPool,
+    getContext,
+    updateContext,
     saveMessage,
     getConversationHistory,
     clearConversation,
+    clearContext,
     closePool
 };

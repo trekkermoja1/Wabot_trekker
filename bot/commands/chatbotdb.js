@@ -1,5 +1,5 @@
 const axios = require('axios');
-const { saveMessage, getConversationHistory, clearConversation } = require('../lib/chatDb');
+const { getContext, updateContext, clearContext, clearConversation } = require('../lib/chatDb');
 
 const USER_GROUP_DATA = require('../data/userGroupData.json');
 
@@ -233,17 +233,13 @@ async function handleChatbotResponse(sock, chatId, message, userMessage, senderI
 
         if (!cleanedMessage) return;
 
-        await saveMessage(chatId, senderId, botId, 'user', cleanedMessage);
-        console.log('[CHATBOT] Message saved to DB:', cleanedMessage.substring(0, 30));
-
         await showTyping(sock, chatId);
 
-        const conversationHistory = await getConversationHistory(chatId, senderId, botId, 20);
-        console.log('[CHATBOT] Retrieved history count:', conversationHistory.length);
-        console.log('[CHATBOT] History:', conversationHistory.map(m => m.role + ':' + m.content.substring(0, 20)).join(' | '));
+        const currentContext = await getContext(chatId, senderId, botId);
+        console.log('[CHATBOT] Current context:', currentContext ? currentContext.substring(0, 50) : 'none');
 
         console.log('[CHATBOT] Getting AI response...');
-        const response = await getMinimaxAIResponse(cleanedMessage, conversationHistory, apiKey, baseUrl);
+        const response = await getMinimaxAIResponse(cleanedMessage, currentContext, apiKey, baseUrl);
 
         console.log('[CHATBOT] Response received:', response ? response.substring(0, 50) : 'null');
 
@@ -255,7 +251,12 @@ async function handleChatbotResponse(sock, chatId, message, userMessage, senderI
             return;
         }
 
-        await saveMessage(chatId, senderId, botId, 'assistant', response);
+        const newContext = currentContext 
+            ? currentContext + '\nUser: ' + cleanedMessage + '\nBot: ' + response
+            : 'User: ' + cleanedMessage + '\nBot: ' + response;
+        
+        const shortContext = newContext.length > 500 ? newContext.slice(-500) : newContext;
+        await updateContext(chatId, senderId, botId, shortContext);
 
         console.log('[CHATBOT] Sending response to', chatId);
         await new Promise(resolve => setTimeout(resolve, getRandomDelay()));
@@ -273,17 +274,13 @@ async function handleChatbotResponse(sock, chatId, message, userMessage, senderI
     }
 }
 
-async function getMinimaxAIResponse(userMessage, conversationHistory, apiKey, baseUrl) {
+async function getMinimaxAIResponse(userMessage, currentContext, apiKey, baseUrl) {
     const model = 'openai-gpt-oss-20b';
-    
-    const historyText = conversationHistory
-        .map(msg => `${msg.role}: ${msg.content}`)
-        .join('\n');
     
     const prompt = `You are a friendly WhatsApp chatbot. Keep responses short (1-2 sentences), casual and natural. Be helpful and friendly.
 
-Conversation history:
-${historyText}
+Conversation context:
+${currentContext || 'No previous context'}
 
 Current message: ${userMessage}
 
