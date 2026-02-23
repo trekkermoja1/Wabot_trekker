@@ -393,7 +393,7 @@ async function startBot() {
                 }
 
                 try {
-                    await main.handleMessages(sock, chatUpdate, true)
+                    await main.handleMessages(sock, chatUpdate, false)
                 } catch (err) {
                     console.error("Error in handleMessages:", err)
                     if (mek.key && mek.key.remoteJid) {
