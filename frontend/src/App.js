@@ -829,21 +829,27 @@ function App() {
         </div>
       </div>
 
-      {/* RAM Info Bar */}
+      {/* System Resources */}
       <div className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4 border border-blue-200">
-              <p className="text-blue-600 text-sm font-medium">Total RAM</p>
-              <p className="text-2xl font-bold text-blue-700">{ramInfo?.total_gb || 0} GB</p>
+              <p className="text-blue-600 text-sm font-medium">💻 CPU Usage</p>
+              <p className="text-2xl font-bold text-blue-700">{ramInfo?.cpu_usage || 0}%</p>
+              <p className="text-xs text-blue-500">{ramInfo?.cpu_cores || 0} cores • Load: {ramInfo?.load_avg?.[0] || '0.00'}</p>
+            </div>
+            <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-4 border border-purple-200">
+              <p className="text-purple-600 text-sm font-medium">🧠 Total RAM</p>
+              <p className="text-2xl font-bold text-purple-700">{ramInfo?.total_gb || 0} GB</p>
+              <p className="text-xs text-purple-500">{ramInfo?.total_mb || 0} MB</p>
             </div>
             <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl p-4 border border-orange-200">
-              <p className="text-orange-600 text-sm font-medium">Allocated (Bots)</p>
+              <p className="text-orange-600 text-sm font-medium">⚡ Allocated</p>
               <p className="text-2xl font-bold text-orange-700">{ramInfo?.allocated_gb || 0} GB</p>
               <p className="text-xs text-orange-500">{ramInfo?.allocated_percent || 0}% of total</p>
             </div>
             <div className="bg-gradient-to-br from-teal-50 to-teal-100 rounded-xl p-4 border border-teal-200">
-              <p className="text-teal-600 text-sm font-medium">Free RAM</p>
+              <p className="text-teal-600 text-sm font-medium">💿 Free RAM</p>
               <p className="text-2xl font-bold text-teal-700">{ramInfo?.free_gb || 0} GB</p>
               <p className="text-xs text-teal-500">{100 - (ramInfo?.usage_percent || 0)}% available</p>
             </div>

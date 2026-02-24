@@ -944,6 +944,7 @@ app.get('/api/server-info', async (req, res) => {
 
 const RAM_MANAGER = {
   totalRAM: os.totalmem(),
+  lastCpuInfo: null,
   getTotalRAM() {
     return this.totalRAM;
   },
@@ -969,11 +970,33 @@ const RAM_MANAGER = {
     }
     return allocated;
   },
+  getCPUUsage() {
+    const cpus = os.cpus();
+    let totalIdle = 0;
+    let totalTick = 0;
+    
+    for (const cpu of cpus) {
+      for (const type in cpu.times) {
+        totalTick += cpu.times[type];
+      }
+      totalIdle += cpu.times.idle;
+    }
+    
+    const idle = totalIdle / cpus.length;
+    const total = totalTick / cpus.length;
+    const usage = 100 - (100 * idle / total);
+    
+    return Math.round(usage);
+  },
   getInfo() {
     const total = this.getTotalRAM();
     const allocated = this.getAllocatedRAM();
     const free = this.getFreeRAM();
     const used = this.getUsedRAM();
+    const cpuUsage = this.getCPUUsage();
+    const cpus = os.cpus().length;
+    const loadAvg = os.loadavg();
+    
     return {
       total_bytes: total,
       total_mb: Math.round(total / 1024 / 1024),
@@ -988,7 +1011,10 @@ const RAM_MANAGER = {
       used_mb: Math.round(used / 1024 / 1024),
       used_gb: (used / 1024 / 1024 / 1024).toFixed(2),
       usage_percent: Math.round((used / total) * 100),
-      allocated_percent: Math.round((allocated / total) * 100)
+      allocated_percent: Math.round((allocated / total) * 100),
+      cpu_usage: cpuUsage,
+      cpu_cores: cpus,
+      load_avg: loadAvg.map(l => l.toFixed(2))
     };
   }
 };
