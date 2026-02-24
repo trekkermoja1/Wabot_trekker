@@ -1023,6 +1023,39 @@ app.get('/api/ram-info', (req, res) => {
   res.json(RAM_MANAGER.getInfo());
 });
 
+const RAM_RESTART_THRESHOLD = 90;
+
+async function checkRamAndRestartBots() {
+  const ramInfo = RAM_MANAGER.getInfo();
+  if (ramInfo.usage_percent >= RAM_RESTART_THRESHOLD) {
+    console.log(chalk.yellow(`⚠️ RAM usage at ${ramInfo.usage_percent}%, restarting all bots...`));
+    
+    const botIds = Object.keys(botProcesses);
+    for (const instanceId of botIds) {
+      try {
+        await stopInstance(instanceId);
+      } catch (e) {}
+    }
+    
+    await new Promise(r => setTimeout(r, 1000));
+    
+    const result = await executeQuery(
+      'SELECT * FROM bot_instances WHERE server_name = $1 AND start_status = $2',
+      [SERVERNAME, 'approved']
+    );
+    
+    for (const bot of result.rows) {
+      try {
+        await startInstanceInternal(bot.id, bot.phone_number, bot.port, bot.session_data);
+      } catch (e) {}
+    }
+    
+    console.log(chalk.green('✅ All bots restarted due to high RAM'));
+  }
+}
+
+setInterval(checkRamAndRestartBots, 10000);
+
 app.post('/api/login', (req, res) => {
   const { username, password } = req.body;
   if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
