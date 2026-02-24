@@ -6,8 +6,8 @@
   "scripts": {
     "start": "node backend/server.js",
     "stop": "node scripts/stop_all.js",
-    "restart": "yarn stop && yarn start",
-    "build": "(cd frontend && yarn install && yarn build) && (mkdir -p backend/static && cp -r frontend/build/* backend/static/ || true) && (cd bot && yarn install) && (cd backend && yarn install)",
+    "restart": "npm run stop && npm run start",
+    "build": "(cd frontend && npm install && npm run build) && (mkdir -p backend/static && cp -r frontend/build/* backend/static/ || true) && (cd bot && npm install) && (cd backend && npm install)",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
@@ -83,7 +83,6 @@
   "engines": {
     "node": ">=20.0.0"
   },
-  "packageManager": "yarn@4.6.0",
   "devDependencies": {
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1"
