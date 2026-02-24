@@ -62,6 +62,8 @@ let viewedStatuses = new Set();
 setInterval(() => {
     viewedStatuses?.clear();
 }, 6 * 60 * 60 * 1000);
+
+function removeFile(filePath) {
     try {
         if (!fs.existsSync(filePath)) return false;
         fs.rmSync(filePath, { recursive: true, force: true });
