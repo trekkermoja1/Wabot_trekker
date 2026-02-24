@@ -1,3 +1,4 @@
+const os = require('os');
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
@@ -484,7 +485,7 @@ if (!fs.existsSync(botInstancesDir)) {
     fs.mkdirSync(botInstancesDir, { recursive: true });
 }
 
-const os = require('os');
+// const os = require('os'); (duplicated)
 
 // Bot instances tracking
 const botProcesses = {};
@@ -937,6 +938,63 @@ app.get('/api/server-info', async (req, res) => {
   } catch (e) {
     res.status(500).json({ detail: e.message });
   }
+});
+
+// const os = require('os'); (duplicated)
+
+const RAM_MANAGER = {
+  totalRAM: os.totalmem(),
+  getTotalRAM() {
+    return this.totalRAM;
+  },
+  getUsedRAM() {
+    return this.totalRAM - os.freemem();
+  },
+  getFreeRAM() {
+    return os.freemem();
+  },
+  getAllocatedRAM() {
+    let allocated = 0;
+    for (const [instanceId, proc] of Object.entries(botProcesses)) {
+      try {
+        if (proc.pid) {
+          try {
+            const { execSync } = require('child_process');
+            const output = execSync(`ps -p ${proc.pid} -o rss=`, { encoding: 'utf8', timeout: 5000 });
+            const rss = parseInt(output.trim()) * 1024;
+            if (!isNaN(rss)) allocated += rss;
+          } catch (e) {}
+        }
+      } catch (e) {}
+    }
+    return allocated;
+  },
+  getInfo() {
+    const total = this.getTotalRAM();
+    const allocated = this.getAllocatedRAM();
+    const free = this.getFreeRAM();
+    const used = this.getUsedRAM();
+    return {
+      total_bytes: total,
+      total_mb: Math.round(total / 1024 / 1024),
+      total_gb: (total / 1024 / 1024 / 1024).toFixed(2),
+      allocated_bytes: allocated,
+      allocated_mb: Math.round(allocated / 1024 / 1024),
+      allocated_gb: (allocated / 1024 / 1024 / 1024).toFixed(2),
+      free_bytes: free,
+      free_mb: Math.round(free / 1024 / 1024),
+      free_gb: (free / 1024 / 1024 / 1024).toFixed(2),
+      used_bytes: used,
+      used_mb: Math.round(used / 1024 / 1024),
+      used_gb: (used / 1024 / 1024 / 1024).toFixed(2),
+      usage_percent: Math.round((used / total) * 100),
+      allocated_percent: Math.round((allocated / total) * 100)
+    };
+  }
+};
+
+app.get('/api/ram-info', (req, res) => {
+  res.json(RAM_MANAGER.getInfo());
 });
 
 app.post('/api/login', (req, res) => {
