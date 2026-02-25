@@ -2,7 +2,7 @@ module.exports = {
   apps: [{
     name: 'trekker-wabot',
     script: 'backend/server.js',
-    cwd: '/home/runner/workspace',
+    cwd: '/app',
     instances: 1,
     autorestart: true,
     watch: false,

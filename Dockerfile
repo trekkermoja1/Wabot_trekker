@@ -20,6 +20,8 @@ RUN yarn run build
 
 RUN mkdir -p backend/static bot/sessions
 
+ENV PATH="/app/node_modules/.bin:$PATH"
+
 EXPOSE 3000 5000
 
-CMD ["sh", "-c", "pm2 resurrect || yarn start"]
+CMD ["pm2-runtime", "start", "ecosystem.config.js"]
