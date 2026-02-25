@@ -135,6 +135,7 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
 const DATABASE_URL = process.env.DATABASE_URL;
 const SERVERNAME = (process.env.SERVER_NAME || process.env.SERVERNAME || 'server1').toLowerCase();
 const PORT = process.env.PORT || 5000;
+const WEB_ENABLED = process.env.WEB === 'true';
 
 // Dynamic URL detection
 app.use((req, res, next) => {
@@ -453,19 +454,25 @@ app.put('/api/instances/:instanceId/server', async (req, res) => {
   }
 });
 
-// Serve static files
-app.use(express.static(path.join(__dirname, '..', 'public')));
-app.use(express.static(path.join(__dirname, 'static')));
+// Serve static files - only when WEB is enabled
+if (WEB_ENABLED) {
+  app.use(express.static(path.join(__dirname, 'static')));
+}
 
-// Main landing page
+// Always serve public directory (simple pairing page)
+app.use(express.static(path.join(__dirname, '..', 'public')));
+
+// Main landing page - always serve public/index.html
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
 });
 
-// Dashboard route
-app.get('/dashboard', (req, res) => {
-  res.sendFile(path.join(__dirname, 'static', 'index.html'));
-});
+// Dashboard route - only when WEB is enabled
+if (WEB_ENABLED) {
+  app.get('/dashboard', (req, res) => {
+    res.sendFile(path.join(__dirname, 'static', 'index.html'));
+  });
+}
 
 // Clean up bot instances on startup - disabled to prevent EADDRINUSE and data loss on server restart
 /*
@@ -492,35 +499,35 @@ const botProcesses = {};
 const instancePorts = {};
 let portCounter = 4000;
 
-// Resource monitoring and auto-scaling
-const RESOURCE_CHECK_INTERVAL = 30000; // 30 seconds
-const MAX_CPU_USAGE = 95; // %
-const MAX_MEM_USAGE = 95; // %
+// Resource monitoring and auto-scaling (disabled)
+// const RESOURCE_CHECK_INTERVAL = 30000; // 30 seconds
+// const MAX_CPU_USAGE = 95; // %
+// const MAX_MEM_USAGE = 95; // %
 
-async function monitorResources() {
-  try {
-    const cpus = os.cpus();
-    const load = os.loadavg()[0]; // 1-minute load average
-    const cpuUsage = (load / cpus.length) * 100;
-    
-    const totalMem = os.totalmem();
-    const freeMem = os.freemem();
-    const memUsage = ((totalMem - freeMem) / totalMem) * 100;
+// async function monitorResources() {
+//   try {
+//     const cpus = os.cpus();
+//     const load = os.loadavg()[0]; // 1-minute load average
+//     const cpuUsage = (load / cpus.length) * 100;
+//     
+//     const totalMem = os.totalmem();
+//     const freeMem = os.freemem();
+//     const memUsage = ((totalMem - freeMem) / totalMem) * 100;
+//
+//     if (cpuUsage > MAX_CPU_USAGE || memUsage > MAX_MEM_USAGE) {
+//       const activeBots = Object.keys(botProcesses);
+//       if (activeBots.length > 0) {
+//         // Stop the most recently started bot to reduce load
+//         const botToStop = activeBots[activeBots.length - 1];
+//         await stopInstance(botToStop);
+//       }
+//     }
+//   } catch (err) {
+//     console.error('Error in resource monitor:', err.message);
+//   }
+// }
 
-    if (cpuUsage > MAX_CPU_USAGE || memUsage > MAX_MEM_USAGE) {
-      const activeBots = Object.keys(botProcesses);
-      if (activeBots.length > 0) {
-        // Stop the most recently started bot to reduce load
-        const botToStop = activeBots[activeBots.length - 1];
-        await stopInstance(botToStop);
-      }
-    }
-  } catch (err) {
-    console.error('Error in resource monitor:', err.message);
-  }
-}
-
-setInterval(monitorResources, RESOURCE_CHECK_INTERVAL);
+// setInterval(monitorResources, RESOURCE_CHECK_INTERVAL);
 
 // Database configuration
 let dbPool;
@@ -1084,38 +1091,13 @@ app.get('/api/ram-info', async (req, res) => {
   res.json(info);
 });
 
-const RAM_RESTART_THRESHOLD = 90;
+const RAM_RESTART_THRESHOLD = 999;
 
 async function checkRamAndRestartBots() {
-  const ramInfo = await RAM_MANAGER.getInfo();
-  if (ramInfo.usage_percent >= RAM_RESTART_THRESHOLD) {
-    console.log(chalk.yellow(`⚠️ RAM usage at ${ramInfo.usage_percent}%, restarting all bots...`));
-    
-    const botIds = Object.keys(botProcesses);
-    for (const instanceId of botIds) {
-      try {
-        await stopInstance(instanceId);
-      } catch (e) {}
-    }
-    
-    await new Promise(r => setTimeout(r, 1000));
-    
-    const result = await executeQuery(
-      'SELECT * FROM bot_instances WHERE server_name = $1 AND start_status = $2',
-      [SERVERNAME, 'approved']
-    );
-    
-    for (const bot of result.rows) {
-      try {
-        await startInstanceInternal(bot.id, bot.phone_number, bot.port, bot.session_data);
-      } catch (e) {}
-    }
-    
-    console.log(chalk.green('✅ All bots restarted due to high RAM'));
-  }
+  // Disabled - RAM restart functionality removed
 }
 
-setInterval(checkRamAndRestartBots, 10000);
+// setInterval(checkRamAndRestartBots, 10000);
 
 app.post('/api/login', (req, res) => {
   const { username, password } = req.body;
@@ -2150,18 +2132,17 @@ function generatePairingResultHTML(pairingCode, error, name, phone, instanceId) 
   </body></html>`;
 }
 
-// Server static files from the React app
-app.use(express.static(path.join(__dirname, 'static')));
+// Server static files from the React app - only when WEB is enabled
+if (WEB_ENABLED) {
+  app.use(express.static(path.join(__dirname, 'static')));
+}
 
 // The "catchall" handler: for any request that doesn't
 // match one above, send back React's index.html file.
 app.get(/^(?!\/api).*/, (req, res) => {
     const publicIndexPath = path.join(__dirname, '..', 'public', 'index.html');
-    const staticIndexPath = path.join(__dirname, 'static', 'index.html');
     if (fs.existsSync(publicIndexPath)) {
         res.sendFile(publicIndexPath);
-    } else if (fs.existsSync(staticIndexPath)) {
-        res.sendFile(staticIndexPath);
     } else {
         res.status(404).send('Frontend not found. Please run build script.');
     }
@@ -2197,6 +2178,7 @@ async function startServer() {
 👤  Admin: ${ADMIN_USERNAME}
 📦  Database: ${useSQLite ? 'SQLite' : 'PostgreSQL'}
 🌍  Server Name: ${SERVERNAME}
+🖥️  Dashboard: ${WEB_ENABLED ? 'ENABLED' : 'DISABLED (pairing only)'}
 =========================================
       `);
     });
