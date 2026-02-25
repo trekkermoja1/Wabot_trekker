@@ -1,6 +1,6 @@
 FROM node:20-alpine
 
-RUN apk add --no-cache python3 make g++ cairo-dev jpeg-dev pango-dev giflib-dev pixman-dev pangomm-dev libjpeg-turbo-dev freetype-dev ffmpeg
+RUN apk add --no-cache make g++ cairo-dev jpeg-dev pango-dev giflib-dev pixman-dev pangomm-dev libjpeg-turbo-dev ffmpeg git
 
 WORKDIR /app
 
