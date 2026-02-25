@@ -949,6 +949,24 @@ app.get('/api/server-info', async (req, res) => {
 
 // const os = require('os'); (duplicated)
 
+let pm2 = null;
+let pm2Connected = false;
+
+try {
+  pm2 = require('pm2');
+  pm2.connect((err) => {
+    if (err) {
+      console.log('PM2 connection failed:', err.message);
+      pm2Connected = false;
+    } else {
+      pm2Connected = true;
+      console.log('PM2 connected for process monitoring');
+    }
+  });
+} catch (e) {
+  console.log('PM2 not available, using fallback');
+}
+
 const RAM_MANAGER = {
   totalRAM: os.totalmem(),
   lastCpuInfo: null,
@@ -961,7 +979,23 @@ const RAM_MANAGER = {
   getFreeRAM() {
     return os.freemem();
   },
-  getAllocatedRAM() {
+  async getAllocatedRAMSync() {
+    if (pm2 && pm2Connected) {
+      return new Promise((resolve) => {
+        pm2.list((err, list) => {
+          let allocated = 0;
+          if (!err && list) {
+            for (const proc of list) {
+              if (proc.name && proc.name.startsWith('instance')) {
+                allocated += proc.monit?.memory || 0;
+              }
+            }
+          }
+          resolve(allocated);
+        });
+      });
+    }
+    
     let allocated = 0;
     for (const [instanceId, proc] of Object.entries(botProcesses)) {
       try {
@@ -995,14 +1029,31 @@ const RAM_MANAGER = {
     
     return Math.round(usage);
   },
-  getInfo() {
+  async getInfo() {
     const total = this.getTotalRAM();
-    const allocated = this.getAllocatedRAM();
+    const allocated = await this.getAllocatedRAMSync();
     const free = this.getFreeRAM();
     const used = this.getUsedRAM();
     const cpuUsage = this.getCPUUsage();
     const cpus = os.cpus().length;
     const loadAvg = os.loadavg();
+    
+    let pm2Processes = [];
+    if (pm2 && pm2Connected) {
+      try {
+        pm2.list((err, list) => {
+          if (!err && list) {
+            pm2Processes = list.map(p => ({
+              name: p.name,
+              pid: p.pid,
+              memory: p.monit?.memory || 0,
+              cpu: p.monit?.cpu || 0,
+              status: p.pm2_env?.status || 'unknown'
+            }));
+          }
+        });
+      } catch (e) {}
+    }
     
     return {
       total_bytes: total,
@@ -1021,19 +1072,22 @@ const RAM_MANAGER = {
       allocated_percent: Math.round((allocated / total) * 100),
       cpu_usage: cpuUsage,
       cpu_cores: cpus,
-      load_avg: loadAvg.map(l => l.toFixed(2))
+      load_avg: loadAvg.map(l => l.toFixed(2)),
+      pm2_processes: pm2Processes,
+      pm2_connected: pm2Connected
     };
   }
 };
 
-app.get('/api/ram-info', (req, res) => {
-  res.json(RAM_MANAGER.getInfo());
+app.get('/api/ram-info', async (req, res) => {
+  const info = await RAM_MANAGER.getInfo();
+  res.json(info);
 });
 
 const RAM_RESTART_THRESHOLD = 90;
 
 async function checkRamAndRestartBots() {
-  const ramInfo = RAM_MANAGER.getInfo();
+  const ramInfo = await RAM_MANAGER.getInfo();
   if (ramInfo.usage_percent >= RAM_RESTART_THRESHOLD) {
     console.log(chalk.yellow(`⚠️ RAM usage at ${ramInfo.usage_percent}%, restarting all bots...`));
     

@@ -20,6 +20,6 @@ RUN yarn run build
 
 RUN mkdir -p backend/static bot/sessions
 
-EXPOSE 3000
+EXPOSE 3000 5000
 
-CMD ["yarn", "start"]
+CMD ["sh", "-c", "pm2 resurrect || yarn start"]
