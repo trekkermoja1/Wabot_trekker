@@ -4,12 +4,8 @@
   "description": "WhatsApp Bot",
   "main": "index.js",
   "scripts": {
-    "start": "pm2 start backend/server.js --name trekker-wabot",
-    "stop": "pm2 stop trekker-wabot",
-    "restart": "pm2 restart trekker-wabot",
-    "delete": "pm2 delete trekker-wabot",
-    "logs": "pm2 logs trekker-wabot",
-    "build": "(cd frontend && npm install && npm run build) && (mkdir -p backend/static && cp -r frontend/build/* backend/static/ || true) && (cd bot && npm install) && (cd backend && npm install)",
+    "start": "node backend/server.js",
+    "build": "(cd frontend && yarn install && yarn build) && (mkdir -p backend/static && cp -r frontend/build/* backend/static/ || true) && (cd bot && yarn install) && (cd backend && yarn install)",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
@@ -60,7 +56,6 @@
     "pg": "^8.17.2",
     "phin": "^3.7.1",
     "pino": "^8.21.0",
-    "pm2": "^6.0.14",
     "qrcode": "^1.5.4",
     "qrcode-reader": "^1.0.4",
     "qrcode-terminal": "^0.12.0",
