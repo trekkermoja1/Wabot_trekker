@@ -487,12 +487,20 @@ async function startBot() {
                 let currentStatus = connectionStatus;
                 if (botSocket?.user) currentStatus = 'connected';
                 
+                const invalidSessionStatuses = ['no_session', 'corrupted', 'logged_out'];
+                const isInvalidSession = invalidSessionStatuses.includes(currentStatus);
+                
                 await axios.post(`${backendUrl}/api/instances/${instanceId}/sync-session`, {
                     status: currentStatus,
-                    session_data: JSON.stringify(state.creds, BufferJSON.replacer)
+                    session_data: (currentStatus === 'connected' || currentStatus === 'connecting') ? JSON.stringify(state.creds, BufferJSON.replacer) : null,
+                    invalid_session: isInvalidSession
                 }, { timeout: 6000, validateStatus: false });
                 
                 lastStatusSync = now;
+                
+                if (isInvalidSession) {
+                    console.log(chalk.yellow(`⚠️ Invalid session detected: ${currentStatus}, notified server to mark offline`));
+                }
             } catch (e) {}
         };
 

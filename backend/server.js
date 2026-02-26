@@ -721,10 +721,14 @@ async function startInstanceInternal(instanceId, phoneNumber, port, sessionData 
   const botDir = path.join(__dirname, '..', 'bot');
   
   try {
-    // Check if bot status is offline - skip if so
-    const statusResult = await executeQuery('SELECT status FROM bot_instances WHERE id = $1', [instanceId]);
+    // Check if bot status is offline or has invalid session - skip if so
+    const statusResult = await executeQuery('SELECT status, start_status FROM bot_instances WHERE id = $1', [instanceId]);
     if (statusResult.rows[0]?.status === 'offline') {
       console.log(chalk.yellow(`⏭️ Bot ${instanceId} is offline, skipping start`));
+      return false;
+    }
+    if (statusResult.rows[0]?.start_status === 'invalid_session') {
+      console.log(chalk.yellow(`⏭️ Bot ${instanceId} has invalid session, skipping start`));
       return false;
     }
 
@@ -798,20 +802,38 @@ async function startInstanceInternal(instanceId, phoneNumber, port, sessionData 
     botProcesses[instanceId] = proc;
     instancePorts[instanceId] = port;
 
-    proc.on('exit', (code, signal) => {
-      console.log(chalk.yellow(`[RESTART] Bot ${instanceId} exited with code ${code}, restarting...`));
+    proc.on('exit', async (code, signal) => {
+      console.log(chalk.yellow(`[RESTART] Bot ${instanceId} exited with code ${code}`));
       delete botProcesses[instanceId];
       delete instancePorts[instanceId];
       
       if (code !== 0) {
-        setTimeout(async () => {
-          try {
-            await startInstanceInternal(instanceId, phoneNumber, port, sessionData);
-            console.log(chalk.green(`[RESTART] Bot ${instanceId} restarted successfully`));
-          } catch (e) {
-            console.error(`[RESTART] Failed to restart bot ${instanceId}:`, e.message);
+        try {
+          const statusResult = await executeQuery('SELECT status, start_status FROM bot_instances WHERE id = $1', [instanceId]);
+          const instanceStatus = statusResult.rows[0];
+          
+          if (instanceStatus?.start_status === 'invalid_session') {
+            console.log(chalk.red(`[STOP] Bot ${instanceId} has invalid session, not restarting - marked as offline`));
+            await executeQuery('UPDATE bot_instances SET status = $1 WHERE id = $2', ['offline', instanceId]);
+            return;
           }
-        }, 5000);
+          
+          if (instanceStatus?.status === 'offline') {
+            console.log(chalk.red(`[STOP] Bot ${instanceId} is marked offline, not restarting`));
+            return;
+          }
+          
+          setTimeout(async () => {
+            try {
+              await startInstanceInternal(instanceId, phoneNumber, port, sessionData);
+              console.log(chalk.green(`[RESTART] Bot ${instanceId} restarted successfully`));
+            } catch (e) {
+              console.error(`[RESTART] Failed to restart bot ${instanceId}:`, e.message);
+            }
+          }, 5000);
+        } catch (e) {
+          console.error(`[RESTART] Error checking bot status for ${instanceId}:`, e.message);
+        }
       }
     });
 
@@ -1536,7 +1558,7 @@ app.get('/api/instances/:instanceId/pairing-code', async (req, res) => {
 app.post('/api/instances/:instanceId/sync-session', async (req, res) => {
   try {
     const { instanceId } = req.params;
-    const { session_data, status, last_error } = req.body;
+    const { session_data, status, last_error, invalid_session } = req.body;
     
     const updateNow = useSQLite ? 'CURRENT_TIMESTAMP' : 'NOW()';
     let query = 'UPDATE bot_instances SET updated_at = ' + updateNow;
@@ -1549,10 +1571,21 @@ app.post('/api/instances/:instanceId/sync-session', async (req, res) => {
     }
 
     if (status) {
-      // If status is disconnected or unauthorized, ensure it's reflected correctly
-      const finalStatus = (status === 'unauthorized' || status === 'disconnected') ? 'offline' : status;
+      let finalStatus = status;
+      if (status === 'unauthorized' || status === 'disconnected') {
+        finalStatus = 'offline';
+      }
+      if (invalid_session) {
+        finalStatus = 'offline';
+        console.log(chalk.yellow(`⚠️ Instance ${instanceId} has invalid session, marking as offline`));
+      }
       query += `, status = $${paramIdx++}`;
       params.push(finalStatus);
+    }
+
+    if (invalid_session) {
+      query += `, start_status = $${paramIdx++}`;
+      params.push('invalid_session');
     }
 
     query += ` WHERE id = $${paramIdx}`;
