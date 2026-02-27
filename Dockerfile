@@ -24,4 +24,4 @@ ENV PATH="/app/node_modules/.bin:$PATH"
 
 EXPOSE 3000 5000
 
-CMD ["pm2-runtime", "start", "ecosystem.config.js"]
+CMD ["node", "backend/server.js"]
