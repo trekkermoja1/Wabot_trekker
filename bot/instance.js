@@ -235,7 +235,16 @@ async function startBot() {
             connectionStatus = 'waiting_session';
             isReconnecting = false;
             
-            setTimeout(() => startBot(), 30000);
+            // Notify server about invalid session to prevent infinite restart loop
+            try {
+                const backendUrl = process.env.BACKEND_URL || 'http://0.0.0.0:5000';
+                const axios = require('axios');
+                await axios.post(`${backendUrl}/api/instances/${instanceId}/sync-session`, {
+                    status: 'no_session',
+                    invalid_session: true
+                }, { timeout: 6000, validateStatus: false });
+            } catch (e) {}
+
             return;
         }
         

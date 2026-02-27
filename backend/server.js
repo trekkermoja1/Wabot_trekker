@@ -723,11 +723,12 @@ async function startInstanceInternal(instanceId, phoneNumber, port, sessionData 
   try {
     // Check if bot status is offline or has invalid session - skip if so
     const statusResult = await executeQuery('SELECT status, start_status FROM bot_instances WHERE id = $1', [instanceId]);
-    if (statusResult.rows[0]?.status === 'offline') {
-      console.log(chalk.yellow(`⏭️ Bot ${instanceId} is offline, skipping start`));
+    const botStatus = statusResult.rows[0];
+    if (botStatus?.status === 'offline' || botStatus?.status === 'no_session') {
+      console.log(chalk.yellow(`⏭️ Bot ${instanceId} is offline/no_session, skipping start`));
       return false;
     }
-    if (statusResult.rows[0]?.start_status === 'invalid_session') {
+    if (botStatus?.start_status === 'invalid_session') {
       console.log(chalk.yellow(`⏭️ Bot ${instanceId} has invalid session, skipping start`));
       return false;
     }
