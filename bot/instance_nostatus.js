@@ -36,6 +36,7 @@ const phoneNumber = args[1] || '';
 const apiPort = parseInt(args[2]) || 3001;
 
 global.instanceId = instanceId;
+global.chatbotEnabled = false;
 
 const instanceDir = path.join(__dirname, 'instances', instanceId);
 const sessionDir = path.join(instanceDir, 'session');

@@ -340,6 +340,9 @@ Q&A Set: ${qaList.length} items`,
             delete data.chatbot[chatId];
         }
         
+        // Disable global chatbot
+        data.chatbot['all'] = false;
+        
         // Block this chat
         if (!data.chatbotBlock) data.chatbotBlock = {};
         data.chatbotBlock[chatId] = true;
