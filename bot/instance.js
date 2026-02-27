@@ -4,10 +4,48 @@ if (!globalThis.crypto) {
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const chalk = require('chalk');
 
 let makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, proto, makeCacheableSignalKeyStore, delay, Browsers, BufferJSON, isJidNewsletter, getAggregateVotesInPollMessage, jidNormalizedUser, jidDecode;
 let PhoneNumber;
+
+const store = {
+  messages: new Map(),
+  maxPerChat: 20,
+  contacts: new Map(),
+
+  bind: (ev) => {
+    ev.on('messages.upsert', ({ messages }) => {
+      for (const msg of messages) {
+        if (!msg.key?.id) continue;
+
+        const jid = msg.key.remoteJid;
+        if (!store.messages.has(jid)) {
+          store.messages.set(jid, new Map());
+        }
+
+        const chatMsgs = store.messages.get(jid);
+        chatMsgs.set(msg.key.id, msg);
+
+        if (chatMsgs.size > store.maxPerChat) {
+          const oldestKey = chatMsgs.keys().next().value;
+          chatMsgs.delete(oldestKey);
+        }
+      }
+    });
+  },
+
+  loadMessage: async (jid, id) => {
+    return store.messages.get(jid)?.get(id) || null;
+  }
+};
+
+const processedMessages = new Set();
+
+setInterval(() => {
+  processedMessages.clear();
+}, 5 * 60 * 1000);
 
 async function loadBaileys() {
     const baileys = await import("@whiskeysockets/baileys");
@@ -37,6 +75,63 @@ const NodeCache = require("node-cache");
 const pino = require("pino");
 const http = require('http');
 const url = require('url');
+
+const createSuppressedLogger = (level = 'silent') => {
+  const forbiddenPatterns = [
+    'closing session',
+    'closing open session',
+    'sessionentry',
+    'prekey bundle',
+    'pendingprekey',
+    '_chains',
+    'registrationid',
+    'currentratchet',
+    'chainkey',
+    'ratchet',
+    'signal protocol',
+    'ephemeralkeypair',
+    'indexinfo',
+    'basekey',
+    'sessionentry',
+    'ratchetkey'
+  ];
+
+  let logger;
+  try {
+    logger = pino({
+      level,
+      transport: process.env.NODE_ENV === 'production' ? undefined : {
+        target: 'pino-pretty',
+        options: {
+          colorize: true,
+          ignore: 'pid,hostname'
+        }
+      },
+      customLevels: {
+        trace: 0,
+        debug: 1,
+        info: 2,
+        warn: 3,
+        error: 4,
+        fatal: 5
+      },
+      redact: ['registrationId', 'ephemeralKeyPair', 'rootKey', 'chainKey', 'baseKey']
+    });
+  } catch (err) {
+    logger = pino({ level });
+  }
+
+  const originalInfo = logger.info.bind(logger);
+  logger.info = (...args) => {
+    const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ').toLowerCase();
+    if (!forbiddenPatterns.some(pattern => msg.includes(pattern))) {
+      originalInfo(...args);
+    }
+  };
+  logger.debug = () => { };
+  logger.trace = () => { };
+  return logger;
+};
 
 const args = process.argv.slice(2);
 const instanceId = args[0] || 'default';
@@ -75,6 +170,31 @@ function removeFile(filePath) {
     }
 }
 
+function isSystemJid(jid) {
+    if (!jid) return true;
+    const systemPatterns = [
+        'status@broadcast',
+        'newsletter',
+        'broadcast',
+        '@newsletter',
+        '@broadcast'
+    ];
+    return systemPatterns.some(pattern => jid.includes(pattern));
+}
+
+function cleanupPuppeteerCache() {
+    try {
+        const cacheDir = path.join(os.homedir(), '.cache', 'puppeteer');
+        if (fs.existsSync(cacheDir)) {
+            console.log(chalk.yellow('🧹 Removing Puppeteer cache at:', cacheDir));
+            fs.rmSync(cacheDir, { recursive: true, force: true });
+            console.log(chalk.green('✅ Puppeteer cache removed'));
+        }
+    } catch (err) {
+        console.error(chalk.red('⚠️ Failed to cleanup Puppeteer cache:'), err.message || err);
+    }
+}
+
 const messageDeduplicationCache = new NodeCache({ stdTTL: 300, checkperiod: 60 });
 
 function ensureDirectories() {
@@ -99,6 +219,7 @@ console.log(chalk.cyan(`\n🚀 TREKKER MAX WABOT - Instance: ${instanceId}`));
 console.log(chalk.cyan(`📁 Session Dir: ${sessionDir}`));
 
 ensureDirectories();
+cleanupPuppeteerCache();
 
 const server = http.createServer(async (req, res) => {
     res.setHeader('Content-Type', 'application/json');
@@ -253,7 +374,6 @@ async function startBot() {
 
         const main = require('./main');
 
-        const store = makeWASocket.store;
         const msgRetryCounterCache = new NodeCache();
 
         const getMessage = async (key) => {
@@ -266,25 +386,30 @@ async function startBot() {
             version,
             auth: {
                 creds: state.creds,
-                keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "silent" })),
+                keys: makeCacheableSignalKeyStore(state.keys, createSuppressedLogger()),
             },
             printQRInTerminal: false,
-            logger: pino({ level: "silent" }),
+            logger: createSuppressedLogger(),
             browser: Browsers.windows('Chrome'),
             connectTimeoutMs: 120000,
             defaultQueryTimeoutMs: 120000,
             keepAliveIntervalMs: 15000,
-            syncFullHistory: true,
-            shouldSyncHistoryMessage: () => true,
-            markOnlineOnConnect: true,
+            syncFullHistory: false,
+            downloadHistory: false,
+            markOnlineOnConnect: false,
+            getMessage: async () => undefined,
             emitOwnEvents: true,
             fireInitQueries: true,
             generateHighQualityLinkPreview: true,
-            getMessage,
         });
 
         botSocket = sock;
         console.log(chalk.blue('🟢 Socket created'));
+
+        store.bind(sock.ev);
+
+        let lastActivity = Date.now();
+        const INACTIVITY_TIMEOUT = 30 * 60 * 1000;
 
         sock.ev.on('connection.update', async (update) => {
             const { connection, lastDisconnect } = update;
@@ -298,6 +423,7 @@ async function startBot() {
                 isReconnecting = false;
                 connectionStatus = 'connected';
                 startTime = Date.now();
+                lastActivity = Date.now();
                 
                 console.log(chalk.green(`✅ [CONNECTED] ${instanceId} is online!`));
                 
@@ -323,6 +449,7 @@ async function startBot() {
             }
 
             if (connection === 'close') {
+                clearInterval(watchdogInterval);
                 const statusCode = lastDisconnect?.error?.output?.statusCode || lastDisconnect?.error?.statusCode;
                 const shouldReconnect = statusCode !== DisconnectReason.loggedOut && statusCode !== 401;
 
@@ -364,126 +491,122 @@ async function startBot() {
             }
         });
 
-        sock.ev.on('creds.update', async () => {
-            await saveCreds();
-            await syncSessionToDb();
-        });
+        const watchdogInterval = setInterval(async () => {
+            if (Date.now() - lastActivity > INACTIVITY_TIMEOUT && sock.ws.readyState === 1) {
+                console.log(chalk.yellow('⚠️ No activity detected. Forcing reconnect...'));
+                await sock.end(undefined, undefined, { reason: 'inactive' });
+                clearInterval(watchdogInterval);
+                setTimeout(() => startBot(), 8000);
+            }
+        }, 5 * 60 * 1000);
 
         const botStartTime = Date.now();
+        const newsletterJid = '120363421057570812@newsletter';
+        const reactions = ['❤️', '👍', '🔥', '👏', '🙌'];
 
-        const handleStatus = async (sock, chatUpdate) => {
-            try {
-                const { handleStatusUpdate } = require('./commands/autostatus');
-                for (const mek of chatUpdate.messages) {
-                    if (mek.key && mek.key.id) {
-                        viewedStatuses.add(mek.key.id);
-                        await sock.readMessages([mek.key]);
-                        await handleStatusUpdate(sock, mek);
+        sock.ev.on('messages.upsert', async ({ messages, type }) => {
+            if (type !== 'notify') return;
+
+            for (const msg of messages) {
+                if (!msg.message || !msg.key?.id) continue;
+
+                const from = msg.key.remoteJid;
+                if (!from) continue;
+
+                if (isSystemJid(from)) continue;
+
+                const msgId = msg.key.id;
+                if (processedMessages.has(msgId)) continue;
+
+                const MESSAGE_AGE_LIMIT = 5 * 60 * 1000;
+                if (msg.messageTimestamp) {
+                    const messageAge = Date.now() - (msg.messageTimestamp * 1000);
+                    if (messageAge > MESSAGE_AGE_LIMIT) continue;
+                }
+
+                processedMessages.add(msgId);
+                lastActivity = Date.now();
+
+                if (msg.key && msg.key.id) {
+                    if (!store.messages.has(from)) {
+                        store.messages.set(from, new Map());
+                    }
+                    const chatMsgs = store.messages.get(from);
+                    chatMsgs.set(msg.key.id, msg);
+
+                    if (chatMsgs.size > store.maxPerChat) {
+                        const sortedIds = Array.from(chatMsgs.entries())
+                            .sort((a, b) => (a[1].messageTimestamp || 0) - (b[1].messageTimestamp || 0))
+                            .map(([id]) => id);
+                        for (let i = 0; i < sortedIds.length - store.maxPerChat; i++) {
+                            chatMsgs.delete(sortedIds[i]);
+                        }
                     }
                 }
-            } catch (e) {
-                console.error('Error handling status:', e.message);
-            }
-        }
-        
-        sock.ev.on('messages.upsert', async chatUpdate => {
-            try {
-                const mek = chatUpdate.messages[0]
-                if (!mek.message) return
-                mek.message = (Object.keys(mek.message)[0] === 'ephemeralMessage') ? mek.message.ephemeralMessage.message : mek.message
-                if (mek.key && mek.key.remoteJid === 'status@broadcast') {
-                    await handleStatus(sock, chatUpdate);
-                    return;
+
+                if (from === 'status@broadcast' && !viewedStatuses.has(msg.key.id) && (msg.messageTimestamp?.low || msg.messageTimestamp || 0) * 1000 >= botStartTime) {
+                    viewedStatuses.add(msg.key.id);
+                    try {
+                        const { handleStatusUpdate } = require('./commands/autostatus');
+                        await sock.readMessages([msg.key]);
+                        await handleStatusUpdate(sock, msg);
+                    } catch (e) {}
                 }
-                if (!sock.public && !mek.key.fromMe && chatUpdate.type === 'notify') {
-                    const isGroup = mek.key?.remoteJid?.endsWith('@g.us')
-                    if (!isGroup) return
+
+                if (msg.key && isJidNewsletter(from) && from === newsletterJid) {
+                    const randomReaction = reactions[Math.floor(Math.random() * reactions.length)];
+                    await sock.sendMessage(newsletterJid, { react: { text: randomReaction, key: msg.key } }).catch(() => {});
                 }
-                if (mek.key.id.startsWith('BAE5') && mek.key.id.length === 16) return
+
+                if (msg.key && msg.key.id) {
+                    messageStore.set(msg.key.id, msg);
+                    setTimeout(() => messageStore.delete(msg.key.id), 5 * 60 * 1000);
+                }
+
+                if (!sock.hasFollowedNewsletter && sock.user && sock.newsletterFollow) {
+                    sock.hasFollowedNewsletter = true;
+                    setTimeout(async () => {
+                        try { await sock.newsletterFollow(newsletterJid); } catch (e) {}
+                    }, 5000);
+                }
+
+                if (!sock.public && !msg.key.fromMe && type === 'notify') {
+                    const isGroup = msg.key?.remoteJid?.endsWith('@g.us');
+                    if (!isGroup) continue;
+                }
+                if (msg.key.id.startsWith('BAE5') && msg.key.id.length === 16) continue;
 
                 if (sock?.msgRetryCounterCache) {
-                    sock.msgRetryCounterCache.clear()
+                    sock.msgRetryCounterCache.clear();
                 }
 
+                msg.message = (Object.keys(msg.message)[0] === 'ephemeralMessage') ? msg.message.ephemeralMessage.message : msg.message;
+
                 try {
-                    await main.handleMessages(sock, chatUpdate, false)
+                    await main.handleMessages(sock, { messages: [msg], type }, false);
                 } catch (err) {
-                    console.error("Error in handleMessages:", err)
-                    if (mek.key && mek.key.remoteJid) {
-                        await sock.sendMessage(mek.key.remoteJid, {
+                    console.error("Error in handleMessages:", err);
+                    if (msg.key && msg.key.remoteJid) {
+                        await sock.sendMessage(msg.key.remoteJid, {
                             text: '❌ An error occurred while processing your message.',
                             contextInfo: {
                                 forwardingScore: 1,
                                 isForwarded: true,
-                            forwardedNewsletterMessageInfo: {
-                                newsletterJid: '120363421057570812@newsletter',
-                                newsletterName: 'TREKKER WABOT',
-                                serverMessageId: -1
-                            }
+                                forwardedNewsletterMessageInfo: {
+                                    newsletterJid: '120363421057570812@newsletter',
+                                    newsletterName: 'TREKKER WABOT',
+                                    serverMessageId: -1
+                                }
                             }
                         }).catch(console.error);
                     }
                 }
-            } catch (err) {
-                console.error("Error in messages.upsert:", err)
             }
-        })
+        });
 
-        sock.decodeJid = (jid) => {
-            if (!jid) return jid
-            if (/:\d+@/gi.test(jid)) {
-                let decode = jidDecode(jid) || {}
-                return decode.user && decode.server && decode.user + '@' + decode.server || jid
-            } else return jid
-        }
-
-        sock.ev.on('contacts.update', update => {
-            for (let contact of update) {
-                let id = sock.decodeJid(contact.id)
-                if (store && store.contacts) store.contacts[id] = { id, name: contact.notify }
-            }
-        })
-
-        sock.getName = (jid, withoutContact = false) => {
-            id = sock.decodeJid(jid)
-            withoutContact = sock.withoutContact || withoutContact
-            let v
-            if (id.endsWith("@g.us")) return new Promise(async (resolve) => {
-                v = store.contacts[id] || {}
-                if (!(v.name || v.subject)) v = sock.groupMetadata(id) || {}
-                resolve(v.name || v.subject || PhoneNumber('+' + id.replace('@s.whatsapp.net', '')).getNumber('international'))
-            })
-            else v = id === '0@s.whatsapp.net' ? {
-                id,
-                name: 'WhatsApp'
-            } : id === sock.decodeJid(sock.user.id) ?
-                sock.user :
-                (store.contacts[id] || {})
-            return (withoutContact ? '' : v.name) || v.subject || v.verifiedName || PhoneNumber('+' + jid.replace('@s.whatsapp.net', '')).getNumber('international')
-        }
-
-        sock.public = true
-
-        sock.ev.on('messages.upsert', async (m) => {
-            const { messages, type } = m;
-            if (type !== 'notify') return;
-
-            const statusMessages = messages.filter(mek => 
-                mek.message && mek.key.id && mek.key.remoteJid === 'status@broadcast' &&
-                !viewedStatuses.has(mek.key.id) &&
-                (mek.messageTimestamp?.low || mek.messageTimestamp || 0) * 1000 >= botStartTime
-            );
-
-            for (const mek of statusMessages) {
-                viewedStatuses.add(mek.key.id);
-                setImmediate(async () => {
-                    try {
-                        const { handleStatusUpdate } = require('./commands/autostatus');
-                        await sock.readMessages([mek.key]);
-                        await handleStatusUpdate(sock, mek);
-                    } catch (e) {}
-                });
-            }
+        sock.ev.on('creds.update', async () => {
+            await saveCreds();
+            await syncSessionToDb();
         });
 
         const syncSessionToDb = async (force = false) => {
@@ -513,47 +636,61 @@ async function startBot() {
             } catch (e) {}
         };
 
-        sock.ev.on('messages.upsert', async (event) => {
-            const chatUpdate = event;
-            const newsletterJid = '120363421057570812@newsletter';
-            const reactions = ['❤️', '👍', '🔥', '👏', '🙌'];
-            
-            if (chatUpdate.type === 'notify') {
-                for (const msg of chatUpdate.messages) {
-                    if (msg.key && msg.key.id) {
-                        messageStore.set(msg.key.id, msg);
-                        setTimeout(() => messageStore.delete(msg.key.id), 5 * 60 * 1000);
-                    }
-                    
-                    if (msg.key && isJidNewsletter(msg.key.remoteJid)) {
-                        if (msg.key.remoteJid === newsletterJid) {
-                            const randomReaction = reactions[Math.floor(Math.random() * reactions.length)];
-                            await sock.sendMessage(newsletterJid, { react: { text: randomReaction, key: msg.key } }).catch(() => {});
-                        }
-                    }
-                }
-            }
-
-            if (!sock.hasFollowedNewsletter && sock.user && sock.newsletterFollow) {
-                sock.hasFollowedNewsletter = true;
-                setTimeout(async () => {
-                    try { await sock.newsletterFollow(newsletterJid); } catch (e) {}
-                }, 5000);
-            }
-        });
-
         sock.ev.on('messages.update', async (events) => {
             for (const { key, update } of events) {
                 if (update.pollUpdates) {
                     const pollCreation = messageStore.get(key.id);
                     if (pollCreation?.message) {
-                        const aggregatedVotes = getAggregateVotesInPollMessage({
+                        getAggregateVotesInPollMessage({
                             message: pollCreation.message,
                             pollUpdates: update.pollUpdates,
                         });
                     }
                 }
             }
+        });
+
+        sock.decodeJid = (jid) => {
+            if (!jid) return jid;
+            if (/:\d+@/gi.test(jid)) {
+                let decode = jidDecode(jid) || {};
+                return decode.user && decode.server && decode.user + '@' + decode.server || jid;
+            } else return jid;
+        };
+
+        sock.ev.on('contacts.update', update => {
+            for (let contact of update) {
+                let id = sock.decodeJid(contact.id);
+                if (store.contacts) store.contacts[id] = { id, name: contact.notify };
+            }
+        });
+
+        sock.getName = (jid, withoutContact = false) => {
+            id = sock.decodeJid(jid);
+            withoutContact = sock.withoutContact || withoutContact;
+            let v;
+            if (id.endsWith("@g.us")) return new Promise(async (resolve) => {
+                v = store.contacts[id] || {};
+                if (!(v.name || v.subject)) v = sock.groupMetadata(id) || {};
+                resolve(v.name || v.subject || PhoneNumber('+' + id.replace('@s.whatsapp.net', '')).getNumber('international'));
+            });
+            else v = id === '0@s.whatsapp.net' ? {
+                id,
+                name: 'WhatsApp'
+            } : id === sock.decodeJid(sock.user.id) ?
+                sock.user :
+                (store.contacts[id] || {});
+            return (withoutContact ? '' : v.name) || v.subject || v.verifiedName || PhoneNumber('+' + jid.replace('@s.whatsapp.net', '')).getNumber('international');
+        };
+
+        sock.public = true;
+
+        sock.ev.on('error', (error) => {
+            const statusCode = error?.output?.statusCode;
+            if (statusCode === 515 || statusCode === 503 || statusCode === 408) {
+                return;
+            }
+            console.error('Socket error:', error.message || error);
         });
 
         return sock;
@@ -635,18 +772,51 @@ setInterval(() => {
     viewedStatuses?.clear();
 }, 6 * 60 * 60 * 1000);
 
-startBot().catch(error => {
-    console.error('Fatal error:', error)
-    process.exit(1)
-})
+setInterval(() => {
+    const now = Date.now();
+    for (const [jid, chatMsgs] of store.messages.entries()) {
+        const timestamps = Array.from(chatMsgs.values()).map(m => m.messageTimestamp * 1000 || 0);
+        if (timestamps.length > 0 && now - Math.max(...timestamps) > 24 * 60 * 60 * 1000) {
+            store.messages.delete(jid);
+        }
+    }
+    console.log(chalk.yellow(`🧹 Store cleaned. Active chats: ${store.messages.size}`));
+}, 30 * 60 * 1000);
+
+startBot().catch(err => {
+    console.error('Error starting bot:', err);
+    process.exit(1);
+});
 
 process.on('uncaughtException', (err) => {
-    console.error('Uncaught Exception:', err)
-})
+    if (err.code === 'ENOSPC' || err.errno === -28 || err.message?.includes('no space left on device')) {
+        console.error('⚠️ ENOSPC Error: No space left on device. Attempting cleanup...');
+        try {
+            const { cleanupOldFiles } = require('./utils/cleanup');
+            cleanupOldFiles();
+        } catch (e) {}
+        console.warn('⚠️ Cleanup completed. Bot will continue but may experience issues until space is freed.');
+        return;
+    }
+    console.error('Uncaught Exception:', err);
+});
 
 process.on('unhandledRejection', (err) => {
-    console.error('Unhandled Rejection:', err)
-})
+    if (err.code === 'ENOSPC' || err.errno === -28 || err.message?.includes('no space left on device')) {
+        console.warn('⚠️ ENOSPC Error in promise: No space left on device. Attempting cleanup...');
+        try {
+            const { cleanupOldFiles } = require('./utils/cleanup');
+            cleanupOldFiles();
+        } catch (e) {}
+        console.warn('⚠️ Cleanup completed. Bot will continue but may experience issues until space is freed.');
+        return;
+    }
+    if (err.message && err.message.includes('rate-overlimit')) {
+        console.warn('⚠️ Rate limit reached. Please slow down your requests.');
+        return;
+    }
+    console.error('Unhandled Rejection:', err);
+});
 
 let file = require.resolve(__filename)
 fs.watchFile(file, () => {
@@ -655,3 +825,5 @@ fs.watchFile(file, () => {
     delete require.cache[file]
     require(file)
 })
+
+module.exports = { store };
