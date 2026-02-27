@@ -396,7 +396,7 @@ async function startBot() {
             keepAliveIntervalMs: 15000,
             syncFullHistory: false,
             downloadHistory: false,
-            markOnlineOnConnect: false,
+            markOnlineOnConnect: true,
             getMessage: async () => undefined,
             emitOwnEvents: true,
             fireInitQueries: true,
