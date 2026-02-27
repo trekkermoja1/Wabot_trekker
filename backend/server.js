@@ -464,17 +464,17 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // Main landing page - always serve public/index.html
 app.get('/', (req, res) => {
-  const frontendIndex = path.join(__dirname, 'static', 'index.html');
-  if (fs.existsSync(frontendIndex)) {
-    return res.sendFile(frontendIndex);
-  }
   res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
 });
 
 // Dashboard route - only when WEB is enabled
 if (WEB_ENABLED) {
   app.get('/dashboard', (req, res) => {
-    res.sendFile(path.join(__dirname, 'static', 'index.html'));
+    const frontendIndex = path.join(__dirname, 'static', 'index.html');
+    if (fs.existsSync(frontendIndex)) {
+      return res.sendFile(frontendIndex);
+    }
+    res.status(404).send('Dashboard not found');
   });
 }
 
