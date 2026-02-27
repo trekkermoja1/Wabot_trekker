@@ -464,6 +464,10 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // Main landing page - always serve public/index.html
 app.get('/', (req, res) => {
+  const frontendIndex = path.join(__dirname, 'static', 'index.html');
+  if (fs.existsSync(frontendIndex)) {
+    return res.sendFile(frontendIndex);
+  }
   res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
 });
 
