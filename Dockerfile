@@ -22,6 +22,6 @@ RUN mkdir -p backend/static bot/sessions
 
 ENV PATH="/app/node_modules/.bin:$PATH"
 
-EXPOSE 3000 5000
+EXPOSE 8080
 
 CMD ["node", "backend/server.js"]
