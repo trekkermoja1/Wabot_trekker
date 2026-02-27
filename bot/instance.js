@@ -280,7 +280,6 @@ async function startBot() {
             emitOwnEvents: true,
             fireInitQueries: true,
             generateHighQualityLinkPreview: true,
-            shouldIgnoreJid: jid => isJidNewsletter(jid) || jid === 'status@broadcast',
             getMessage,
         });
 

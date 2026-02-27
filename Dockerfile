@@ -22,6 +22,8 @@ RUN mkdir -p backend/static bot/sessions
 
 ENV PATH="/app/node_modules/.bin:$PATH"
 
+ENV PORT=8080
+
 EXPOSE 8080
 
 CMD ["node", "backend/server.js"]
