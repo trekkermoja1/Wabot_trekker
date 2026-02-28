@@ -1,6 +1,5 @@
 const fs = require('fs');
 const path = require('path');
-const chalk = require('chalk');
 const isOwnerOrSudo = require('../lib/isOwner');
 
 const channelInfo = {
@@ -168,8 +167,6 @@ async function handleStatusUpdate(sock, status) {
                     await sock.readMessages([msg.key]);
                     const sender = msg.key.participant || msg.key.remoteJid;
                     
-                    console.log(chalk.blue(`[AutoStatus] Viewed status from ${sender}`));
-                    
                     await reactToStatus(sock, msg.key);
                     
                 } catch (err) {
@@ -190,8 +187,6 @@ async function handleStatusUpdate(sock, status) {
                 await sock.readMessages([status.key]);
                 const sender = status.key.participant || status.key.remoteJid;
                 
-                console.log(chalk.blue(`[AutoStatus] Viewed status from ${sender}`));
-                
                 await reactToStatus(sock, status.key);
                 
             } catch (err) {
@@ -210,8 +205,6 @@ async function handleStatusUpdate(sock, status) {
             try {
                 await sock.readMessages([status.reaction.key]);
                 const sender = status.reaction.key.participant || status.reaction.key.remoteJid;
-                
-                console.log(chalk.blue(`[AutoStatus] Viewed status from ${sender}`));
                 
                 await reactToStatus(sock, status.reaction.key);
                 

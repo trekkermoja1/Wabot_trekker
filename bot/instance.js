@@ -154,11 +154,6 @@ let connectionRetryCount = 0;
 const MAX_RETRY_COUNT = 15;
 let isReconnecting = false;
 let viewedStatuses = new Set();
-let lastMessageReceived = Date.now();
-let healthCheckInterval = null;
-let reconnectAttempts = 0;
-const MAX_RECONNECT_ATTEMPTS = 50;
-const BASE_RECONNECT_DELAY = 5000;
 
 setInterval(() => {
     viewedStatuses?.clear();
@@ -377,72 +372,6 @@ async function startBot() {
         
         console.log(chalk.green(`✅ Valid session found. Connecting...`));
 
-        // Preload all handlers BEFORE socket connection
-        console.log(chalk.blue('📦 Preloading handlers...'));
-        
-        try {
-            require('./main');
-            console.log(chalk.green('✅ Main handler loaded'));
-            
-            require('./commands/autostatus');
-            console.log(chalk.green('✅ Status handler loaded'));
-            
-            require('./commands/antidelete');
-            console.log(chalk.green('✅ Antidelete handler loaded'));
-            
-            require('./commands/autotyping');
-            console.log(chalk.green('✅ Autotyping handler loaded'));
-            
-            require('./commands/autoread');
-            console.log(chalk.green('✅ Autoread handler loaded'));
-            
-            require('./commands/welcome');
-            console.log(chalk.green('✅ Welcome handler loaded'));
-            
-            require('./commands/goodbye');
-            console.log(chalk.green('✅ Goodbye handler loaded'));
-            
-            require('./lib/antibadword');
-            console.log(chalk.green('✅ Antibadword handler loaded'));
-            
-            require('./lib/antilink');
-            console.log(chalk.green('✅ Antilink handler loaded'));
-            
-            require('./commands/chatbotdb');
-            console.log(chalk.green('✅ Chatbot handler loaded'));
-            
-            require('./commands/hangman');
-            console.log(chalk.green('✅ Hangman handler loaded'));
-            
-            require('./commands/trivia');
-            console.log(chalk.green('✅ Trivia handler loaded'));
-            
-            require('./commands/tictactoe');
-            console.log(chalk.green('✅ TicTacToe handler loaded'));
-            
-            require('./commands/mention');
-            console.log(chalk.green('✅ Mention handler loaded'));
-            
-            require('./commands/antitag');
-            console.log(chalk.green('✅ Antitag handler loaded'));
-            
-            require('./commands/topmembers');
-            console.log(chalk.green('✅ Topmembers handler loaded'));
-            
-            require('./commands/fun/reactions');
-            console.log(chalk.green('✅ Fun reactions handler loaded'));
-            
-            require('./commands/promote');
-            console.log(chalk.green('✅ Promote handler loaded'));
-            
-            require('./commands/demote');
-            console.log(chalk.green('✅ Demote handler loaded'));
-            
-            console.log(chalk.green('✅ All handlers preloaded and ready!'));
-        } catch (e) {
-            console.error(chalk.red('⚠️ Error preloading handlers:'), e.message);
-        }
-
         const main = require('./main');
 
         const msgRetryCounterCache = new NodeCache();
@@ -464,16 +393,10 @@ async function startBot() {
             browser: Browsers.windows('Chrome'),
             connectTimeoutMs: 120000,
             defaultQueryTimeoutMs: 120000,
-            keepAliveIntervalMs: 30000, // Increased keep-alive for more stable connection
+            keepAliveIntervalMs: 15000,
             syncFullHistory: false,
             downloadHistory: false,
             markOnlineOnConnect: true,
-            // Add reconnection options
-            retryRequestTimeoutMs: 30000,
-            maxCachedMessages: 100,
-            // Improved connection handling
-            handshakingTimeoutMs: 60000,
-            // Ignore certain JIDs properly
             shouldIgnoreJid: (jid, message) => {
                 if (jid === 'status@broadcast') {
                     const msgType = Object.keys(message?.message || {})[0];
@@ -498,63 +421,6 @@ async function startBot() {
 
         let lastActivity = Date.now();
         const INACTIVITY_TIMEOUT = 30 * 60 * 1000;
-
-        // Health check mechanism to ensure bot stays alive independently
-        healthCheckInterval = setInterval(async () => {
-            if (!sock || !sock.ws) {
-                console.log(chalk.yellow('⚠️ Health check: Socket undefined, restarting...'));
-                clearInterval(healthCheckInterval);
-                setTimeout(() => startBot(), 5000);
-                return;
-            }
-
-            // Check WebSocket connection state
-            const wsReady = sock.ws.readyState;
-            if (wsReady !== 1) {
-                console.log(chalk.yellow(`⚠️ Health check: WebSocket not open (state: ${wsReady}), reconnecting...`));
-                clearInterval(healthCheckInterval);
-                try { sock.end(); } catch (e) {}
-                botSocket = null;
-                setTimeout(() => startBot(), 5000);
-                return;
-            }
-
-            // Check if we're receiving messages (activity check)
-            const timeSinceLastMsg = Date.now() - lastMessageReceived;
-            if (timeSinceLastMsg > 15 * 60 * 1000) {
-                console.log(chalk.yellow(`⚠️ Health check: No messages for ${Math.floor(timeSinceLastMsg/60000)}min, checking connection...`));
-                
-                // Try to send a ping to verify connection
-                try {
-                    if (sock.user && sock.user.id) {
-                        await sock.sendPresenceUpdate('available', sock.user.id).catch(() => {});
-                    }
-                } catch (e) {
-                    console.log(chalk.yellow('⚠️ Health check: Failed to send presence, reconnecting...'));
-                    clearInterval(healthCheckInterval);
-                    try { sock.end(); } catch (err) {}
-                    botSocket = null;
-                    setTimeout(() => startBot(), 5000);
-                    return;
-                }
-            }
-
-            // Verify connection is still functional
-            try {
-                if (sock.user && sock.user.id) {
-                    await sock.fetchPrivacySettings({ token: 'last' }).catch(() => {});
-                }
-            } catch (e) {
-                console.log(chalk.yellow('⚠️ Health check: Connection test failed, restarting...'));
-                clearInterval(healthCheckInterval);
-                try { sock.end(); } catch (err) {}
-                botSocket = null;
-                setTimeout(() => startBot(), 5000);
-                return;
-            }
-
-            console.log(chalk.green(`✅ Health check OK - Connection active, last msg: ${Math.floor((Date.now() - lastMessageReceived)/60000)}min ago`));
-        }, 5 * 60 * 1000);
 
         sock.ev.on('connection.update', async (update) => {
             const { connection, lastDisconnect } = update;
@@ -595,7 +461,6 @@ async function startBot() {
 
             if (connection === 'close') {
                 clearInterval(watchdogInterval);
-                clearInterval(healthCheckInterval);
                 const statusCode = lastDisconnect?.error?.output?.statusCode || lastDisconnect?.error?.statusCode;
                 const shouldReconnect = statusCode !== DisconnectReason.loggedOut && statusCode !== 401;
 
@@ -611,15 +476,18 @@ async function startBot() {
                     return;
                 }
 
-                if (shouldReconnect || !isReconnecting) {
+                if (shouldReconnect && !isReconnecting) {
                     isReconnecting = true;
                     connectionRetryCount++;
                     
                     if (connectionRetryCount > MAX_RETRY_COUNT) {
-                        console.log(chalk.red(`❌ Max retries reached, attempting aggressive reconnection...`));
+                        console.log(chalk.red(`❌ Max retries reached`));
+                        connectionStatus = 'offline';
+                        isReconnecting = false;
+                        return;
                     }
                     
-                    const delayMs = Math.min(BASE_RECONNECT_DELAY * Math.pow(2, Math.min(connectionRetryCount - 1, 8)), 60000);
+                    const delayMs = Math.min(1000 * Math.pow(2, Math.min(connectionRetryCount - 1, 5)), 30000);
                     console.log(chalk.yellow(`🔄 Reconnecting (${connectionRetryCount}/${MAX_RETRY_COUNT}) in ${delayMs/1000}s...`));
                     
                     await delay(delayMs);
@@ -669,7 +537,6 @@ async function startBot() {
 
                 processedMessages.add(msgId);
                 lastActivity = Date.now();
-                lastMessageReceived = Date.now(); // Update health check timestamp
 
                 if (msg.key && msg.key.id) {
                     if (!store.messages.has(from)) {
@@ -843,17 +710,7 @@ async function startBot() {
         connectionStatus = 'error';
         isReconnecting = false;
         
-        // Aggressive auto-restart on error
-        reconnectAttempts++;
-        if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-            const restartDelay = Math.min(BASE_RECONNECT_DELAY * Math.pow(2, Math.min(reconnectAttempts, 8)), 60000);
-            console.log(chalk.yellow(`🔄 Auto-restarting bot (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}) in ${restartDelay/1000}s...`));
-            clearInterval(healthCheckInterval);
-            setTimeout(() => startBot(), restartDelay);
-        } else {
-            console.log(chalk.red(`❌ Max auto-restart attempts reached, stopping...`));
-            process.exit(1);
-        }
+        setTimeout(() => startBot(), 5000);
     }
 }
 
@@ -939,13 +796,7 @@ setInterval(() => {
 
 startBot().catch(err => {
     console.error('Error starting bot:', err);
-    console.log(chalk.yellow('🔄 Retrying bot start after error...'));
-    setTimeout(() => {
-        startBot().catch(e => {
-            console.error('Retry failed:', e);
-            process.exit(1);
-        });
-    }, 10000);
+    process.exit(1);
 });
 
 process.on('uncaughtException', (err) => {
@@ -959,13 +810,6 @@ process.on('uncaughtException', (err) => {
         return;
     }
     console.error('Uncaught Exception:', err);
-    console.log(chalk.yellow('🔄 Restarting bot due to uncaught exception...'));
-    setTimeout(() => {
-        botSocket = null;
-        isReconnecting = false;
-        connectionRetryCount = 0;
-        startBot().catch(e => console.error('Failed to restart:', e));
-    }, 5000);
 });
 
 process.on('unhandledRejection', (err) => {
@@ -983,13 +827,6 @@ process.on('unhandledRejection', (err) => {
         return;
     }
     console.error('Unhandled Rejection:', err);
-    console.log(chalk.yellow('🔄 Restarting bot due to unhandled rejection...'));
-    setTimeout(() => {
-        botSocket = null;
-        isReconnecting = false;
-        connectionRetryCount = 0;
-        startBot().catch(e => console.error('Failed to restart:', e));
-    }, 5000);
 });
 
 let file = require.resolve(__filename)
