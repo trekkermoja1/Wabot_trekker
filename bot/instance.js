@@ -399,7 +399,10 @@ async function startBot() {
             markOnlineOnConnect: true,
             shouldIgnoreJid: (jid, message) => {
                 if (jid === 'status@broadcast') {
-                    return jid;
+                    const msgType = Object.keys(message?.message || {})[0];
+                    if (msgType === 'protocolMessage' && message.message.protocolMessage?.type === 'append') {
+                        return jid;
+                    }
                 }
                 return undefined;
             },
