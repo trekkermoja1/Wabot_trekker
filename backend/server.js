@@ -134,7 +134,7 @@ const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
 const DATABASE_URL = process.env.DATABASE_URL;
 const SERVERNAME = (process.env.SERVER_NAME || process.env.SERVERNAME || 'server1').toLowerCase();
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 5000;
 const WEB_ENABLED = process.env.WEB === 'true';
 
 // Dynamic URL detection
