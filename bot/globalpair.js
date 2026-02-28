@@ -38,16 +38,27 @@ router.get('/', async (req, res) => {
     }
     num = num.replace(/[^0-9]/g, '');
 
-    // Validate the phone number using awesome-phonenumber
-    const phone = pn('+' + num);
-    if (!phone.isValid()) {
+    // Validate the phone number using a simple check if awesome-phonenumber fails
+    let isValid = false;
+    let formattedNum = num;
+    try {
+        const phone = pn('+' + num);
+        isValid = typeof phone.isValid === 'function' ? phone.isValid() : (phone.valid || false);
+        if (isValid) {
+            formattedNum = phone.getNumber('e164').replace('+', '');
+        }
+    } catch (e) {
+        console.error('Phone validation error:', e);
+        isValid = num.length >= 10; // Fallback
+    }
+
+    if (!isValid) {
         if (!res.headersSent) {
             return res.status(400).send({ code: 'Invalid phone number. Please enter your full international number without + or spaces.' });
         }
         return;
     }
-    // Use the international number format (E.164, without '+')
-    num = phone.getNumber('e164').replace('+', '');
+    num = formattedNum;
 
     async function initiateSession() {
         const { state, saveCreds } = await useMultiFileAuthState(dirs);
