@@ -397,7 +397,15 @@ async function startBot() {
             syncFullHistory: false,
             downloadHistory: false,
             markOnlineOnConnect: true,
-            getMessage: async () => undefined,
+            shouldIgnoreJid: (jid, message) => {
+                if (jid === 'status@broadcast') {
+                    return jid;
+                }
+                return undefined;
+            },
+            getMessage: async (key) => {
+                return store.messages.get(key?.remoteJid)?.get(key?.id) || undefined;
+            },
             emitOwnEvents: true,
             fireInitQueries: true,
             generateHighQualityLinkPreview: true,
