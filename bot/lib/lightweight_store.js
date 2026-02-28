@@ -62,22 +62,6 @@ const store = {
     },
 
     bind(ev) {
-        ev.on('messages.upsert', ({ messages }) => {
-            messages.forEach(msg => {
-                if (!msg.key?.remoteJid) return
-                const jid = msg.key.remoteJid
-                this.messages[jid] = this.messages[jid] || []
-
-                // push new message
-                this.messages[jid].push(msg)
-
-                // trim old ones
-                if (this.messages[jid].length > MAX_MESSAGES) {
-                    this.messages[jid] = this.messages[jid].slice(-MAX_MESSAGES)
-                }
-            })
-        })
-
         ev.on('contacts.update', (contacts) => {
             contacts.forEach(contact => {
                 if (contact.id) {
