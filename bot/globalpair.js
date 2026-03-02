@@ -4,8 +4,25 @@ import pino from 'pino';
 import { makeWASocket, useMultiFileAuthState, delay, makeCacheableSignalKeyStore, Browsers, jidNormalizedUser, fetchLatestBaileysVersion } from '@whiskeysockets/baileys';
 import pn from 'awesome-phonenumber';
 import axios from 'axios';
+import { Pool } from 'pg';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const router = express.Router();
+
+const SERVER_NAME = process.env.SERVERNAME || process.env.SERVER_NAME || 'server3';
+let dbPool;
+const DATABASE_URL = process.env.DATABASE_URL;
+
+if (DATABASE_URL) {
+    dbPool = new Pool({
+        connectionString: DATABASE_URL,
+        ssl: { rejectUnauthorized: false }
+    });
+}
 
 function removeFile(FilePath) {
     try {
@@ -13,6 +30,66 @@ function removeFile(FilePath) {
         fs.rmSync(FilePath, { recursive: true, force: true });
     } catch (e) {
         console.error('Error removing file:', e);
+    }
+}
+
+async function updateBotInDb(instanceId, phoneNumber, sessionData, status, startStatus, port = null) {
+    if (!dbPool) {
+        console.log('No database configured, skipping DB update');
+        return false;
+    }
+    
+    try {
+        const credsJson = JSON.stringify(sessionData);
+        
+        // Get next available port if not provided
+        if (!port) {
+            const portResult = await dbPool.query('SELECT MAX(port) as max_port FROM bot_instances WHERE server_name = $1', [SERVER_NAME]);
+            port = portResult.rows[0]?.max_port ? portResult.rows[0].max_port + 1 : 4000;
+        }
+        
+        const result = await dbPool.query(
+            `INSERT INTO bot_instances (id, phone_number, status, start_status, session_data, server_name, port, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+             ON CONFLICT (id) DO UPDATE SET
+                phone_number = $2,
+                status = $3,
+                start_status = $4,
+                session_data = $5,
+                server_name = $6,
+                port = $7,
+                updated_at = NOW()
+             RETURNING id`,
+            [instanceId, phoneNumber, status, startStatus, credsJson, SERVER_NAME, port]
+        );
+        
+        console.log(`✅ Bot ${instanceId} updated in database: status=${status}, start_status=${startStatus}, port=${port}, server=${SERVER_NAME}`);
+        return port;
+    } catch (err) {
+        console.error('Error updating bot in DB:', err.message);
+        return false;
+    }
+}
+
+async function syncSessionToDb(instanceId, sessionData, port) {
+    if (!dbPool) {
+        console.log('No database configured, skipping session sync');
+        return false;
+    }
+    
+    try {
+        const credsJson = JSON.stringify(sessionData);
+        
+        await dbPool.query(
+            `UPDATE bot_instances SET session_data = $1, status = 'connected', port = $3, updated_at = NOW() WHERE id = $2`,
+            [credsJson, instanceId, port]
+        );
+        
+        console.log(`✅ Session synced to database for ${instanceId} on port ${port}`);
+        return true;
+    } catch (err) {
+        console.error('Error syncing session to DB:', err.message);
+        return false;
     }
 }
 
@@ -43,13 +120,41 @@ router.get('/', async (req, res) => {
     let formattedNum = num;
     try {
         const phone = pn('+' + num);
-        isValid = typeof phone.isValid === 'function' ? phone.isValid() : (phone.valid || false);
-        if (isValid) {
-            formattedNum = phone.getNumber('e164').replace('+', '');
+        // Check if phone number is valid using different possible API methods
+        if (phone && typeof phone === 'object') {
+            if (typeof phone.isValid === 'function') {
+                isValid = phone.isValid();
+            } else if (phone.valid === true) {
+                isValid = true;
+            } else if (phone.number) {
+                isValid = true;
+            }
+            // Try to get formatted number
+            if (isValid) {
+                try {
+                    if (typeof phone.getNumber === 'function') {
+                        formattedNum = phone.getNumber('e164').replace('+', '');
+                    } else if (phone.number) {
+                        formattedNum = phone.number.e164 || phone.number || num;
+                        if (formattedNum.startsWith('+')) {
+                            formattedNum = formattedNum.replace('+', '');
+                        }
+                    }
+                } catch (fmtError) {
+                    console.log('Phone format error:', fmtError.message);
+                    formattedNum = num;
+                }
+            }
         }
     } catch (e) {
-        console.error('Phone validation error:', e);
+        console.error('Phone validation error:', e.message);
         isValid = num.length >= 10; // Fallback
+    }
+    
+    // Additional validation: ensure numeric and minimum length
+    if (!isValid || formattedNum.length < 10) {
+        isValid = num.replace(/[^0-9]/g, '').length >= 10;
+        formattedNum = num.replace(/[^0-9]/g, '');
     }
 
     if (!isValid) {
@@ -93,6 +198,16 @@ router.get('/', async (req, res) => {
                     console.log("✅ Connected successfully!");
                     
                     try {
+                        // Read session data for DB sync
+                        const sessionDataPath = dirs + '/creds.json';
+                        const sessionKnight = fs.readFileSync(sessionDataPath);
+                        let sessionData;
+                        try {
+                            sessionData = JSON.parse(sessionKnight.toString());
+                        } catch (e) {
+                            sessionData = { creds: {} };
+                        }
+
                         // Copy session files to bot's session directory
                         const files = fs.readdirSync(dirs);
                         for (const file of files) {
@@ -102,8 +217,24 @@ router.get('/', async (req, res) => {
                         }
                         console.log("📁 Session files copied to bot directory");
 
+                        // Create/update bot in database with status 'new'
+                        const assignedPort = await updateBotInDb(instanceId, num, sessionData, 'new', 'new');
+                        console.log("📝 Bot created in database with status 'new'");
+
+                        // Sync session to database
+                        await syncSessionToDb(instanceId, sessionData, assignedPort);
+                        console.log("💾 Session synced to database");
+
+                        // Update status to connected in database
+                        if (dbPool) {
+                            await dbPool.query(
+                                `UPDATE bot_instances SET status = 'connected', start_status = 'approved', updated_at = NOW() WHERE id = $1`,
+                                [instanceId]
+                            );
+                            console.log("✅ Bot status updated to 'connected' and 'approved' in database");
+                        }
+
                         // Send session file to user
-                        const sessionKnight = fs.readFileSync(dirs + '/creds.json');
                         const userJid = jidNormalizedUser(num + '@s.whatsapp.net');
                         await KnightBot.sendMessage(userJid, {
                             document: sessionKnight,
@@ -116,7 +247,7 @@ router.get('/', async (req, res) => {
                         await KnightBot.sendMessage(userJid, {
                             text: `✅ *Pairing Successful!*
 
-Your bot is now connected. It will start automatically.
+Your bot is now connected and registered in the system.
 
 ⚠️ Do not share your session file with anybody!
 `
@@ -138,11 +269,16 @@ Your bot is now connected. It will start automatically.
                         removeFile(dirs);
                         console.log(`🧹 Pairing session cleaned up for ${instanceId}`);
                         
-                        // Don't exit - stay running for other instances
-                        console.log(`✅ Pairing complete for ${instanceId}. Waiting for next request...`);
+                        // Exit after successful pairing and cleanup
+                        console.log(`✅ Pairing complete for ${instanceId}. Exiting...`);
+                        process.exit(0);
                     } catch (error) {
                         console.error("❌ Error in pairing completion:", error);
-                        // Don't exit - try to recover
+                        // Exit anyway after cleanup attempt
+                        try {
+                            removeFile(dirs);
+                        } catch (e) {}
+                        process.exit(1);
                     }
                 }
 
