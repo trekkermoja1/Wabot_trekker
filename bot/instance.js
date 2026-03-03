@@ -391,6 +391,7 @@ async function startBot() {
             browser: Browsers.windows('Chrome'),
             connectTimeoutMs: 120000,
             defaultQueryTimeoutMs: 120000,
+            retryRequestDelayMs: 10,
             keepAliveIntervalMs: 15000,
             syncFullHistory: false,
             downloadHistory: false,
