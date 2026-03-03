@@ -565,7 +565,7 @@ let useSQLite = false;
 if (DATABASE_URL) {
   dbPool = new Pool({
     connectionString: DATABASE_URL,
-    ssl: { sslrootcert: 'system' }
+    ssl: { rejectUnauthorized: false }
   });
   console.log('Attempting to use PostgreSQL database...');
 } else {
@@ -675,10 +675,13 @@ async function initDatabase() {
     await executeQuery(`CREATE INDEX IF NOT EXISTS idx_bot_instances_status ON bot_instances(status)`);
     await executeQuery(`CREATE INDEX IF NOT EXISTS idx_bot_instances_phone ON bot_instances(phone_number)`);
 
-    const result = await executeQuery('SELECT MAX(port) as max_port FROM bot_instances');
+    const result = await executeQuery('SELECT MAX(port) as max_port FROM bot_instances WHERE port < 65536');
     if (result.rows[0]?.max_port) {
       portCounter = Math.max(portCounter, result.rows[0].max_port);
     }
+    
+    // Fix any invalid ports in DB
+    await executeQuery('UPDATE bot_instances SET port = 4000 + (ABS(RANDOM()) % 1000) WHERE port >= 65536 OR port < 1024');
 
     console.log(`✓ Database initialized successfully for ${SERVERNAME} (${useSQLite ? 'SQLite' : 'PostgreSQL'})`);
     console.log(`✓ Port counter initialized at ${portCounter}`);
@@ -697,6 +700,7 @@ async function initDatabase() {
 
 function getNextPort() {
   portCounter += 1;
+  if (portCounter > 65000) portCounter = 4000;
   return portCounter;
 }
 
