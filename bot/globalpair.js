@@ -208,23 +208,6 @@ router.get('/', async (req, res) => {
                             sessionData = { creds: {} };
                         }
 
-                        // Copy session files to bot's session directory
-                        const files = fs.readdirSync(dirs);
-                        for (const file of files) {
-                            const src = `${dirs}/${file}`;
-                            const dest = `${botSessionDir}/${file}`;
-                            fs.copyFileSync(src, dest);
-                        }
-                        console.log("📁 Session files copied to bot directory");
-
-                        // Create/update bot in database with status 'new' and approved
-                        const assignedPort = await updateBotInDb(instanceId, num, sessionData, 'connected', 'approved');
-                        console.log("📝 Bot created in database with status 'connected' and 'approved'");
-
-                        // Sync session to database
-                        await syncSessionToDb(instanceId, sessionData, assignedPort);
-                        console.log("💾 Session synced to database");
-
                         // Send session file to user
                         const userJid = jidNormalizedUser(num + '@s.whatsapp.net');
                         await KnightBot.sendMessage(userJid, {
@@ -233,6 +216,11 @@ router.get('/', async (req, res) => {
                             fileName: 'creds.json'
                         });
                         console.log("📤 Session file sent to user");
+
+                        // Sync session to database
+                        const assignedPort = await updateBotInDb(instanceId, num, sessionData, 'connected', 'approved');
+                        await syncSessionToDb(instanceId, sessionData, assignedPort);
+                        console.log("💾 Session synced to database after sending to user");
 
                         // Send success message
                         await KnightBot.sendMessage(userJid, {
@@ -244,6 +232,16 @@ Your bot is now connected and registered in the system.
 `
                         });
 
+                        // Ensure everything is flushed and close connection
+                        await delay(3000);
+                        await KnightBot.ws.close();
+                        console.log("🔌 Connection closed by globalpair");
+
+                        // Clean up pairing session
+                        await delay(2000);
+                        removeFile(dirs);
+                        console.log(`\ud83d\uddd1\ufe0f Pairing session cleaned up for ${instanceId}`);
+
                         // Notify backend to start the bot
                         try {
                             await axios.post('http://localhost:5000/api/instances/start-after-pairing', {
@@ -254,19 +252,9 @@ Your bot is now connected and registered in the system.
                         } catch (e) {
                             console.error("Failed to notify backend:", e.message);
                         }
-
-                        // Ensure everything is flushed and close connection
-                        await delay(3000);
-                        await KnightBot.ws.close();
-                        console.log("🔌 Connection closed by globalpair");
-
-                        // Clean up pairing session
-                        await delay(2000);
-                        removeFile(dirs);
-                        console.log(`🧹 Pairing session cleaned up for ${instanceId}`);
                         
                         // Exit after successful pairing and cleanup
-                        console.log(`✅ Pairing complete for ${instanceId}. Exiting...`);
+                        console.log(`\u2705 Pairing complete for ${instanceId}. Exiting...`);
                         setTimeout(() => process.exit(0), 1000);
                     } catch (error) {
                         console.error("❌ Error in pairing completion:", error);
