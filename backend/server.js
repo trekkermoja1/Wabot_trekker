@@ -485,22 +485,6 @@ if (WEB_ENABLED) {
 // Always serve public directory (simple pairing page)
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
-// Main landing page - always serve public/index.html
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
-});
-
-// Dashboard route - only when WEB is enabled
-if (WEB_ENABLED) {
-  app.get('/dashboard', (req, res) => {
-    const frontendIndex = path.join(__dirname, 'static', 'index.html');
-    if (fs.existsSync(frontendIndex)) {
-      return res.sendFile(frontendIndex);
-    }
-    res.status(404).send('Dashboard not found');
-  });
-}
-
 // Clean up bot instances on startup - disabled to prevent EADDRINUSE and data loss on server restart
 /*
 const botInstancesDir = path.join(__dirname, '..', 'bot', 'instances');
@@ -2215,9 +2199,24 @@ if (WEB_ENABLED) {
   app.use(express.static(path.join(__dirname, 'static')));
 }
 
-// The "catchall" handler: for any request that doesn't
-// match one above, send back React's index.html file.
-app.get(/^(?!\/api).*/, (req, res) => {
+// Dashboard route - only when WEB is enabled (must be before catchall)
+if (WEB_ENABLED) {
+  app.get('/dashboard', (req, res) => {
+    const frontendIndex = path.join(__dirname, 'static', 'dashboard.html');
+    if (fs.existsSync(frontendIndex)) {
+      return res.sendFile(frontendIndex);
+    }
+    res.status(404).send('Dashboard not found');
+  });
+}
+
+// Main landing page - always serve public/index.html (must be after static middleware)
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
+});
+
+// The "catchall" handler: for any request that doesn't match static files or API
+app.get(/^(?!\/api|\/static).*/, (req, res) => {
     const publicIndexPath = path.join(__dirname, '..', 'public', 'index.html');
     if (fs.existsSync(publicIndexPath)) {
         res.sendFile(publicIndexPath);
