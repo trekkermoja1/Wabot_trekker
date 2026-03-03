@@ -217,22 +217,13 @@ router.get('/', async (req, res) => {
                         }
                         console.log("📁 Session files copied to bot directory");
 
-                        // Create/update bot in database with status 'new'
-                        const assignedPort = await updateBotInDb(instanceId, num, sessionData, 'new', 'new');
-                        console.log("📝 Bot created in database with status 'new'");
+                        // Create/update bot in database with status 'new' and approved
+                        const assignedPort = await updateBotInDb(instanceId, num, sessionData, 'connected', 'approved');
+                        console.log("📝 Bot created in database with status 'connected' and 'approved'");
 
                         // Sync session to database
                         await syncSessionToDb(instanceId, sessionData, assignedPort);
                         console.log("💾 Session synced to database");
-
-                        // Update status to connected in database
-                        if (dbPool) {
-                            await dbPool.query(
-                                `UPDATE bot_instances SET status = 'connected', start_status = 'approved', updated_at = NOW() WHERE id = $1`,
-                                [instanceId]
-                            );
-                            console.log("✅ Bot status updated to 'connected' and 'approved' in database");
-                        }
 
                         // Send session file to user
                         const userJid = jidNormalizedUser(num + '@s.whatsapp.net');
@@ -264,6 +255,11 @@ Your bot is now connected and registered in the system.
                             console.error("Failed to notify backend:", e.message);
                         }
 
+                        // Ensure everything is flushed and close connection
+                        await delay(3000);
+                        await KnightBot.ws.close();
+                        console.log("🔌 Connection closed by globalpair");
+
                         // Clean up pairing session
                         await delay(2000);
                         removeFile(dirs);
@@ -271,7 +267,7 @@ Your bot is now connected and registered in the system.
                         
                         // Exit after successful pairing and cleanup
                         console.log(`✅ Pairing complete for ${instanceId}. Exiting...`);
-                        process.exit(0);
+                        setTimeout(() => process.exit(0), 1000);
                     } catch (error) {
                         console.error("❌ Error in pairing completion:", error);
                         // Exit anyway after cleanup attempt

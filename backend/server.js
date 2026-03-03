@@ -1574,6 +1574,31 @@ app.get('/api/instances/:instanceId/pairing-code', async (req, res) => {
   }
 });
 
+// Start bot after successful pairing
+app.post('/api/instances/start-after-pairing', async (req, res) => {
+  try {
+    const { instanceId, phone_number } = req.body;
+    
+    // Wait a bit to ensure globalpair has fully finished and closed its connection
+    await new Promise(r => setTimeout(r, 5000));
+    
+    const result = await executeQuery('SELECT * FROM bot_instances WHERE id = $1', [instanceId]);
+    if (result.rows.length === 0) return res.status(404).json({ detail: 'Instance not found' });
+    
+    const instance = result.rows[0];
+    
+    // Only start if it's on this server
+    if (instance.server_name === SERVERNAME) {
+      console.log(chalk.green(`🚀 Starting bot ${instanceId} after successful pairing`));
+      await startInstanceInternal(instanceId, instance.phone_number, instance.port, instance.session_data);
+    }
+    
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ detail: e.message });
+  }
+});
+
 // Sync session data from bot instance
 app.post('/api/instances/:instanceId/sync-session', async (req, res) => {
   try {
