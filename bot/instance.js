@@ -390,8 +390,15 @@ async function startBot() {
             logger: createSuppressedLogger(),
             browser: Browsers.windows('Chrome'),
             connectTimeoutMs: 120000,
-            defaultQueryTimeoutMs: 120000,
+            defaultQueryTimeoutMs: undefined,
             retryRequestDelayMs: 10,
+            transactionOpts: { maxCommitRetries: 10, delayBetweenTriesMs: 10 },
+            getMessage: async key => {
+			const jid = jidNormalizedUser(key.remoteJid);
+			const msg = await store.loadMessage(jid, key.id);
+
+			return msg?.message || '';
+		},
             keepAliveIntervalMs: 15000,
             syncFullHistory: false,
             downloadHistory: false,
@@ -405,9 +412,10 @@ async function startBot() {
                 }
                 return undefined;
             },
-            getMessage: async (key) => {
-                return store.messages.get(key?.remoteJid)?.get(key?.id) || undefined;
-            },
+            shouldSyncHistoryMessage: msg => {
+			console.log(`\x1b[32mMemuat Chat [${msg.progress}%]\x1b[39m`);
+			return !!msg.syncType;
+		},
             emitOwnEvents: true,
             fireInitQueries: true,
             generateHighQualityLinkPreview: true,
