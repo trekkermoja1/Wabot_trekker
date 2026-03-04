@@ -1989,7 +1989,7 @@ app.post('/pair', async (req, res) => {
       }
       fs.mkdirSync(sessionDir, { recursive: true });
       
-      await executeQuery('UPDATE bot_instances SET session_data = NULL, status = $1, port = $2 WHERE id = $3', ['pairing', port, instanceId]);
+      await executeQuery('UPDATE bot_instances SET status = $1, port = $2 WHERE id = $3', ['pairing', port, instanceId]);
       
     } else {
       const targetServer = await findAvailableServer();
