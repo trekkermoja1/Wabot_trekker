@@ -21,37 +21,6 @@ const chalk = {
 
 require('dotenv').config({ quiet: true });
 
-// Swagger setup
-const swaggerUi = require('swagger-ui-express');
-const swaggerJsDoc = require('swagger-jsdoc');
-
-const swaggerOptions = {
-  definition: {
-    openapi: '3.0.0',
-    info: {
-      title: 'Trekker WABOT API',
-      version: '1.0.0',
-      description: 'WhatsApp Bot Management API - Pairing & Management',
-    },
-    servers: [
-      { url: '/' }
-    ],
-    components: {
-      securitySchemes: {
-        bearerAuth: {
-          type: 'http',
-          scheme: 'bearer',
-          bearerFormat: 'JWT',
-        },
-      },
-    },
-    security: [],
-  },
-  apis: [],
-};
-
-const swaggerDocs = swaggerJsDoc(swaggerOptions);
-
 let globalPairProcess = null;
 
 async function startGlobalPairServer() {
@@ -140,17 +109,6 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-// Swagger UI at /api-docs
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs, {
-  customCss: `
-    .swagger-ui .topbar { display: none }
-    .swagger-ui .info .title { font-size: 2.5em; }
-    .swagger-ui .info .description { font-size: 1.1em; line-height: 1.6; }
-  `,
-  customSiteTitle: 'Trekker WABOT API Docs',
-  customfavIcon: '/favicon.ico'
-}));
 
 // Environment configuration
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
@@ -1269,10 +1227,15 @@ app.post('/api/instances/pair-new', async (req, res) => {
   try {
     const { name, phone_number, current_server } = req.body;
     
-    // Check if already exists
-    const existing = await executeQuery('SELECT id, start_status FROM bot_instances WHERE phone_number = $1', [phone_number]);
+    // Check if bot already exists and its status
+    const existing = await executeQuery('SELECT id, status, start_status FROM bot_instances WHERE phone_number = $1', [phone_number]);
     if (existing.rows.length > 0) {
-      return res.status(400).json({ detail: 'Bot already exists for this phone number. Use pair endpoint instead.' });
+      const existingBot = existing.rows[0];
+      // Block if already connected or online in database
+      if (existingBot.status === 'connected' || existingBot.status === 'online') {
+        return res.status(400).json({ detail: 'Bot is already connected and active. Cannot create new pairing.' });
+      }
+      // If not connected, allow re-pairing (will update existing record below)
     }
     
     // Find best server
@@ -2001,40 +1964,23 @@ app.post('/pair', async (req, res) => {
     if (existing.rows.length > 0) {
       const existingBot = existing.rows[0];
       const botStatus = existingBot.status;
+      const botStartStatus = existingBot.start_status;
       
-      // Check if session is actually valid by looking at session files
+      // Check if bot is already connected or online in database
+      // Block pairing if status is 'connected' regardless of session files
+      if (botStatus === 'connected' || botStatus === 'online') {
+        return res.send(generatePairingResultHTML(null, 'This bot is already connected and active in the system. No re-pairing needed. Please use the existing connection.'));
+      }
+      
+      // Bot exists but is offline, connecting, or pairing - proceed with re-pairing
       const botDir = path.join(__dirname, '..', 'bot');
       const sessionDir = path.join(botDir, 'instances', existingBot.id, 'session');
-      const credsFile = path.join(sessionDir, 'creds.json');
-      let sessionValid = false;
-      
-      if (fs.existsSync(credsFile)) {
-        try {
-          const credsData = JSON.parse(fs.readFileSync(credsFile, 'utf-8'));
-          // Check if creds have required keys and are not empty
-          sessionValid = credsData && credsData.noiseKey && credsData.signedIdentityKey;
-        } catch (e) {
-          sessionValid = false;
-        }
-      }
-      
-      // Only allow re-pairing if session is invalid (not connected)
-      // If session is valid and status is connected, block it
-      if (botStatus === 'connected' && sessionValid) {
-        return res.send(generatePairingResultHTML(null, 'This bot is already connected and active. No re-pairing needed.'));
-      }
-      
-      // Session is invalid or not connected - allow re-pairing
-      if (botStatus === 'connected' && !sessionValid) {
-        console.log(chalk.yellow(`[PAIR-FORM] DB shows connected but session is invalid. Updating status to offline.`));
-        await executeQuery('UPDATE bot_instances SET status = $1 WHERE id = $2', ['offline', existingBot.id]);
-      }
       
       instanceId = existingBot.id;
       port = existingBot.port || getNextPort();
       botName = existingBot.name;
       
-      console.log(chalk.yellow(`[PAIR-FORM] Re-pairing existing bot ${instanceId} (status: ${botStatus})`));
+      console.log(chalk.yellow(`[PAIR-FORM] Re-pairing existing bot ${instanceId} (status: ${botStatus}, start_status: ${botStartStatus})`));
       
       await stopInstance(instanceId);
       
