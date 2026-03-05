@@ -147,6 +147,33 @@ const instanceId = args[0] || 'default';
 const phoneNumber = args[1] || '';
 const apiPort = parseInt(args[2]) || 3001;
 
+const SERVER_NAME = process.env.SERVERNAME || process.env.SERVER_NAME || 'server3';
+let dbPool;
+const DATABASE_URL = process.env.DATABASE_URL;
+
+if (DATABASE_URL) {
+    dbPool = new (require('pg').Pool)({
+        connectionString: DATABASE_URL,
+        ssl: { rejectUnauthorized: false }
+    });
+}
+
+async function syncSessionToDb(sessionData) {
+    if (!dbPool) return false;
+    
+    try {
+        const credsJson = JSON.stringify(sessionData);
+        await dbPool.query(
+            `UPDATE bot_instances SET session_data = $1, status = 'connected', updated_at = NOW() WHERE id = $2`,
+            [credsJson, instanceId]
+        );
+        return true;
+    } catch (err) {
+        console.error('Error syncing session to DB:', err.message);
+        return false;
+    }
+}
+
 global.instanceId = instanceId;
 global.chatbotEnabled = false;
 
@@ -653,7 +680,20 @@ async function startBot() {
             }
         });
 
-        sock.ev.on('creds.update', saveCreds);
+        sock.ev.on('creds.update', async (creds) => {
+            await saveCreds(creds);
+            if (dbPool) {
+                try {
+                    const credsFilePath = path.join(sessionDir, 'creds.json');
+                    if (fs.existsSync(credsFilePath)) {
+                        const sessionData = JSON.parse(fs.readFileSync(credsFilePath, 'utf-8'));
+                        await syncSessionToDb(sessionData);
+                    }
+                } catch (e) {
+                    console.error('Error syncing creds to DB:', e.message);
+                }
+            }
+        });
 
 
         sock.ev.on('messages.update', async (events) => {
