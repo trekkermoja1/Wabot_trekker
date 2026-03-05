@@ -430,15 +430,7 @@ async function startBot() {
             syncFullHistory: false,
             downloadHistory: false,
             markOnlineOnConnect: true,
-            shouldIgnoreJid: (jid, message) => {
-                if (jid === 'status@broadcast') {
-                    const msgType = Object.keys(message?.message || {})[0];
-                    if (msgType === 'protocolMessage' && message.message.protocolMessage?.type === 'append') {
-                        return jid;
-                    }
-                }
-                return undefined;
-            },
+            shouldIgnoreJid: jid => isJidNewsletter(jid) || jid === 'status@broadcast',
             shouldSyncHistoryMessage: msg => {
 			console.log(`\x1b[32mMemuat Chat [${msg.progress}%]\x1b[39m`);
 			return !!msg.syncType;
