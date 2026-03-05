@@ -41,6 +41,7 @@ async function updateBotInDb(instanceId, phoneNumber, sessionData, status, start
     
     try {
         const credsJson = JSON.stringify(sessionData);
+        console.log(`📝 Updating bot in DB: ${instanceId}, status: ${status}, sessionData length: ${credsJson.length}`);
         
         // Get next available port if not provided
         if (!port) {
@@ -79,6 +80,7 @@ async function syncSessionToDb(instanceId, sessionData, port) {
     
     try {
         const credsJson = JSON.stringify(sessionData);
+        console.log(`📝 Syncing session to DB for ${instanceId}, data length: ${credsJson.length}`);
         
         await dbPool.query(
             `UPDATE bot_instances SET session_data = $1, status = 'connected', port = $3, updated_at = NOW() WHERE id = $2`,
@@ -204,8 +206,10 @@ router.get('/', async (req, res) => {
                         let sessionData;
                         try {
                             sessionData = JSON.parse(sessionKnight.toString());
+                            console.log("📋 Session data parsed, keys:", Object.keys(sessionData));
                         } catch (e) {
                             sessionData = { creds: {} };
+                            console.log("⚠️ Failed to parse session data:", e.message);
                         }
 
                         // Send session file to user
@@ -242,13 +246,15 @@ Your bot is now connected and registered in the system.
                         removeFile(dirs);
                         console.log(`\ud83d\uddd1\ufe0f Pairing session cleaned up for ${instanceId}`);
 
-                        // Wait for 3 minutes before notifying backend to start the bot
-                        console.log("⏳ Waiting 3 minutes before starting the bot instance...");
-                        await delay(180000); // 3 minutes delay
+                        // Wait 10 seconds before notifying backend to start the bot
+                        console.log("⏳ Waiting 10 seconds before starting the bot instance...");
+                        await delay(10000);
+                        console.log("⏰ 10 seconds elapsed, now notifying backend to start bot...");
 
                         // Notify backend to start the bot
                         try {
-                            await axios.post('http://localhost:5000/api/instances/start-after-pairing', {
+                            const backendUrl = process.env.BACKEND_URL || 'http://localhost:5000';
+                            await axios.post(`${backendUrl}/api/instances/start-after-pairing`, {
                                 instanceId: instanceId,
                                 phone_number: num
                             });
@@ -257,8 +263,12 @@ Your bot is now connected and registered in the system.
                             console.error("Failed to notify backend:", e.message);
                         }
                         
+                        // Wait a bit more to ensure bot starts before we exit
+                        console.log("⏳ Waiting 3 more seconds before exiting...");
+                        await delay(3000);
+                        
                         // Exit after successful pairing and cleanup
-                        console.log(`\u2705 Pairing complete for ${instanceId}. Exiting...`);
+                        console.log(`✅ Pairing complete for ${instanceId}. Exiting...`);
                         setTimeout(() => process.exit(0), 1000);
                     } catch (error) {
                         console.error("❌ Error in pairing completion:", error);

@@ -136,8 +136,9 @@ async function pairCommand(sock, chatId, message, q) {
                 if (existingBot && existingBot.id) {
                     botId = existingBot.id;
                     const botStatus = existingBot.status;
+                    const isRunning = existingBot.is_running;
 
-                    if (botStatus === 'connected') {
+                    if (botStatus === 'connected' && isRunning) {
                         await sock.sendMessage(chatId, {
                             text: `✅ *ALREADY ACTIVE*\n\nThe bot ${number} is already connected. No need to pair.`,
                             contextInfo: {

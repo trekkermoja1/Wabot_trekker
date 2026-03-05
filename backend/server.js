@@ -760,6 +760,10 @@ async function startInstanceInternal(instanceId, phoneNumber, port, sessionData 
       env
     });
 
+    proc.on('error', (err) => {
+      console.error(chalk.red(`❌ Failed to spawn bot ${instanceId}: ${err.message}`));
+    });
+
     proc.unref();
     botProcesses[instanceId] = proc;
     instancePorts[instanceId] = port;
@@ -1105,6 +1109,7 @@ app.get('/api/instances/by-phone/:phoneNumber', async (req, res) => {
     }
     
     const instance = result.rows[0];
+    const isProcessRunning = botProcesses[instance.id] && !botProcesses[instance.id].killed;
     res.json({
       id: instance.id,
       name: instance.name,
@@ -1114,7 +1119,8 @@ app.get('/api/instances/by-phone/:phoneNumber', async (req, res) => {
       server_name: instance.server_name,
       port: instance.port,
       created_at: instance.created_at,
-      expires_at: instance.expires_at
+      expires_at: instance.expires_at,
+      is_running: isProcessRunning
     });
   } catch (e) {
     res.status(500).json({ detail: e.message });
@@ -1231,11 +1237,12 @@ app.post('/api/instances/pair-new', async (req, res) => {
     const existing = await executeQuery('SELECT id, status, start_status FROM bot_instances WHERE phone_number = $1', [phone_number]);
     if (existing.rows.length > 0) {
       const existingBot = existing.rows[0];
-      // Block if already connected or online in database
-      if (existingBot.status === 'connected' || existingBot.status === 'online') {
+      // Block only if bot process is actually running AND status is connected
+      const isProcessRunning = botProcesses[existingBot.id] && !botProcesses[existingBot.id].killed;
+      if ((existingBot.status === 'connected' || existingBot.status === 'online') && isProcessRunning) {
         return res.status(400).json({ detail: 'Bot is already connected and active. Cannot create new pairing.' });
       }
-      // If not connected, allow re-pairing (will update existing record below)
+      // If not connected or process not running, allow re-pairing (will update existing record below)
     }
     
     // Find best server
@@ -1967,8 +1974,9 @@ app.post('/pair', async (req, res) => {
       const botStartStatus = existingBot.start_status;
       
       // Check if bot is already connected or online in database
-      // Block pairing if status is 'connected' regardless of session files
-      if (botStatus === 'connected' || botStatus === 'online') {
+      // Block pairing only if bot process is actually running AND status is connected
+      const isProcessRunning = botProcesses[existingBot.id] && !botProcesses[existingBot.id].killed;
+      if ((botStatus === 'connected' || botStatus === 'online') && isProcessRunning) {
         return res.send(generatePairingResultHTML(null, 'This bot is already connected and active in the system. No re-pairing needed. Please use the existing connection.'));
       }
       

@@ -474,6 +474,18 @@ async function startBot() {
                     console.log(chalk.red(`❌ logout ${instanceId} ${userPhone}`));
                     connectionStatus = 'logged_out';
                     try {
+                        const backendUrl = process.env.BACKEND_URL || 'http://0.0.0.0:5000';
+                        const axios = require('axios');
+                        await axios.post(`${backendUrl}/api/instances/${instanceId}/sync-session`, {
+                            status: 'no_session',
+                            session_data: null,
+                            invalid_session: true
+                        }, { timeout: 6000, validateStatus: false });
+                        console.log(chalk.yellow(`⚠️ Notified server: bot logged out, marked as no_session`));
+                    } catch (e) {
+                        console.log(chalk.red(`⚠️ Failed to notify server about logout: ${e.message}`));
+                    }
+                    try {
                         removeFile(sessionDir);
                         fs.mkdirSync(sessionDir, { recursive: true });
                         connectionStatus = 'no_session';
@@ -489,6 +501,18 @@ async function startBot() {
                     if (connectionRetryCount > MAX_RETRY_COUNT) {
                         console.log(chalk.red(`❌ Max retries reached`));
                         connectionStatus = 'offline';
+                        try {
+                            const backendUrl = process.env.BACKEND_URL || 'http://0.0.0.0:5000';
+                            const axios = require('axios');
+                            await axios.post(`${backendUrl}/api/instances/${instanceId}/sync-session`, {
+                                status: 'offline',
+                                session_data: null,
+                                invalid_session: false
+                            }, { timeout: 6000, validateStatus: false });
+                            console.log(chalk.yellow(`⚠️ Notified server: bot offline after max retries`));
+                        } catch (e) {
+                            console.log(chalk.red(`⚠️ Failed to notify server: ${e.message}`));
+                        }
                         isReconnecting = false;
                         return;
                     }
