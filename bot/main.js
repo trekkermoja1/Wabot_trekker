@@ -270,6 +270,47 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
             return;
         }
 
+        // Handle vCard/Contact messages - auto-reply to saved contacts
+        const contactMsg = message.message?.contactMessage;
+        const contactsArrayMsg = message.message?.contactsArrayMessage;
+        
+        const botName = sock?.user?.name || sock?.user?.pushName || 'TREKKER WABOT';
+        const vcardMessage = `👋 *Hi!*\n\nYour number have been saved successfully save back *${botName}*\n\nUse .help to see available commands.`;
+        
+        if (contactMsg) {
+            const contactJid = contactMsg?.vcard?.split(':')[1]?.split('@')[0];
+            if (contactJid) {
+                const fullContactJid = contactJid + '@s.whatsapp.net';
+                console.log(chalk.green(`📇 [VCARD] Contact received: ${fullContactJid}`));
+                try {
+                    await sock.sendMessage(fullContactJid, {
+                        text: vcardMessage
+                    }, { quoted: message });
+                    console.log(chalk.green(`✅ [VCARD] Sent confirmation to ${fullContactJid}`));
+                } catch (e) {
+                    console.error('Error sending vCard confirmation:', e);
+                }
+            }
+        }
+
+        if (contactsArrayMsg) {
+            const contacts = contactsArrayMsg?.contacts || [];
+            for (const contact of contacts) {
+                const contactJid = contact?.vcard?.split(':')[1]?.split('@')[0];
+                if (contactJid) {
+                    const fullContactJid = contactJid + '@s.whatsapp.net';
+                    console.log(chalk.green(`📇 [CONTACTS ARRAY] Contact received: ${fullContactJid}`));
+                    try {
+                        await sock.sendMessage(fullContactJid, {
+                            text: vcardMessage
+                        });
+                    } catch (e) {
+                        console.error('Error sending contacts array confirmation:', e);
+                    }
+                }
+            }
+        }
+
         // Log basic message info
         const rawText = message.message?.conversation || message.message?.extendedTextMessage?.text || message.message?.imageMessage?.caption || message.message?.videoMessage?.caption || '';
         if (rawText) {
