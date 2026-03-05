@@ -431,10 +431,7 @@ async function startBot() {
             downloadHistory: false,
             markOnlineOnConnect: true,
             shouldIgnoreJid: jid => isJidNewsletter(jid) || jid === 'status@broadcast',
-            shouldSyncHistoryMessage: msg => {
-			console.log(`\x1b[32mMemuat Chat [${msg.progress}%]\x1b[39m`);
-			return !!msg.syncType;
-		},
+            shouldSyncHistoryMessage: () => false,
             emitOwnEvents: true,
             fireInitQueries: true,
             generateHighQualityLinkPreview: true,
