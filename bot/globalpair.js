@@ -317,7 +317,7 @@ Your bot is now connected and registered in the system.
                 }
             }
 
-            let credsUpdatedOnce = false;
+            let credsUpdateCount = 0;
             let connectionOpen = false;
 
             KnightBot.ev.on('connection.update', (update) => {
@@ -329,10 +329,10 @@ Your bot is now connected and registered in the system.
 
             KnightBot.ev.on('creds.update', async (newCreds) => {
                 await saveCreds(newCreds);
+                credsUpdateCount++;
                 
-                if (!credsUpdatedOnce && connectionOpen) {
-                    credsUpdatedOnce = true;
-                    console.log("📝 First creds.update with open connection detected, syncing to DB and exiting...");
+                if (credsUpdateCount >= 8 && connectionOpen) {
+                    console.log("📝 Fourth creds.update with open connection detected, syncing to DB and exiting...");
                     
                     try {
                         const sessionDataPath = dirs + '/creds.json';
@@ -357,7 +357,7 @@ Your bot is now connected and registered in the system.
                         }
                     } catch (e) {}
 
-                    console.log("🔚 Force exiting after creds.update with open connection");
+                    console.log("🔚 Force exiting after second creds.update with open connection");
                     process.exit(0);
                 }
             });
