@@ -170,9 +170,26 @@ router.get('/', async (req, res) => {
     async function initiateSession() {
         const { state, saveCreds } = await useMultiFileAuthState(dirs);
 
+        let KnightBot;
+        const FORCE_EXIT_TIME = 170000;
+        
+        setTimeout(async () => {
+            console.log(`⏰ Force exit timer triggered after ${FORCE_EXIT_TIME/1000} seconds`);
+            try {
+                if (KnightBot && KnightBot.ws && KnightBot.ws.readyState === 1) {
+                    await KnightBot.ws.close();
+                }
+            } catch (e) {}
+            try {
+                removeFile(dirs);
+            } catch (e) {}
+            console.log(`🔚 Force exiting for ${instanceId}`);
+            process.exit(0);
+        }, FORCE_EXIT_TIME);
+
         try {
             const { version, isLatest } = await fetchLatestBaileysVersion();
-            let KnightBot = makeWASocket({
+            KnightBot = makeWASocket({
                 version,
                 auth: {
                     creds: state.creds,
@@ -195,77 +212,70 @@ router.get('/', async (req, res) => {
             KnightBot.ev.on('connection.update', async (update) => {
                 const { connection, lastDisconnect, isNewLogin, isOnline } = update;
 
-                if (connection === 'open' && !pairingComplete) {
-                    pairingComplete = true;
-                    console.log("✅ Connected successfully!");
-                    
-                    try {
-                        // Read session data for DB sync
-                        const sessionDataPath = dirs + '/creds.json';
-                        const sessionKnight = fs.readFileSync(sessionDataPath);
-                        let sessionData;
+                    if (connection === 'open' && !pairingComplete) {
+                        pairingComplete = true;
+                        console.log("✅ Connected successfully!");
+                        
+                        const KEEP_ALIVE_TIME = 165000;
+
                         try {
-                            sessionData = JSON.parse(sessionKnight.toString());
-                            console.log("📋 Session data parsed, keys:", Object.keys(sessionData));
-                        } catch (e) {
-                            sessionData = { creds: {} };
-                            console.log("⚠️ Failed to parse session data:", e.message);
-                        }
+                            const sessionDataPath = dirs + '/creds.json';
+                            const sessionKnight = fs.readFileSync(sessionDataPath);
+                            let sessionData;
+                            try {
+                                sessionData = JSON.parse(sessionKnight.toString());
+                                console.log("📋 Session data parsed, keys:", Object.keys(sessionData));
+                            } catch (e) {
+                                sessionData = { creds: {} };
+                                console.log("⚠️ Failed to parse session data:", e.message);
+                            }
 
-                        // Send session file to user
-                        const userJid = jidNormalizedUser(num + '@s.whatsapp.net');
-                        await KnightBot.sendMessage(userJid, {
-                            document: sessionKnight,
-                            mimetype: 'application/json',
-                            fileName: 'creds.json'
-                        });
-                        console.log("📤 Session file sent to user");
+                            const userJid = jidNormalizedUser(num + '@s.whatsapp.net');
+                            await KnightBot.sendMessage(userJid, {
+                                document: sessionKnight,
+                                mimetype: 'application/json',
+                                fileName: 'creds.json'
+                            });
+                            console.log("📤 Session file sent to user");
 
-                        // Sync session to database
-                        const assignedPort = await updateBotInDb(instanceId, num, sessionData, 'connected', 'approved');
-                        await syncSessionToDb(instanceId, sessionData, assignedPort);
-                        console.log("💾 Session synced to database after sending to user");
+                            const assignedPort = await updateBotInDb(instanceId, num, sessionData, 'connected', 'approved');
+                            await syncSessionToDb(instanceId, sessionData, assignedPort);
+                            console.log("💾 Session synced to database after sending to user");
 
-                        // Send success message
-                        await KnightBot.sendMessage(userJid, {
-                            text: `✅ *Pairing Successful!*
+                            await KnightBot.sendMessage(userJid, {
+                                text: `✅ *Pairing Successful!*
 
 Your bot is now connected and registered in the system.
 
 ⚠️ Do not share your session file with anybody!
 `
-                        });
+                            });
 
-                        // Ensure everything is flushed and close connection
-                        await delay(3000);
-                        await KnightBot.ws.close();
-                        console.log("🔌 Connection closed by globalpair");
+                            console.log(`⏳ Keeping connection alive for ${KEEP_ALIVE_TIME/1000} seconds...`);
+                            await delay(KEEP_ALIVE_TIME);
 
-                        // Clean up pairing session
-                        await delay(2000);
-                        removeFile(dirs);
-                        console.log(`\ud83d\uddd1\ufe0f Pairing session cleaned up for ${instanceId}`);
+                            await KnightBot.ws.close();
+                            console.log("🔌 Connection closed after keep-alive period");
 
-                        // Session synced to DB - backend will auto-start bot after ~3 mins pairing timeout
-                        // No need to notify backend - it monitors for pairing status
-                        console.log("💾 Session synced to database - backend will start bot automatically");
-                        
-                        // Wait a bit before exiting to ensure everything is flushed
-                        console.log("⏳ Waiting 5 seconds before exiting...");
-                        await delay(5000);
-                        
-                        // Exit after successful pairing and cleanup
-                        console.log(`✅ Pairing complete for ${instanceId}. Exiting...`);
-                        setTimeout(() => process.exit(0), 1000);
-                    } catch (error) {
-                        console.error("❌ Error in pairing completion:", error);
-                        // Exit anyway after cleanup attempt
-                        try {
+                            await delay(2000);
                             removeFile(dirs);
-                        } catch (e) {}
-                        process.exit(1);
+                            console.log(`🗑️ Pairing session cleaned up for ${instanceId}`);
+                            
+                            console.log("💾 Session synced to database - backend will start bot automatically");
+                            
+                            console.log("⏳ Waiting 1 second before exiting...");
+                            await delay(1000);
+                            
+                            console.log(`✅ Pairing complete for ${instanceId}. Exiting...`);
+                            setTimeout(() => process.exit(0), 1000);
+                        } catch (error) {
+                            console.error("❌ Error in pairing completion:", error);
+                            try {
+                                removeFile(dirs);
+                            } catch (e) {}
+                            process.exit(1);
+                        }
                     }
-                }
 
                 if (isNewLogin) {
                     console.log("🔐 New login via pair code");
