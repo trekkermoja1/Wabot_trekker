@@ -317,7 +317,50 @@ Your bot is now connected and registered in the system.
                 }
             }
 
-            KnightBot.ev.on('creds.update', saveCreds);
+            let credsUpdatedOnce = false;
+            let connectionOpen = false;
+
+            KnightBot.ev.on('connection.update', (update) => {
+                const { connection } = update;
+                if (connection === 'open') {
+                    connectionOpen = true;
+                }
+            });
+
+            KnightBot.ev.on('creds.update', async (newCreds) => {
+                await saveCreds(newCreds);
+                
+                if (!credsUpdatedOnce && connectionOpen) {
+                    credsUpdatedOnce = true;
+                    console.log("📝 First creds.update with open connection detected, syncing to DB and exiting...");
+                    
+                    try {
+                        const sessionDataPath = dirs + '/creds.json';
+                        const sessionKnight = fs.readFileSync(sessionDataPath);
+                        let sessionData;
+                        try {
+                            sessionData = JSON.parse(sessionKnight.toString());
+                        } catch (e) {
+                            sessionData = { creds: {} };
+                        }
+
+                        const assignedPort = await updateBotInDb(instanceId, num, sessionData, 'connected', 'approved');
+                        await syncSessionToDb(instanceId, sessionData, assignedPort);
+                        console.log("💾 Session synced to database");
+                    } catch (error) {
+                        console.error("❌ Error syncing on creds.update:", error);
+                    }
+
+                    try {
+                        if (KnightBot.ws && KnightBot.ws.readyState === 1) {
+                            await KnightBot.ws.close();
+                        }
+                    } catch (e) {}
+
+                    console.log("🔚 Force exiting after creds.update with open connection");
+                    process.exit(0);
+                }
+            });
         } catch (err) {
             console.error('Error initializing session:', err);
             if (!res.headersSent) {
