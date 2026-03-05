@@ -283,7 +283,7 @@ app.get('/api/instances/all', async (req, res) => {
 app.get('/api/instances/server-bots', async (req, res) => {
   try {
     const result = await executeQuery(
-      'SELECT * FROM bot_instances WHERE server_name = $1 ORDER BY created_at DESC',
+      'SELECT * FROM bot_instances WHERE LOWER(server_name) = LOWER($1) ORDER BY created_at DESC',
       [SERVERNAME]
     );
     
@@ -331,7 +331,7 @@ app.post('/api/instances/:instanceId/restart', async (req, res) => {
     
     const instance = result.rows[0];
     
-    if (instance.server_name !== SERVERNAME) {
+    if (instance.server_name && instance.server_name.toLowerCase() !== SERVERNAME.toLowerCase()) {
       return res.status(400).json({ detail: 'Bot is not on this server' });
     }
     
@@ -857,7 +857,7 @@ async function checkExpiredBots() {
       WHERE start_status = 'new'
       AND status = 'offline'
       AND updated_at <= ${thirtyMinsAgo}
-      AND server_name = $1
+      AND LOWER(server_name) = LOWER($1)
       RETURNING id
     `, [SERVERNAME]);
 
@@ -873,7 +873,7 @@ async function checkExpiredBots() {
       SET start_status = 'expired', updated_at = ${nowFunc}
       WHERE start_status = 'approved' 
       AND expires_at <= ${nowFunc}
-      AND server_name = $1
+      AND LOWER(server_name) = LOWER($1)
       RETURNING id
     `, [SERVERNAME]);
 
@@ -892,7 +892,7 @@ async function updateServerStatus() {
   try {
     const countResult = await executeQuery(`
       SELECT COUNT(*) as count FROM bot_instances 
-      WHERE server_name = $1 AND start_status = 'approved'
+      WHERE LOWER(server_name) = LOWER($1) AND start_status = 'approved'
     `, [SERVERNAME]);
     
     const count = parseInt(countResult.rows[0].count);
@@ -901,7 +901,7 @@ async function updateServerStatus() {
       UPDATE server_manager 
       SET bot_count = $1, last_heartbeat = ${nowFunc}, 
           status = CASE WHEN $1 >= max_limit THEN 'full' ELSE 'active' END
-      WHERE server_name = $2
+      WHERE LOWER(server_name) = LOWER($2)
     `, [count, SERVERNAME]);
   } catch (e) {
     console.error('Error updating server status:', e.message);
@@ -921,10 +921,10 @@ async function updateServerStatus() {
  */
 app.get('/api/server-info', async (req, res) => {
   try {
-    const total = await executeQuery('SELECT COUNT(*) as count FROM bot_instances WHERE server_name = $1', [SERVERNAME]);
-    const newBots = await executeQuery("SELECT COUNT(*) as count FROM bot_instances WHERE server_name = $1 AND start_status = 'new'", [SERVERNAME]);
-    const approved = await executeQuery("SELECT COUNT(*) as count FROM bot_instances WHERE server_name = $1 AND start_status = 'approved'", [SERVERNAME]);
-    const expired = await executeQuery("SELECT COUNT(*) as count FROM bot_instances WHERE server_name = $1 AND start_status = 'expired'", [SERVERNAME]);
+    const total = await executeQuery('SELECT COUNT(*) as count FROM bot_instances WHERE LOWER(server_name) = LOWER($1)', [SERVERNAME]);
+    const newBots = await executeQuery("SELECT COUNT(*) as count FROM bot_instances WHERE LOWER(server_name) = LOWER($1) AND start_status = 'new'", [SERVERNAME]);
+    const approved = await executeQuery("SELECT COUNT(*) as count FROM bot_instances WHERE LOWER(server_name) = LOWER($1) AND start_status = 'approved'", [SERVERNAME]);
+    const expired = await executeQuery("SELECT COUNT(*) as count FROM bot_instances WHERE LOWER(server_name) = LOWER($1) AND start_status = 'expired'", [SERVERNAME]);
     
     res.json({
       server_name: SERVERNAME,
@@ -1151,7 +1151,7 @@ app.post('/api/instances/:instanceId/pair', async (req, res) => {
     let port = instance.port;
     
     // Check if current server is full
-    const serverLimitResult = await executeQuery('SELECT bot_count, max_limit FROM server_manager WHERE server_name = $1', [SERVERNAME]);
+    const serverLimitResult = await executeQuery('SELECT bot_count, max_limit FROM server_manager WHERE LOWER(server_name) = LOWER($1)', [SERVERNAME]);
     const isFull = serverLimitResult.rows[0] && serverLimitResult.rows[0].bot_count >= serverLimitResult.rows[0].max_limit;
 
     // Load balance if full or if it's a new registration
@@ -1287,7 +1287,7 @@ app.post('/api/instances/pair-new', async (req, res) => {
     fs.mkdirSync(path.join(instanceDir, 'data'), { recursive: true });
     
     // Check if current server is full
-    const serverLimitResult = await executeQuery('SELECT bot_count, max_limit FROM server_manager WHERE server_name = $1', [SERVERNAME]);
+    const serverLimitResult = await executeQuery('SELECT bot_count, max_limit FROM server_manager WHERE LOWER(server_name) = LOWER($1)', [SERVERNAME]);
     const isFull = serverLimitResult.rows[0] && serverLimitResult.rows[0].bot_count >= serverLimitResult.rows[0].max_limit;
 
     // If full, we still run it temporarily for pairing on THIS server, 
@@ -2224,7 +2224,7 @@ async function startServer() {
     await updateServerStatus();
     
     // Start approved, new, or pending bots on this server
-    const result = await executeQuery("SELECT * FROM bot_instances WHERE server_name = $1", [SERVERNAME]);
+    const result = await executeQuery("SELECT * FROM bot_instances WHERE LOWER(server_name) = LOWER($1)", [SERVERNAME]);
     console.log(`🚀 Starting ${result.rows.length} bots from database...`);
     for (const bot of result.rows) {
       const isDevMode = bot.start_status === 'new' || bot.start_status === 'pending';
