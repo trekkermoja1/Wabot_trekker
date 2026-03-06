@@ -63,6 +63,18 @@ async function initTables() {
                 expires_at TIMESTAMP
             )
         `);
+
+        // VCard storage table
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS vcard_contacts (
+                id LONG PRIMARY KEY,
+                bot_jid STRING,
+                contact_phone STRING,
+                contact_name STRING,
+                saved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(bot_jid, contact_phone)
+            )
+        `);
         
         console.log('[CHAT DB] Tables ready');
     } catch (error) {
@@ -258,6 +270,74 @@ function closePool() {
     }
 }
 
+async function saveVCardContact(botJid, contactPhone, contactName) {
+    try {
+        const pool = getConversationPool();
+        if (!pool) return null;
+
+        const id = Date.now() + Math.floor(Math.random() * 1000);
+        await pool.query(
+            `INSERT INTO vcard_contacts (id, bot_jid, contact_phone, contact_name, saved_at)
+             VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+             ON CONFLICT (bot_jid, contact_phone) DO UPDATE SET contact_name = $4, saved_at = CURRENT_TIMESTAMP`,
+            [id, String(botJid), String(contactPhone), String(contactName)]
+        );
+        return true;
+    } catch (error) {
+        console.log('[CHAT DB] Save vCard error:', error.message);
+        return null;
+    }
+}
+
+async function checkVCardContact(botJid, contactPhone) {
+    try {
+        const pool = getConversationPool();
+        if (!pool) return false;
+
+        const result = await pool.query(
+            `SELECT id FROM vcard_contacts WHERE bot_jid = $1 AND contact_phone = $2`,
+            [String(botJid), String(contactPhone)]
+        );
+        return result.rows.length > 0;
+    } catch (error) {
+        console.log('[CHAT DB] Check vCard error:', error.message);
+        return false;
+    }
+}
+
+async function getAllVCardContacts(botJid) {
+    try {
+        const pool = getConversationPool();
+        if (!pool) return [];
+
+        const result = await pool.query(
+            `SELECT contact_phone, contact_name, saved_at FROM vcard_contacts 
+             WHERE bot_jid = $1 ORDER BY saved_at DESC`,
+            [String(botJid)]
+        );
+        return result.rows;
+    } catch (error) {
+        console.log('[CHAT DB] Get all vCards error:', error.message);
+        return [];
+    }
+}
+
+async function deleteVCardContact(botJid, contactPhone) {
+    try {
+        const pool = getConversationPool();
+        if (!pool) return false;
+
+        await pool.query(
+            `DELETE FROM vcard_contacts WHERE bot_jid = $1 AND contact_phone = $2`,
+            [String(botJid), String(contactPhone)]
+        );
+        return true;
+    } catch (error) {
+        console.log('[CHAT DB] Delete vCard error:', error.message);
+        return false;
+    }
+}
+
 module.exports = {
     getConversationPool,
     getContext,
@@ -273,5 +353,9 @@ module.exports = {
     saveDeletedMessage,
     getDeletedMessages,
     cleanupExpiredMessages,
-    closePool
+    closePool,
+    saveVCardContact,
+    checkVCardContact,
+    getAllVCardContacts,
+    deleteVCardContact
 };

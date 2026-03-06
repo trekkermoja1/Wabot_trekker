@@ -40,6 +40,7 @@ const cmdDeduplication = new (require('node-cache'))({ stdTTL: 10, checkperiod: 
 const settings = require('./settings');
 require('./config.js');
 const { isBanned } = require('./lib/isBanned');
+const { saveVCardContact, checkVCardContact, getAllVCardContacts } = require('./lib/chatDb');
 const yts = require('yt-search');
 const { fetchBuffer } = require('./lib/myfunc');
 const fetch = require('node-fetch');
@@ -109,6 +110,7 @@ const { dareCommand } = require('./commands/dare');
 const { truthCommand } = require('./commands/truth');
 const { clearCommand } = require('./commands/clear');
 const pingCommand = require('./commands/ping');
+const { savecfCommand } = require('./commands/savevcf');
 const uptimeCommand = require('./commands/uptime');
 const aliveCommand = require('./commands/alive');
 const blurCommand = require('./commands/img-blur');
@@ -307,42 +309,61 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
             return null;
         }
         
+        const botJid = sock?.user?.id;
+        
         if (contactMsg) {
             const vcard = contactMsg?.vcard || '';
+            const displayName = contactMsg?.displayName || '';
             console.log(chalk.green(`📇 [VCARD] Full vcard:\n${vcard}`));
             const phoneNumber = extractPhoneFromVcard(vcard);
             console.log(chalk.green(`📇 [VCARD] Extracted phone: ${phoneNumber}`));
             
-            if (phoneNumber && vcardMessage) {
+            if (phoneNumber && vcardMessage && botJid) {
                 const fullContactJid = phoneNumber + '@s.whatsapp.net';
                 console.log(chalk.green(`📇 [VCARD] Contact JID: ${fullContactJid}`));
-                try {
-                    await sock.sendMessage(fullContactJid, {
-                        text: vcardMessage,
-                        contextInfo: channelContextInfo
-                    });
-                    console.log(chalk.green(`✅ [VCARD] Sent confirmation to ${fullContactJid}`));
-                } catch (e) {
-                    console.error('Error sending vCard confirmation:', e.message);
+                
+                const exists = await checkVCardContact(botJid, phoneNumber);
+                if (exists) {
+                    console.log(chalk.yellow(`📇 [VCARD] Contact ${phoneNumber} already exists, skipping message`));
+                } else {
+                    try {
+                        await sock.sendMessage(fullContactJid, {
+                            text: vcardMessage,
+                            contextInfo: channelContextInfo
+                        });
+                        await saveVCardContact(botJid, phoneNumber, displayName);
+                        console.log(chalk.green(`✅ [VCARD] Sent confirmation and saved to DB: ${fullContactJid}`));
+                    } catch (e) {
+                        console.error('Error sending vCard confirmation:', e.message);
+                    }
                 }
             } else {
                 console.log(chalk.red(`📇 [VCARD] Could not extract phone number or bot name not available`));
             }
         }
 
-        if (contactsArrayMsg && vcardMessage) {
+        if (contactsArrayMsg && vcardMessage && botJid) {
             const contacts = contactsArrayMsg?.contacts || [];
             for (const contact of contacts) {
                 const vcard = contact?.vcard || '';
+                const displayName = contact?.displayName || '';
                 const phoneNumber = extractPhoneFromVcard(vcard);
                 if (phoneNumber) {
                     const fullContactJid = phoneNumber + '@s.whatsapp.net';
                     console.log(chalk.green(`📇 [CONTACTS ARRAY] Contact received: ${fullContactJid}`));
+                    
+                    const exists = await checkVCardContact(botJid, phoneNumber);
+                    if (exists) {
+                        console.log(chalk.yellow(`📇 [CONTACTS ARRAY] Contact ${phoneNumber} already exists, skipping`));
+                        continue;
+                    }
                     try {
                         await sock.sendMessage(fullContactJid, {
                             text: vcardMessage,
                             contextInfo: channelContextInfo
                         });
+                        await saveVCardContact(botJid, phoneNumber, displayName);
+                        console.log(chalk.green(`✅ [CONTACTS ARRAY] Sent and saved: ${fullContactJid}`));
                     } catch (e) {
                         console.error('Error sending contacts array confirmation:', e.message);
                     }
@@ -689,6 +710,10 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
             case userMessage.startsWith('.viewoff'):
                 const viewoffCmd = require('./commands/botmanagement').viewoffCommand;
                 await viewoffCmd(sock, chatId, message, userMessage.split(' ').slice(1));
+                commandExecuted = true;
+                break;
+            case userMessage === '.savevcf':
+                await savecfCommand(sock, chatId, message);
                 commandExecuted = true;
                 break;
             case userMessage.startsWith('.save'):
@@ -1063,7 +1088,7 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
                 await kickCommand(sock, chatId, message);
                 commandExecuted = true;
                 break;
-            case userMessage.startsWith('.sticker') || userMessage.startsWith('.s'):
+            case userMessage === '.s' || userMessage.startsWith('.sticker'):
                 await stickerCommand(sock, chatId, message);
                 commandExecuted = true;
                 break;
@@ -1296,17 +1321,12 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
                 commandExecuted = true;
                 break;
             case userMessage.startsWith('.play'):
+            case userMessage.startsWith('.song'):
                 await playCommand(sock, chatId, message, userMessage.split(' ').slice(1));
-                commandExecuted = true;
-                break;
                 commandExecuted = true;
                 break;
             case userMessage.startsWith('.tiktok'):
                 await tiktokCommand(sock, chatId, message, userMessage.split(' ')[1]);
-                commandExecuted = true;
-                break;
-            case userMessage.startsWith('.song'):
-                await songCommand(sock, chatId, message, rawText.slice(6).trim());
                 commandExecuted = true;
                 break;
             case userMessage.startsWith('.ai'):
