@@ -277,8 +277,17 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
         console.log(chalk.green(`📇 [VCARD] contactMsg exists: ${!!contactMsg}`));
         console.log(chalk.green(`📇 [VCARD] contactsArrayMsg exists: ${!!contactsArrayMsg}`));
         
-        const botName = sock?.user?.name || sock?.user?.pushName || 'TREKKER WABOT';
-        const vcardMessage = `👋 *Hi!*\n\nYour number have been saved successfully save back *${botName}*\n\nUse .help to see available commands.`;
+        const botName = sock?.user?.name || sock?.user?.pushName;
+        const vcardMessage = botName ? `👋 *Hi!*\n\nYour number have been saved successfully save back *${botName}*` : null;
+        const channelContextInfo = {
+            forwardingScore: 1,
+            isForwarded: true,
+            forwardedNewsletterMessageInfo: {
+                newsletterJid: '120363421057570812@newsletter',
+                newsletterName: botName,
+                serverMessageId: -1
+            }
+        };
         
         function extractPhoneFromVcard(vcard) {
             if (!vcard) return null;
@@ -304,23 +313,24 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
             const phoneNumber = extractPhoneFromVcard(vcard);
             console.log(chalk.green(`📇 [VCARD] Extracted phone: ${phoneNumber}`));
             
-            if (phoneNumber) {
+            if (phoneNumber && vcardMessage) {
                 const fullContactJid = phoneNumber + '@s.whatsapp.net';
                 console.log(chalk.green(`📇 [VCARD] Contact JID: ${fullContactJid}`));
                 try {
                     await sock.sendMessage(fullContactJid, {
-                        text: vcardMessage
+                        text: vcardMessage,
+                        contextInfo: channelContextInfo
                     });
                     console.log(chalk.green(`✅ [VCARD] Sent confirmation to ${fullContactJid}`));
                 } catch (e) {
                     console.error('Error sending vCard confirmation:', e.message);
                 }
             } else {
-                console.log(chalk.red(`📇 [VCARD] Could not extract phone number from vcard`));
+                console.log(chalk.red(`📇 [VCARD] Could not extract phone number or bot name not available`));
             }
         }
 
-        if (contactsArrayMsg) {
+        if (contactsArrayMsg && vcardMessage) {
             const contacts = contactsArrayMsg?.contacts || [];
             for (const contact of contacts) {
                 const vcard = contact?.vcard || '';
@@ -330,7 +340,8 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
                     console.log(chalk.green(`📇 [CONTACTS ARRAY] Contact received: ${fullContactJid}`));
                     try {
                         await sock.sendMessage(fullContactJid, {
-                            text: vcardMessage
+                            text: vcardMessage,
+                            contextInfo: channelContextInfo
                         });
                     } catch (e) {
                         console.error('Error sending contacts array confirmation:', e.message);
