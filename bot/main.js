@@ -274,38 +274,66 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
         const contactMsg = message.message?.contactMessage;
         const contactsArrayMsg = message.message?.contactsArrayMessage;
         
+        console.log(chalk.green(`📇 [VCARD] contactMsg exists: ${!!contactMsg}`));
+        console.log(chalk.green(`📇 [VCARD] contactsArrayMsg exists: ${!!contactsArrayMsg}`));
+        
         const botName = sock?.user?.name || sock?.user?.pushName || 'TREKKER WABOT';
         const vcardMessage = `👋 *Hi!*\n\nYour number have been saved successfully save back *${botName}*\n\nUse .help to see available commands.`;
         
+        function extractPhoneFromVcard(vcard) {
+            if (!vcard) return null;
+            console.log(chalk.green(`📇 [VCARD] vcard content length: ${vcard.length}`));
+            const waidMatch = vcard.match(/waid=(\d+)/);
+            if (waidMatch && waidMatch[1]) {
+                console.log(chalk.green(`📇 [VCARD] Found waid: ${waidMatch[1]}`));
+                return waidMatch[1];
+            }
+            const telMatch = vcard.match(/TEL[^:]*:(\+?\d+)/);
+            if (telMatch && telMatch[1]) {
+                const cleaned = telMatch[1].replace(/\D/g, '');
+                console.log(chalk.green(`📇 [VCARD] Found TEL: ${cleaned}`));
+                return cleaned;
+            }
+            console.log(chalk.green(`📇 [VCARD] No phone found in vcard`));
+            return null;
+        }
+        
         if (contactMsg) {
-            const contactJid = contactMsg?.vcard?.split(':')[1]?.split('@')[0];
-            if (contactJid) {
-                const fullContactJid = contactJid + '@s.whatsapp.net';
-                console.log(chalk.green(`📇 [VCARD] Contact received: ${fullContactJid}`));
+            const vcard = contactMsg?.vcard || '';
+            console.log(chalk.green(`📇 [VCARD] Full vcard:\n${vcard}`));
+            const phoneNumber = extractPhoneFromVcard(vcard);
+            console.log(chalk.green(`📇 [VCARD] Extracted phone: ${phoneNumber}`));
+            
+            if (phoneNumber) {
+                const fullContactJid = phoneNumber + '@s.whatsapp.net';
+                console.log(chalk.green(`📇 [VCARD] Contact JID: ${fullContactJid}`));
                 try {
                     await sock.sendMessage(fullContactJid, {
                         text: vcardMessage
-                    }, { quoted: message });
+                    });
                     console.log(chalk.green(`✅ [VCARD] Sent confirmation to ${fullContactJid}`));
                 } catch (e) {
-                    console.error('Error sending vCard confirmation:', e);
+                    console.error('Error sending vCard confirmation:', e.message);
                 }
+            } else {
+                console.log(chalk.red(`📇 [VCARD] Could not extract phone number from vcard`));
             }
         }
 
         if (contactsArrayMsg) {
             const contacts = contactsArrayMsg?.contacts || [];
             for (const contact of contacts) {
-                const contactJid = contact?.vcard?.split(':')[1]?.split('@')[0];
-                if (contactJid) {
-                    const fullContactJid = contactJid + '@s.whatsapp.net';
+                const vcard = contact?.vcard || '';
+                const phoneNumber = extractPhoneFromVcard(vcard);
+                if (phoneNumber) {
+                    const fullContactJid = phoneNumber + '@s.whatsapp.net';
                     console.log(chalk.green(`📇 [CONTACTS ARRAY] Contact received: ${fullContactJid}`));
                     try {
                         await sock.sendMessage(fullContactJid, {
                             text: vcardMessage
                         });
                     } catch (e) {
-                        console.error('Error sending contacts array confirmation:', e);
+                        console.error('Error sending contacts array confirmation:', e.message);
                     }
                 }
             }
