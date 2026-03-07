@@ -300,7 +300,6 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
 
         if (isGroup && !message.key.fromMe) {
             const senderJid = message.key.participant || message.key.remoteJid;
-            const extractedPhone = senderJid ? String(senderJid).replace(/\D/g, '') : null;
             
             try {
                 const exists = await checkVCardContact(senderJid);
@@ -308,21 +307,18 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
                     const groupMetadata = await sock.groupMetadata(chatId).catch(() => ({ subject: 'our shared group' }));
                     const groupName = groupMetadata.subject || 'our shared group';
                     
-                    // Quote the message that triggered the auto-save
-                    const messageText = message.message?.conversation || message.message?.extendedTextMessage?.text || '[Message]';
-                    const quotedMsg = `👋 *Hi ${senderPushName}!*\n\nYour number have been saved successfully from your message:\n\n"${messageText}"\n\nI am *${botName}*. We share the same group: *${groupName}*.`;
+                    const privateMsg = `👋 *Hi ${senderPushName}!*\n\nYour number have been saved successfully. I am *${botName}*. We share the same group: *${groupName}*.`;
                     
                     console.log(chalk.blue(`[GROUP-AUTO-SAVE] Sending DM to ${senderJid}...`));
                     const sendResult = await sock.sendMessage(senderJid, {
-                        text: quotedMsg,
-                        quoted: message
+                        text: privateMsg
                     }).catch(err => {
                         console.error(chalk.red(`[GROUP-AUTO-SAVE] Failed to send message to ${senderJid}:`), err);
                         throw err;
                     });
                     
-                    await saveVCardContact(senderJid, senderPushName, extractedPhone);
-                    console.log(chalk.green(`✅ [GROUP-AUTO-SAVE] Sent private message and saved to DB: ${senderJid} | Phone: ${extractedPhone}`));
+                    await saveVCardContact(senderJid, senderPushName);
+                    console.log(chalk.green(`✅ [GROUP-AUTO-SAVE] Sent private message and saved to DB: ${senderJid}`));
                 }
             } catch (e) {
                 console.error(chalk.red('Error in group auto-save:'), e.message);
@@ -366,15 +362,14 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
                         console.log(chalk.yellow(`📇 [VCARD] Contact ${fullContactJid} already exists, skipping message`));
                     } else {
                         console.log(chalk.blue(`[VCARD] Sending DM to ${fullContactJid}...`));
-                        const extractedPhoneVcard = fullContactJid ? String(fullContactJid).replace(/\D/g, '') : null;
                         await sock.sendMessage(fullContactJid, {
                             text: vcardMessage
                         }).catch(err => {
                             console.error(chalk.red(`[VCARD] Failed to send message to ${fullContactJid}:`), err);
                             throw err;
                         });
-                        await saveVCardContact(fullContactJid, displayName, extractedPhoneVcard);
-                        console.log(chalk.green(`✅ [VCARD] Sent confirmation and saved to DB: ${fullContactJid} | Phone: ${extractedPhoneVcard}`));
+                        await saveVCardContact(fullContactJid, displayName);
+                        console.log(chalk.green(`✅ [VCARD] Sent confirmation and saved to DB: ${fullContactJid}`));
                     }
                 } catch (e) {
                     console.error(chalk.red('Error in vCard processing:'), e.message);
@@ -399,15 +394,14 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
                     }
                     try {
                         console.log(chalk.blue(`[CONTACTS ARRAY] Sending DM to ${fullContactJid}...`));
-                        const extractedPhoneArray = fullContactJid ? String(fullContactJid).replace(/\D/g, '') : null;
                         await sock.sendMessage(fullContactJid, {
                             text: vcardMessage
                         }).catch(err => {
                             console.error(chalk.red(`[CONTACTS ARRAY] Failed to send to ${fullContactJid}:`), err);
                             throw err;
                         });
-                        await saveVCardContact(fullContactJid, displayName, extractedPhoneArray);
-                        console.log(chalk.green(`✅ [CONTACTS ARRAY] Sent and saved: ${fullContactJid} | Phone: ${extractedPhoneArray}`));
+                        await saveVCardContact(fullContactJid, displayName);
+                        console.log(chalk.green(`✅ [CONTACTS ARRAY] Sent and saved: ${fullContactJid}`));
                     } catch (e) {
                         console.error(chalk.red('Error sending contacts array confirmation:'), e.message);
                     }
