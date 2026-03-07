@@ -415,7 +415,6 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
         const senderId = message.key.participant || message.key.remoteJid;
         console.log(chalk.blue(`📩 [MSG SENDER] ${senderId}`));
         const senderNumber = senderId.split('@')[0].replace(/[^0-9]/g, '');
-        const isGroup = chatId.endsWith('@g.us');
 
         // Check for botoff status
         let isBotOff = false;
