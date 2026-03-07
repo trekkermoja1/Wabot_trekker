@@ -43,19 +43,12 @@ WhatsApp Bot with Backend and Frontend.
 - (2026-01-28) Fixed owner detection in isOwner.js
 - (2026-01-31) Added 30+ new commands (privacy, chat ops, user query)
 - (2026-01-31) Fixed `.block` command with Baileys updateBlockStatus
-- (2026-03-07) **Group auto-save and contact storage improvements:**
+- (2026-03-07) **Group auto-save improvements:**
   - Now quotes the original message when replying privately to a user
   - Saves both JID and phone number (extracted from JID) to database
   - Updated vcard_contacts table schema to include contact_jid column
   - All contact saving functions now preserve both JID and phone number
   - `.savevcf` command now uses phone number for VCF creation
-  - **Fixed LID to JID conversion:**
-    - Added `ensureJidFormat()` helper to convert LID (phone number only) to proper JID format (phone@s.whatsapp.net)
-    - Added `extractLid()` helper to extract phone numbers from JID
-    - Updated `saveVCardContact()` to always store proper JID format
-    - Updated `checkVCardContact()` to perform lookups using proper JID format
-    - Added automatic migration function that converts existing LID-only records to proper JID format on startup
-    - Ensures all event lookups and matching works correctly with proper @s.whatsapp.net format
 
 ## Sudo Commands (Development Mode)
 Currently in DEV_MODE - anyone can execute sudo commands. To disable, set `DEV_MODE = false` in `bot/commands/botmanagement.js`.

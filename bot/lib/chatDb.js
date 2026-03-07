@@ -2,24 +2,6 @@ const { Pool } = require('pg');
 
 let conversationPool = null;
 
-// Helper function to convert LID to JID format
-function ensureJidFormat(identifier) {
-    if (!identifier) return identifier;
-    const str = String(identifier).trim();
-    // If it already has @, it's already a JID
-    if (str.includes('@')) return str;
-    // Extract just the numbers (LID)
-    const lid = str.replace(/\D/g, '');
-    // Convert to JID format with @s.whatsapp.net suffix
-    return `${lid}@s.whatsapp.net`;
-}
-
-// Helper function to extract LID (phone number) from JID
-function extractLid(jidOrPhone) {
-    if (!jidOrPhone) return null;
-    return String(jidOrPhone).replace(/\D/g, '');
-}
-
 function getConversationPool() {
     if (conversationPool) return conversationPool;
 
@@ -94,44 +76,8 @@ async function initTables() {
         `);
         
         console.log('[CHAT DB] Tables ready');
-        
-        // Migrate existing LID records to proper JID format
-        await migrateContactsToJidFormat();
     } catch (error) {
         console.log('[CHAT DB] Table init:', error.message);
-    }
-}
-
-// Migration: Convert LID-only contacts to proper JID format
-async function migrateContactsToJidFormat() {
-    try {
-        const pool = getConversationPool();
-        if (!pool) return;
-        
-        // Find contacts where contact_jid doesn't have @
-        const result = await pool.query(`
-            SELECT id, contact_jid, contact_phone FROM vcard_contacts 
-            WHERE contact_jid NOT LIKE '%@%' LIMIT 100
-        `);
-        
-        if (result.rows.length === 0) {
-            console.log('[CHAT DB] No migration needed - all contacts already in JID format');
-            return;
-        }
-        
-        console.log(`[CHAT DB] Migrating ${result.rows.length} contacts to JID format...`);
-        
-        for (const row of result.rows) {
-            const properJid = ensureJidFormat(row.contact_jid || row.contact_phone);
-            await pool.query(
-                `UPDATE vcard_contacts SET contact_jid = $1 WHERE id = $2`,
-                [properJid, row.id]
-            );
-        }
-        
-        console.log(`[CHAT DB] ✅ Successfully migrated contacts to JID format`);
-    } catch (error) {
-        console.log('[CHAT DB] Migration error:', error.message);
     }
 }
 
@@ -326,31 +272,29 @@ function closePool() {
 async function saveVCardContact(contactJid, contactName, contactPhone = null) {
     try {
         const pool = getConversationPool();
-        // Ensure JID is in proper format (with @s.whatsapp.net suffix)
-        const properJid = ensureJidFormat(contactJid);
-        const normalizedPhone = contactPhone || extractLid(properJid);
+        const normalizedPhone = String(contactPhone || contactJid).replace(/\D/g, '');
         
         if (!pool) {
             console.log('[CHAT DB] No pool available');
             return null;
         }
 
-        const exists = await checkVCardContact(properJid);
+        const exists = await checkVCardContact(contactJid);
         
         if (exists) {
             await pool.query(
                 `UPDATE vcard_contacts SET contact_name = $1, contact_phone = $2, saved_at = CURRENT_TIMESTAMP WHERE contact_jid = $3`,
-                [String(contactName), String(normalizedPhone), properJid]
+                [String(contactName), String(normalizedPhone), String(contactJid)]
             );
-            console.log('[CHAT DB] Updated existing vCard contact:', properJid);
+            console.log('[CHAT DB] Updated existing vCard contact');
         } else {
             const id = Date.now() + Math.floor(Math.random() * 1000);
             await pool.query(
                 `INSERT INTO vcard_contacts (id, contact_jid, contact_phone, contact_name, saved_at)
                  VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)`,
-                [id, properJid, String(normalizedPhone), String(contactName)]
+                [id, String(contactJid), String(normalizedPhone), String(contactName)]
             );
-            console.log('[CHAT DB] Inserted new vCard contact:', properJid);
+            console.log('[CHAT DB] Inserted new vCard contact');
         }
         return true;
     } catch (error) {
@@ -362,9 +306,7 @@ async function saveVCardContact(contactJid, contactName, contactPhone = null) {
 async function checkVCardContact(contactJidOrPhone) {
     try {
         const pool = getConversationPool();
-        // Convert to proper JID format for comparison
-        const properJid = ensureJidFormat(contactJidOrPhone);
-        const normalizedPhone = extractLid(properJid);
+        const normalizedPhone = String(contactJidOrPhone).replace(/\D/g, '');
         
         if (!pool) {
             console.log('[CHAT DB] No pool available');
@@ -373,7 +315,7 @@ async function checkVCardContact(contactJidOrPhone) {
 
         const result = await pool.query(
             `SELECT id FROM vcard_contacts WHERE contact_jid = $1 OR contact_phone = $2`,
-            [properJid, String(normalizedPhone)]
+            [String(contactJidOrPhone), String(normalizedPhone)]
         );
         console.log('[CHAT DB] Check result rows:', result.rows.length);
         return result.rows.length > 0;
@@ -441,8 +383,5 @@ module.exports = {
     saveVCardContact,
     checkVCardContact,
     getAllVCardContacts,
-    deleteVCardContact,
-    ensureJidFormat,
-    extractLid,
-    migrateContactsToJidFormat
+    deleteVCardContact
 };
