@@ -171,6 +171,7 @@ async function pairCommand(sock, chatId, message, q) {
                     try {
                         await axiosRequest('POST', `/api/instances/${botId}/regenerate-code`);
                     } catch (err) {
+                        console.log(`Initial regeneration failed, retrying after a short delay: ${err.message}`);
                         await sleep(5000);
                         await axiosRequest('POST', `/api/instances/${botId}/regenerate-code`);
                     }
@@ -217,6 +218,7 @@ async function pairCommand(sock, chatId, message, q) {
                             break;
                         }
                     } catch (e) {
+                        console.log(`Polling attempt ${i + 1} failed: ${e.message}`);
                     }
                     await sleep(3000);
                 }

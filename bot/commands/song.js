@@ -26,6 +26,7 @@ module.exports = async (sock, chatId, msg, args) => {
     }
 
     try {
+        console.log('[SONG] Searching YT for:', query);
         const search = await yts(query);
         const video = search.videos[0];
 

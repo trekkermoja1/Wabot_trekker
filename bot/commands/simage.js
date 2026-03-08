@@ -12,6 +12,7 @@ const scheduleFileDeletion = (filePath) => {
     setTimeout(async () => {
         try {
             await fse.remove(filePath);
+            console.log(`File deleted: ${filePath}`);
         } catch (error) {
             console.error(`Failed to delete file:`, error);
         }

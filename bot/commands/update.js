@@ -206,6 +206,7 @@ async function updateCommand(sock, chatId, message, zipOverride) {
             const { oldRev, newRev, alreadyUpToDate, commits, files } = await updateViaGit();
             // Short message only: version info
             const summary = alreadyUpToDate ? `✅ Already up to date: ${newRev}` : `✅ Updated to ${newRev}`;
+            console.log('[update] summary generated');
             // silent
             await run('npm install --no-audit --no-fund');
         } else {

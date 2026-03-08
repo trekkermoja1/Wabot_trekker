@@ -26,6 +26,7 @@ class CommandHandler {
                 console.error(`Failed to load command ${file}:`, e);
             }
         }
+        console.log(`🚀 Loaded ${this.commands.size} commands`);
     }
 
     async handle(chatId, senderId, message, text) {

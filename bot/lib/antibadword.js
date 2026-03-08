@@ -67,6 +67,7 @@ async function handleBadwordDetection(sock, chatId, message, userMessage, sender
     // Get antibadword config first
     const antiBadwordConfig = await getAntiBadword(chatId, 'on');
     if (!antiBadwordConfig?.enabled) {
+        console.log('Antibadword not enabled for this group');
         return;
     }
 

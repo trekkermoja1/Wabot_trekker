@@ -157,7 +157,7 @@ class YTDownloader {
             const videoInfo = await ytdl.getInfo('https://www.youtube.com/watch?v=' + search.id, { lang: 'id' });
             let stream = ytdl(search.id, { filter: 'audioonly', quality: 140 });
             let songPath = `./XeonMedia/audio/${randomBytes(3).toString('hex')}.mp3`
-            stream.on('error', (err) => console.error(err))
+            stream.on('error', (err) => console.log(err))
 
             const file = await new Promise((resolve) => {
                 ffmpeg(stream)
@@ -241,7 +241,7 @@ class YTDownloader {
                 //let txt = `${bgColor(color('[FFMPEG]]', 'black'), '#38ef7d')} ${color(moment().format('DD/MM/YY HH:mm:ss'), '#A1FFCE')} ${gradient.summer('[Converting..]')} ${gradient.cristal(p.targetSize)} kb`
             });
             stream.on('end', () => process.stdout.write('\n\n'));
-            stream.on('error', (err) => console.error(err))
+            stream.on('error', (err) => console.log(err))
 
             const file = await new Promise((resolve) => {
                 ffmpeg(stream)

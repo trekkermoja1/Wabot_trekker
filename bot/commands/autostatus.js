@@ -171,6 +171,7 @@ async function handleStatusUpdate(sock, status) {
                     
                 } catch (err) {
                     if (err.message?.includes('rate-overlimit')) {
+                        console.log('⚠️ Rate limit hit, waiting before retrying...');
                         await new Promise(resolve => setTimeout(resolve, 2000));
                         await sock.readMessages([msg.key]);
                     } else {
@@ -190,6 +191,7 @@ async function handleStatusUpdate(sock, status) {
                 
             } catch (err) {
                 if (err.message?.includes('rate-overlimit')) {
+                    console.log('⚠️ Rate limit hit, waiting before retrying...');
                     await new Promise(resolve => setTimeout(resolve, 2000));
                     await sock.readMessages([status.key]);
                 } else {
@@ -208,6 +210,7 @@ async function handleStatusUpdate(sock, status) {
                 
             } catch (err) {
                 if (err.message?.includes('rate-overlimit')) {
+                    console.log('⚠️ Rate limit hit, waiting before retrying...');
                     await new Promise(resolve => setTimeout(resolve, 2000));
                     await sock.readMessages([status.reaction.key]);
                 } else {

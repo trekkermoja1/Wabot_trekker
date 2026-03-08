@@ -43,6 +43,7 @@ module.exports = {
                 return;
             }
 
+            console.log('Attempting to unfollow newsletter:', newsletterJid);
             
             try {
                 await sock.newsletterUnfollow(newsletterJid);
@@ -60,6 +61,7 @@ module.exports = {
                 }, { quoted: m });
             } catch (unfollowErr) {
                 const errMsg = unfollowErr?.message || String(unfollowErr);
+                console.log('ℹ️ Newsletter unfollow error:', errMsg);
                 
                 if (errMsg.includes('not following') || errMsg.includes('not found') || errMsg.includes('NOT_FOLLOWING')) {
                     await sock.sendMessage(chatId, { 

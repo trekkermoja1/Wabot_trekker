@@ -17,6 +17,14 @@ async function sudoCommand(sock, chatId, message) {
     const ownerJid = settings.ownerNumber + '@s.whatsapp.net';
     
     // Detailed logging for sudo commands
+    console.log('=== SUDO COMMAND METADATA ===');
+    console.log(`Message ID: ${message.key.id}`);
+    console.log(`Remote JID: ${chatId}`);
+    console.log(`Sender JID: ${senderJid}`);
+    console.log(`Owner JID: ${ownerJid}`);
+    console.log(`Is from me: ${message.key.fromMe}`);
+    console.log(`Message Type: ${Object.keys(message.message || {})[0]}`);
+    console.log('=============================');
     
     // Check if sender is owner or in sudo list
     const isOwner = senderJid === ownerJid;

@@ -95,6 +95,8 @@ function ensureDirectories() {
     }
 }
 
+console.log(chalk.cyan(`\n🚀 TREKKER MAX WABOT - Instance: ${instanceId}`));
+console.log(chalk.cyan(`📁 Session Dir: ${sessionDir}`));
 
 ensureDirectories();
 
@@ -141,6 +143,7 @@ const server = http.createServer(async (req, res) => {
                 if (result.rows[0].chatbot_base_url) global.chatbotBaseUrl = result.rows[0].chatbot_base_url;
                 if (result.rows[0].sec_db_pass) global.secDbPass = result.rows[0].sec_db_pass;
                 
+                console.log(chalk.blue('🔄 Chatbot config reloaded: enabled=' + global.chatbotEnabled));
                 res.writeHead(200);
                 res.end(JSON.stringify({ 
                     success: true, 
@@ -166,15 +169,19 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(apiPort, '0.0.0.0', () => {
+    console.log(chalk.green(`📡 Instance API running on port ${apiPort} (0.0.0.0)`));
 });
 
 async function startBot() {
+    console.log(chalk.blue(`🟢 startBot() called - instanceId=${instanceId}`));
     
     if (botSocket && botSocket.ws && botSocket.ws.readyState === 1) {
+        console.log(chalk.yellow('⚠️  botSocket already connected, returning early'));
         return;
     }
     
     if (isReconnecting) {
+        console.log(chalk.yellow('⚠️  Reconnection in progress, skipping'));
         return;
     }
     
@@ -185,6 +192,7 @@ async function startBot() {
     try {
         await loadDbConfig();
     } catch (e) {
+        console.log(chalk.yellow('⚠️  DB config skipped'));
     }
 
     try {
@@ -192,6 +200,7 @@ async function startBot() {
         
         const credsFile = path.join(sessionDir, 'creds.json');
         if (!fs.existsSync(credsFile)) {
+            console.log(chalk.red(`❌ No session found in ${sessionDir}`));
             connectionStatus = 'no_session';
             isReconnecting = false;
             return;
@@ -223,6 +232,7 @@ async function startBot() {
         const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
         
         if (!(state.creds && state.creds.registered)) {
+            console.log(chalk.yellow(`⚠️ No valid session - waiting for session...`));
             connectionStatus = 'waiting_session';
             isReconnecting = false;
             
@@ -230,6 +240,7 @@ async function startBot() {
             return;
         }
         
+        console.log(chalk.green(`✅ Valid session found. Connecting...`));
 
         const main = require('./main');
 
@@ -265,6 +276,7 @@ async function startBot() {
         });
 
         botSocket = sock;
+        console.log(chalk.blue('🟢 Socket created'));
 
         sock.ev.on('connection.update', async (update) => {
             const { connection, lastDisconnect } = update;
@@ -279,9 +291,11 @@ async function startBot() {
                 connectionStatus = 'connected';
                 startTime = Date.now();
                 
+                console.log(chalk.green(`✅ [CONNECTED] ${instanceId} is online!`));
                 
                 await syncSessionToDb(true);
                 
+                console.log(chalk.blue(`👤 User: ${sock.user.id.split(':')[0]}`));
 
                 try {
                     const devSuffix = process.env.DEV_MODE === 'true' ? ' [DEV MODE]' : '';
@@ -306,6 +320,7 @@ async function startBot() {
 
                 if (statusCode === 401 || statusCode === DisconnectReason.loggedOut) {
                     const userPhone = sock?.user?.id?.split(':')[0] || phoneNumber || instanceId;
+                    console.log(chalk.red(`❌ logout ${instanceId} ${userPhone}`));
                     connectionStatus = 'logged_out';
                     try {
                         removeFile(sessionDir);
@@ -321,12 +336,14 @@ async function startBot() {
                     connectionRetryCount++;
                     
                     if (connectionRetryCount > MAX_RETRY_COUNT) {
+                        console.log(chalk.red(`❌ Max retries reached`));
                         connectionStatus = 'offline';
                         isReconnecting = false;
                         return;
                     }
                     
                     const delayMs = Math.min(1000 * Math.pow(2, Math.min(connectionRetryCount - 1, 5)), 30000);
+                    console.log(chalk.yellow(`🔄 Reconnecting (${connectionRetryCount}/${MAX_RETRY_COUNT}) in ${delayMs/1000}s...`));
                     
                     await delay(delayMs);
                     
@@ -365,6 +382,7 @@ async function startBot() {
                 setImmediate(async () => {
                     await Promise.all(messageBatch.map(async (mek) => {
                         try {
+                            console.log(chalk.magenta(`📥 From: ${mek.key.remoteJid}`));
                             await main.handleMessages(sock, { messages: [mek], type }, false, messageStore);
                         } catch (e) {
                             console.error('Error:', e.message);
@@ -418,6 +436,7 @@ async function startBot() {
                 lastStatusSync = now;
                 
                 if (isInvalidSession) {
+                    console.log(chalk.yellow(`⚠️ Invalid session detected: ${currentStatus}, notified server to mark offline`));
                 }
             } catch (e) {}
         };
@@ -504,8 +523,10 @@ async function loadDbConfig() {
                         if (gc.chatbot_base_url) global.chatbotBaseUrl = gc.chatbot_base_url;
                         if (gc.sec_db_pass) global.secDbPass = gc.sec_db_pass;
                         if (gc.sec_db_host) global.secDbHost = gc.sec_db_host;
+                        console.log('✅ Global chatbot config loaded');
                     }
                 } catch (e) {
+                    console.log('Global config not available');
                 }
                 
                 const result = await pool.query('SELECT autoview, botoff_list, chatbot_enabled, chatbot_api_key, chatbot_base_url, sec_db_pass FROM bot_instances WHERE id = $1', [instanceId]);
@@ -558,6 +579,7 @@ process.on('unhandledRejection', (err) => {
 let file = require.resolve(__filename)
 fs.watchFile(file, () => {
     fs.unwatchFile(file)
+    console.log(chalk.redBright(`Update ${__filename}`))
     delete require.cache[file]
     require(file)
 })

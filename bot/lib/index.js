@@ -370,6 +370,7 @@ async function getAntiBadword(groupId, type) {
         //console.log('Current data:', data.antibadword);
         
         if (!data.antibadword || !data.antibadword[groupId]) {
+            console.log('No antibadword config found');
             return null;
         }
         

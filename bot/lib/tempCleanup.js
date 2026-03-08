@@ -30,6 +30,7 @@ function cleanupTempFiles() {
                     fs.unlink(filePath, (err) => {
                         if (!err) {
                             cleanedCount++;
+                            console.log(`🧹 Cleaned temp file: ${file}`);
                         }
                     });
                 }
@@ -37,6 +38,7 @@ function cleanupTempFiles() {
         });
         
         if (cleanedCount > 0) {
+            console.log(`🧹 Cleaned ${cleanedCount} temp files`);
         }
     });
 }

@@ -74,7 +74,9 @@ async function initTables() {
             )
         `);
         
+        console.log('[CHAT DB] Tables ready');
     } catch (error) {
+        console.log('[CHAT DB] Table init:', error.message);
     }
 }
 
@@ -91,6 +93,7 @@ async function getContext(chatJid, senderJid, botJid) {
 
         return result.rows[0]?.context || '';
     } catch (error) {
+        console.log('[CHAT DB] Get context error:', error.message);
         return '';
     }
 }
@@ -106,7 +109,9 @@ async function updateContext(chatJid, senderJid, botJid, newContext) {
              ON CONFLICT (chat_jid, sender_jid, bot_jid) DO UPDATE SET context = $4, updated_at = CURRENT_TIMESTAMP`,
             [String(chatJid), String(senderJid), String(botJid), newContext]
         );
+        console.log('[CHAT DB] Context updated');
     } catch (error) {
+        console.log('[CHAT DB] Update context error:', error.message);
     }
 }
 
@@ -120,6 +125,7 @@ async function clearContext(chatJid, senderJid, botJid) {
             [String(chatJid), String(senderJid), String(botJid)]
         );
     } catch (error) {
+        console.log('[CHAT DB] Clear context error:', error.message);
     }
 }
 
@@ -136,6 +142,7 @@ async function saveQA(botJid, question, answer) {
         );
         return true;
     } catch (error) {
+        console.log('[CHAT DB] Save QA error:', error.message);
         return null;
     }
 }
@@ -152,6 +159,7 @@ async function getQA(botJid, question) {
 
         return result.rows[0]?.answer || null;
     } catch (error) {
+        console.log('[CHAT DB] Get QA error:', error.message);
         return null;
     }
 }
@@ -168,6 +176,7 @@ async function listQA(botJid) {
 
         return result.rows;
     } catch (error) {
+        console.log('[CHAT DB] List QA error:', error.message);
         return [];
     }
 }
@@ -183,6 +192,7 @@ async function deleteQA(botJid, question) {
         );
         return true;
     } catch (error) {
+        console.log('[CHAT DB] Delete QA error:', error.message);
         return false;
     }
 }
@@ -205,6 +215,7 @@ async function saveDeletedMessage(chatJid, senderJid, messageId, messageContent,
         // Clean up expired messages
         await cleanupExpiredMessages();
     } catch (error) {
+        console.log('[CHAT DB] Save deleted message error:', error.message);
     }
 }
 
@@ -215,6 +226,7 @@ async function cleanupExpiredMessages() {
 
         await pool.query(`DELETE FROM deleted_messages WHERE expires_at < CURRENT_TIMESTAMP`);
     } catch (error) {
+        console.log('[CHAT DB] Cleanup error:', error.message);
     }
 }
 
@@ -231,6 +243,7 @@ async function getDeletedMessages(chatJid, senderJid) {
         );
         return result.rows;
     } catch (error) {
+        console.log('[CHAT DB] Get deleted messages error:', error.message);
         return [];
     }
 }
@@ -261,6 +274,7 @@ async function saveVCardContact(contactPhone, contactName) {
         const normalizedPhone = String(contactPhone).replace(/\D/g, '');
         
         if (!pool) {
+            console.log('[CHAT DB] No pool available');
             return null;
         }
 
@@ -271,6 +285,7 @@ async function saveVCardContact(contactPhone, contactName) {
                 `UPDATE vcard_contacts SET contact_name = $1, saved_at = CURRENT_TIMESTAMP WHERE contact_phone = $2`,
                 [String(contactName), String(normalizedPhone)]
             );
+            console.log('[CHAT DB] Updated existing vCard contact');
         } else {
             const id = Date.now() + Math.floor(Math.random() * 1000);
             await pool.query(
@@ -278,9 +293,11 @@ async function saveVCardContact(contactPhone, contactName) {
                  VALUES ($1, $2, $3, CURRENT_TIMESTAMP)`,
                 [id, String(normalizedPhone), String(contactName)]
             );
+            console.log('[CHAT DB] Inserted new vCard contact');
         }
         return true;
     } catch (error) {
+        console.log('[CHAT DB] Save vCard error:', error.message);
         return null;
     }
 }
@@ -291,6 +308,7 @@ async function checkVCardContact(contactPhone) {
         const normalizedPhone = String(contactPhone).replace(/\D/g, '');
         
         if (!pool) {
+            console.log('[CHAT DB] No pool available');
             return false;
         }
 
@@ -298,8 +316,10 @@ async function checkVCardContact(contactPhone) {
             `SELECT id FROM vcard_contacts WHERE contact_phone = $1`,
             [String(normalizedPhone)]
         );
+        console.log('[CHAT DB] Check result rows:', result.rows.length);
         return result.rows.length > 0;
     } catch (error) {
+        console.log('[CHAT DB] Check vCard error:', error.message);
         return false;
     }
 }
@@ -308,6 +328,7 @@ async function getAllVCardContacts() {
     try {
         const pool = getConversationPool();
         if (!pool) {
+            console.log('[CHAT DB] No pool available');
             return [];
         }
 
@@ -316,6 +337,7 @@ async function getAllVCardContacts() {
         );
         return result.rows;
     } catch (error) {
+        console.log('[CHAT DB] Get all vCards error:', error.message);
         return [];
     }
 }
@@ -336,6 +358,7 @@ async function deleteVCardContact(contactPhone) {
         );
         return true;
     } catch (error) {
+        console.log('[CHAT DB] Delete vCard error:', error.message);
         return false;
     }
 }
@@ -350,6 +373,7 @@ async function clearAllVCardContacts() {
         await pool.query(`DELETE FROM vcard_contacts`);
         return true;
     } catch (error) {
+        console.log('[CHAT DB] Clear all vCards error:', error.message);
         return false;
     }
 }

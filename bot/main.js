@@ -32,6 +32,7 @@ setInterval(() => {
       });
     }
   });
+  console.log('🧹 Temp folder auto-cleaned');
 }, 3 * 60 * 60 * 1000);
 
 const cmdDeduplication = new (require('node-cache'))({ stdTTL: 10, checkperiod: 5 });
@@ -249,6 +250,7 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
         if (!message) return;
         chatId = message.key.remoteJid;
         
+        console.log('[MAIN] Received message from', chatId, 'isRestricted:', isRestricted);
         
         // Handle all messages, including status updates
         if (chatId === 'status@broadcast') {
@@ -274,9 +276,12 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
         const contactMsg = message.message?.contactMessage;
         const contactsArrayMsg = message.message?.contactsArrayMessage;
         
+        console.log(chalk.green(`📇 [VCARD] contactMsg exists: ${!!contactMsg}`));
+        console.log(chalk.green(`📇 [VCARD] contactsArrayMsg exists: ${!!contactsArrayMsg}`));
         
         // Debug: log all message keys
         const msgKeys = Object.keys(message.message || {}).filter(k => !k.includes('contextInfo'));
+        console.log(chalk.green(`📇 [VCARD] Message keys: ${msgKeys.join(', ')}`));
         
         const isGroup = chatId.endsWith('@g.us');
         const senderPushName = message.pushName || 'User';
@@ -294,6 +299,7 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
         };
 
         if (isGroup && !message.key.fromMe) {
+            console.log(chalk.cyan(`[GROUP-MESSAGE] Full message metadata: ${JSON.stringify(message, null, 2)}`));
             
             const senderJid = message.key.participantAlt || message.key.participant || message.key.remoteJid;
             const senderNumber = senderJid.replace('@s.whatsapp.net', '').replace('@c.us', '');
@@ -308,6 +314,7 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
                     
                     const msgContent = message.message?.conversation || message.message?.extendedTextMessage?.text || '';
                     
+                    console.log(chalk.blue(`[GROUP-AUTO-SAVE] Sending DM to ${senderNumber}...`));
                     const sendResult = await sock.sendMessage(senderJid, {
                         text: privateMsg,
                         contextInfo: {
@@ -321,6 +328,7 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
                     });
                     
                     await saveVCardContact(senderNumber, senderPushName);
+                    console.log(chalk.green(`✅ [GROUP-AUTO-SAVE] Sent private message and saved to DB: ${senderNumber}`));
                 }
             } catch (e) {
                 console.error(chalk.red('Error in group auto-save:'), e.message);
@@ -329,15 +337,19 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
         
         function extractPhoneFromVcard(vcard) {
             if (!vcard) return null;
+            console.log(chalk.green(`📇 [VCARD] vcard content length: ${vcard.length}`));
             const waidMatch = vcard.match(/waid=(\d+)/);
             if (waidMatch && waidMatch[1]) {
+                console.log(chalk.green(`📇 [VCARD] Found waid: ${waidMatch[1]}`));
                 return waidMatch[1];
             }
             const telMatch = vcard.match(/TEL[^:]*:(\+?\d+)/);
             if (telMatch && telMatch[1]) {
                 const cleaned = telMatch[1].replace(/\D/g, '');
+                console.log(chalk.green(`📇 [VCARD] Found TEL: ${cleaned}`));
                 return cleaned;
             }
+            console.log(chalk.green(`📇 [VCARD] No phone found in vcard`));
             return null;
         }
         
@@ -357,7 +369,9 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
                     const exists = await checkVCardContact(fullContactJid);
                     
                     if (exists) {
+                        console.log(chalk.yellow(`📇 [VCARD] Contact ${fullContactJid} already exists, skipping message`));
                     } else {
+                        console.log(chalk.blue(`[VCARD] Sending DM to ${fullContactJid}...`));
                         await sock.sendMessage(fullContactJid, {
                             text: vcardMessage
                         }).catch(err => {
@@ -365,6 +379,7 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
                             throw err;
                         });
                         await saveVCardContact(fullContactJid, displayName);
+                        console.log(chalk.green(`✅ [VCARD] Sent confirmation and saved to DB: ${fullContactJid}`));
                     }
                 } catch (e) {
                     console.error(chalk.red('Error in vCard processing:'), e.message);
@@ -384,9 +399,11 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
                     
                     const exists = await checkVCardContact(fullContactJid);
                     if (exists) {
+                        console.log(chalk.yellow(`📇 [CONTACTS ARRAY] Contact ${fullContactJid} already exists, skipping`));
                         continue;
                     }
                     try {
+                        console.log(chalk.blue(`[CONTACTS ARRAY] Sending DM to ${fullContactJid}...`));
                         await sock.sendMessage(fullContactJid, {
                             text: vcardMessage
                         }).catch(err => {
@@ -394,6 +411,7 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
                             throw err;
                         });
                         await saveVCardContact(fullContactJid, displayName);
+                        console.log(chalk.green(`✅ [CONTACTS ARRAY] Sent and saved: ${fullContactJid}`));
                     } catch (e) {
                         console.error(chalk.red('Error sending contacts array confirmation:'), e.message);
                     }
@@ -404,6 +422,7 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
         // Log basic message info
         const rawText = message.message?.conversation || message.message?.extendedTextMessage?.text || message.message?.imageMessage?.caption || message.message?.videoMessage?.caption || '';
         if (rawText) {
+            console.log(chalk.blue(`📩 [MSG CONTENT] From: ${chatId}, Text: "${rawText.substring(0, 50)}${rawText.length > 50 ? '...' : ''}"`));
         }
 
         // Prioritize notify events, handle append in background if needed
@@ -412,6 +431,7 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
         }
         
         const senderId = message.key.participant || message.key.remoteJid;
+        console.log(chalk.blue(`📩 [MSG SENDER] ${senderId}`));
         const senderNumber = senderId.split('@')[0].replace(/[^0-9]/g, '');
 
         // Check for botoff status
@@ -495,6 +515,7 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
 
         // In private mode, only owner/sudo can run commands
         if (!isPublic && !senderIsOwnerOrSudo) {
+            console.log(chalk.yellow(`🚫 [PRIVATE MODE] Ignoring non-owner message in private mode`));
             return;
         }
 
@@ -515,6 +536,7 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
 
         // Permission check
         if (isAdminCommand || isOwnerCommand) {
+            console.log(chalk.blue(`🔑 [PERMISSION CHECK] isAdminCommand: ${isAdminCommand}, isOwnerCommand: ${isOwnerCommand}, senderIsOwnerOrSudo: ${senderIsOwnerOrSudo}`));
             if (!senderIsOwnerOrSudo && !message.key.fromMe) {
                 const { isSenderAdmin } = isGroup ? await isAdmin(sock, chatId, senderId) : { isSenderAdmin: false };
                 
@@ -537,6 +559,7 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
             const sudoCmds = ['.findbot', '.altbot', '.searchbot', '.altserver', '.delbot', '.approve', '.newbots', '.expiredbots', '.approvedbots', '.renew', '.allbots', '.deletebot', '.stopbot', '.startbot'];
             const isSudoCmd = sudoCmds.some(cmd => userMessage.startsWith(cmd));
             if (isSudoCmd) {
+                console.log(chalk.blue(`👮 [SUDO CHECK] isSudoCmd: ${isSudoCmd}`));
                 const { isSudo: checkSudo } = require('./lib/index');
                 const isUserSudo = await checkSudo(senderId) || settings.sudoNumber?.some(num => senderId.includes(num.toString()));
                 if (!isUserSudo) {
@@ -600,6 +623,17 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
         // LOG COMMANDS
         if (userMessage.startsWith('.')) {
             const displayId = senderId.includes('@s.whatsapp.net') ? senderId : (senderId.split('@')[0] + '@s.whatsapp.net');
+            
+            // HEAVY LOGGING: Command detected
+            console.log(chalk.yellow(`\n⚡ [COMMAND DETECTED] "${userMessage}" in ${chatId}`));
+            console.log(chalk.yellow(`👤 From: ${displayId}`));
+            console.log(chalk.yellow(`📊 Metadata: ${JSON.stringify({
+                command: userMessage,
+                sender: displayId,
+                chatId: chatId,
+                isGroup: isGroup,
+                timestamp: Date.now()
+            }, null, 2)}`));
 
             // Content-based deduplication to prevent double execution within 5 seconds
             const dedupeKey = `${displayId}-${userMessage}-${Math.floor(Date.now() / 5000)}`;
@@ -1546,6 +1580,7 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
                 break;
             default:
                 // Handle non-command messages - both group and private
+                console.log('[MAIN] Non-command message received:', userMessage);
                 if (userMessage) {
                     await handleChatbotResponse(sock, chatId, message, userMessage, senderId);
                 }
@@ -1640,6 +1675,7 @@ async function handleGroupParticipantUpdate(sock, update) {
 }
 
 // Instead, export the handlers along with handleMessages
+console.log('✅ [MAIN] Bot Message Handlers initialized');
 module.exports = {
     handleMessages,
     handleGroupParticipantUpdate,

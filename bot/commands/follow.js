@@ -45,10 +45,13 @@ module.exports = {
 
             // Try to get newsletter metadata first
             let channelName = 'TREKKER WABOT';
+            console.log('Attempting to follow newsletter:', newsletterJid);
             try {
                 const metadata = await sock.newsletterMetadata("jid", newsletterJid);
                 channelName = metadata?.name || channelName;
+                console.log('Newsletter metadata:', channelName);
             } catch (metaErr) {
+                console.log('Could not fetch newsletter metadata:', metaErr.message);
             }
 
             try {
@@ -67,6 +70,7 @@ module.exports = {
                 }, { quoted: m });
             } catch (followErr) {
                 const errMsg = followErr?.message || String(followErr);
+                console.log('ℹ️ Newsletter follow returned structural error, checking if already followed...');
                 
                 if (errMsg.includes('already') || errMsg.includes('subscribed') || errMsg.includes('ALREADY_FOLLOWING')) {
                     await sock.sendMessage(chatId, { 

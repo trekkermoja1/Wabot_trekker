@@ -4,7 +4,9 @@ async function savecfCommand(sock, chatId, message) {
     try {
         const botName = sock?.user?.name || sock?.user?.pushName || 'Bot';
 
+        console.log('[SAVEVCF] Fetching all contacts...');
         const contacts = await getAllVCardContacts();
+        console.log('[SAVEVCF] Contacts found:', contacts.length);
         
         if (contacts.length === 0) {
             await sock.sendMessage(chatId, { text: '📇 No contacts saved yet!' }, { quoted: message });

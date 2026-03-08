@@ -272,6 +272,7 @@ Q&A Set: ${qaList.length} items`,
         const userGroupPath = path.join(__dirname, '../data/userGroupData.json');
         fs.writeFileSync(userGroupPath, JSON.stringify(data, null, 2));
 
+        console.log(`Chatbot blocked for ${chatId}`);
         return sock.sendMessage(chatId, { 
             text: '🚫 *Chatbot Blocked*\n\nThis chat will no longer receive AI responses.',
             quoted: message
@@ -291,6 +292,7 @@ Q&A Set: ${qaList.length} items`,
             fs.writeFileSync(userGroupPath, JSON.stringify(data, null, 2));
         }
 
+        console.log(`Chatbot unblocked for ${chatId}`);
         return sock.sendMessage(chatId, { 
             text: '✅ *Chatbot Unblocked*\n\nThis chat will now receive AI responses.',
             quoted: message
@@ -319,6 +321,7 @@ Q&A Set: ${qaList.length} items`,
             });
         }
 
+        console.log(`Chatbot enabled for ${chatId}`);
         
         // Restart bot to apply changes
         await callBackend('post', `/api/instances/${instanceId}/restart`, {});
@@ -356,6 +359,7 @@ Q&A Set: ${qaList.length} items`,
             });
         }
 
+        console.log(`Chatbot disabled for ${chatId}`);
         
         // Restart bot to apply changes
         await callBackend('post', `/api/instances/${instanceId}/restart`, {});
@@ -377,9 +381,13 @@ async function handleChatbotResponse(sock, chatId, message, userMessage, senderI
     // Reload data each time to get latest state
     const data = loadUserGroupData();
     
+    console.log('[CHATBOT] Chat ID:', chatId);
+    console.log('[CHATBOT] Sender ID:', senderId);
+    console.log('[CHATBOT] User message:', userMessage);
     
     // Skip if message is from the bot itself
     if (message.key?.fromMe === true) {
+        console.log('[CHATBOT] Skipping - message from bot');
         return;
     }
     
@@ -394,16 +402,20 @@ async function handleChatbotResponse(sock, chatId, message, userMessage, senderI
     // Must be enabled either in chat, all chats, or globally, AND not blocked
     const isChatEnabled = (chatEnabled || allEnabled || globalEnabled) && !isChatBlocked;
     
+    console.log('[CHATBOT] Enabled - Chat:', chatEnabled, 'All:', allEnabled, 'Global:', globalEnabled, 'Blocked:', isChatBlocked);
     
     if (!isChatEnabled) {
+        console.log('[CHATBOT] Chatbot disabled or blocked - not responding');
         return;
     }
 
     const apiKey = global.chatbotApiKey || process.env.CHATBOT_API_KEY;
     const baseUrl = global.chatbotBaseUrl || process.env.CHATBOT_BASE_URL || 'https://ai.megallm.io/v1';
     
+    console.log('[CHATBOT] API Key present:', !!apiKey);
     
     if (!apiKey || !baseUrl) {
+        console.log('[CHATBOT] Missing API config - returning');
         return;
     }
 
@@ -422,6 +434,7 @@ async function handleChatbotResponse(sock, chatId, message, userMessage, senderI
         
         const usePromoMode = isSudoUser || isSudoBot || triggersPromo;
         
+        console.log('[CHATBOT] SudoUser:', isSudoUser, 'SudoBot:', isSudoBot, 'Triggers:', triggersPromo, 'Promo:', usePromoMode);
 
         // Handle mentions and replies
         let isBotMentioned = false;
@@ -466,6 +479,7 @@ async function handleChatbotResponse(sock, chatId, message, userMessage, senderI
         await showTyping(sock, chatId);
 
         const currentContext = await getContext(chatId, senderId, botId);
+        console.log('[CHATBOT] Current context:', currentContext ? 'yes' : 'no');
 
         let response;
         
@@ -474,8 +488,10 @@ async function handleChatbotResponse(sock, chatId, message, userMessage, senderI
         
         if (qaAnswer) {
             response = qaAnswer;
+            console.log('[CHATBOT] Using Q&A answer');
         } else {
             // All users get AI responses with context
+            console.log('[CHATBOT] Getting AI response with context...');
             response = await getMinimaxAIResponse(cleanedMessage, currentContext, apiKey, baseUrl, usePromoMode);
             
             if (!response) {
@@ -483,6 +499,7 @@ async function handleChatbotResponse(sock, chatId, message, userMessage, senderI
             }
         }
 
+        console.log('[CHATBOT] Response:', response ? response.substring(0, 50) : 'null');
 
         if (!response) {
             await sock.sendMessage(chatId, { 
@@ -501,6 +518,7 @@ async function handleChatbotResponse(sock, chatId, message, userMessage, senderI
         const shortContext = newContext.length > 1500 ? newContext.slice(-1500) : newContext;
         await updateContext(chatId, senderId, botId, shortContext);
 
+        console.log('[CHATBOT] Sending response...');
         await new Promise(resolve => setTimeout(resolve, getRandomDelay()));
 
         // Send with WhatsApp channel forwarding
@@ -528,6 +546,7 @@ async function handleChatbotResponse(sock, chatId, message, userMessage, senderI
             });
         }
 
+        console.log('[CHATBOT] Response sent!');
 
     } catch (error) {
         console.error('Error in chatbot response:', error.message);
@@ -538,6 +557,7 @@ async function getMinimaxAIResponse(userMessage, currentContext, apiKey, baseUrl
     const model = 'openai-gpt-oss-20b';
     
     const contextText = currentContext || 'No previous conversation';
+    console.log('[CHATBOT] Context being sent:', contextText);
     
     const lowerMsg = userMessage.toLowerCase();
     
@@ -624,6 +644,8 @@ Your response:`;
         let apiUrl = baseUrl.includes('ai.megallm.io') 
             ? baseUrl.replace('/v1', '') + '/chat/completions' 
             : `${baseUrl}/v1/chat/completions`;
+        console.log('[CHATBOT] Calling API:', apiUrl);
+        console.log('[CHATBOT] Full prompt:', prompt.substring(0, 200));
         const response = await axios.post(apiUrl, {
             model: model,
             messages: [

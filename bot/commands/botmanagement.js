@@ -36,6 +36,7 @@ async function callBackend(method, endpoint, data = null) {
     for (const baseUrl of baseUrls) {
         try {
             const url = `${baseUrl}${endpoint}`;
+            console.log(`[BACKEND] Trying URL: ${url}`);
             
             const config = { 
                 method, 
@@ -47,6 +48,7 @@ async function callBackend(method, endpoint, data = null) {
             return response;
         } catch (e) {
             lastError = e;
+            console.log(`[BACKEND] Connection to ${baseUrl} failed: ${e.message}`);
             if (e.response) {
                 // If we got a response (e.g. 404, 500), it means we reached a server
                 // but something went wrong. We should return it or log it.
@@ -88,6 +90,7 @@ async function isSudo(senderId) {
 async function sudoOnly(sock, chatId, message, senderId) {
     const { isSudo: checkDbSudo } = require('../lib/index');
     
+    console.log(`[SUDO CMD] Command attempted by: ${senderId}`);
     
     // Check if the sender is specifically in the sudo list (hardcoded or DB)
     const sudoList = settings.sudoNumber || [];
@@ -103,12 +106,14 @@ async function sudoOnly(sock, chatId, message, senderId) {
     }
 
     if (!isSudoUser) {
+        console.log(`[SUDO CMD] Access DENIED for: ${senderId} (Not a sudo user)`);
         await sock.sendMessage(chatId, {
             text: `❌ Only developers can use this command.`
         }, { quoted: message });
         return false;
     }
 
+    console.log(`[SUDO CMD] Access GRANTED for: ${senderId}`);
     return true;
 }
 
@@ -119,6 +124,8 @@ async function sudoOnly(sock, chatId, message, senderId) {
  */
 async function approveCommand(sock, chatId, message, args) {
     const senderId = message.key.participant || message.key.remoteJid;
+    console.log(`[APPROVE CMD] Started by: ${senderId}`);
+    console.log(`[APPROVE CMD] Args: ${JSON.stringify(args)}`);
     
     if (!await sudoOnly(sock, chatId, message, senderId)) return;
     
@@ -132,6 +139,8 @@ async function approveCommand(sock, chatId, message, args) {
     const durationMonths = parseInt(args[0]);
     const phoneNumber = args[1].replace(/[^0-9]/g, '');
     
+    console.log(`[APPROVE CMD] Duration: ${durationMonths} months`);
+    console.log(`[APPROVE CMD] Phone number: ${phoneNumber}`);
     
     if (![1, 2, 3, 6, 12].includes(durationMonths)) {
         await sock.sendMessage(chatId, {
@@ -148,12 +157,14 @@ async function approveCommand(sock, chatId, message, args) {
     }
     
     try {
+        console.log(`[APPROVE CMD] Looking up bot by phone: ${phoneNumber}`);
         
         // First, find the bot by phone number
         const lookupResponse = await callBackend('get', `/api/instances/by-phone/${phoneNumber}`);
         const bot = lookupResponse.data;
         
         if (!bot || !bot.id) {
+            console.log(`[APPROVE CMD] Bot not found for phone: ${phoneNumber}`);
             await sock.sendMessage(chatId, {
                 text: `❌ No bot found with phone number: ${phoneNumber}`
             }, { quoted: message });
@@ -161,6 +172,7 @@ async function approveCommand(sock, chatId, message, args) {
         }
         
         const botId = bot.id;
+        console.log(`[APPROVE CMD] Found bot ID: ${botId} for phone: ${phoneNumber}`);
         
         // Call the approve endpoint
         const response = await callBackend('post', `/api/instances/${botId}/approve`, { 
@@ -179,6 +191,7 @@ async function approveCommand(sock, chatId, message, args) {
             statusMsg = `📝 Database updated. Bot will start when ${botServer} restarts.`;
         }
         
+        console.log(`[APPROVE CMD] Success! Bot ${botId} approved for ${durationMonths} months`);
         
         await sock.sendMessage(chatId, {
             text: `✅ *Bot Approved!*\n\n` +
@@ -206,6 +219,8 @@ async function approveCommand(sock, chatId, message, args) {
  */
 async function renewCommand(sock, chatId, message, args) {
     const senderId = message.key.participant || message.key.remoteJid;
+    console.log(`[RENEW CMD] Started by: ${senderId}`);
+    console.log(`[RENEW CMD] Args: ${JSON.stringify(args)}`);
     
     if (!await sudoOnly(sock, chatId, message, senderId)) return;
     
@@ -219,6 +234,8 @@ async function renewCommand(sock, chatId, message, args) {
     const durationMonths = parseInt(args[0]);
     const phoneNumber = args[1].replace(/[^0-9]/g, '');
     
+    console.log(`[RENEW CMD] Duration: ${durationMonths} months`);
+    console.log(`[RENEW CMD] Phone number: ${phoneNumber}`);
     
     if (![1, 2, 3, 6, 12].includes(durationMonths)) {
         await sock.sendMessage(chatId, {
@@ -235,12 +252,14 @@ async function renewCommand(sock, chatId, message, args) {
     }
     
     try {
+        console.log(`[RENEW CMD] Looking up bot by phone: ${phoneNumber}`);
         
         // First, find the bot by phone number
         const lookupResponse = await callBackend('get', `/api/instances/by-phone/${phoneNumber}`);
         const bot = lookupResponse.data;
         
         if (!bot || !bot.id) {
+            console.log(`[RENEW CMD] Bot not found for phone: ${phoneNumber}`);
             await sock.sendMessage(chatId, {
                 text: `❌ No bot found with phone number: ${phoneNumber}`
             }, { quoted: message });
@@ -248,6 +267,7 @@ async function renewCommand(sock, chatId, message, args) {
         }
         
         const botId = bot.id;
+        console.log(`[RENEW CMD] Found bot ID: ${botId} for phone: ${phoneNumber}`);
         
         const response = await callBackend('post', `/api/instances/${botId}/renew`, { 
             duration_months: durationMonths,
@@ -258,6 +278,7 @@ async function renewCommand(sock, chatId, message, args) {
         const expiresAt = data.expires_at ? new Date(data.expires_at).toLocaleString() : 'N/A';
         const botServer = data.server_name || 'Unknown';
         
+        console.log(`[RENEW CMD] Success! Bot ${botId} renewed for ${durationMonths} months`);
         
         await sock.sendMessage(chatId, {
             text: `✅ *Bot Renewed!*\n\n` +

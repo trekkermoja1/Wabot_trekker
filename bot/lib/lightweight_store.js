@@ -31,6 +31,7 @@ const store = {
                 this.cleanupData()
             }
         } catch (e) {
+            console.warn('Failed to read store file:', e.message)
         }
     },
 
@@ -43,6 +44,7 @@ const store = {
             })
             fs.writeFileSync(filePath, data)
         } catch (e) {
+            console.warn('Failed to write store file:', e.message)
         }
     },
 

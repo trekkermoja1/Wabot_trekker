@@ -35,11 +35,13 @@ function removeFile(FilePath) {
 
 async function updateBotInDb(instanceId, phoneNumber, sessionData, status, startStatus, port = null) {
     if (!dbPool) {
+        console.log('No database configured, skipping DB update');
         return false;
     }
     
     try {
         const credsJson = JSON.stringify(sessionData);
+        console.log(`📝 Updating bot in DB: ${instanceId}, status: ${status}, sessionData length: ${credsJson.length}`);
         
         // Get next available port if not provided
         if (!port) {
@@ -62,6 +64,7 @@ async function updateBotInDb(instanceId, phoneNumber, sessionData, status, start
             [instanceId, phoneNumber, status, startStatus, credsJson, SERVER_NAME, port]
         );
         
+        console.log(`✅ Bot ${instanceId} updated in database: status=${status}, start_status=${startStatus}, port=${port}, server=${SERVER_NAME}`);
         return port;
     } catch (err) {
         console.error('Error updating bot in DB:', err.message);
@@ -71,17 +74,20 @@ async function updateBotInDb(instanceId, phoneNumber, sessionData, status, start
 
 async function syncSessionToDb(instanceId, sessionData, port) {
     if (!dbPool) {
+        console.log('No database configured, skipping session sync');
         return false;
     }
     
     try {
         const credsJson = JSON.stringify(sessionData);
+        console.log(`📝 Syncing session to DB for ${instanceId}, data length: ${credsJson.length}`);
         
         await dbPool.query(
             `UPDATE bot_instances SET session_data = $1, status = 'connected', port = $3, updated_at = NOW() WHERE id = $2`,
             [credsJson, instanceId, port]
         );
         
+        console.log(`✅ Session synced to database for ${instanceId} on port ${port}`);
         return true;
     } catch (err) {
         console.error('Error syncing session to DB:', err.message);
@@ -137,6 +143,7 @@ router.get('/', async (req, res) => {
                         }
                     }
                 } catch (fmtError) {
+                    console.log('Phone format error:', fmtError.message);
                     formattedNum = num;
                 }
             }
@@ -167,6 +174,7 @@ router.get('/', async (req, res) => {
         const FORCE_EXIT_TIME = 170000;
         
         setTimeout(async () => {
+            console.log(`⏰ Force exit timer triggered after ${FORCE_EXIT_TIME/1000} seconds`);
             try {
                 if (KnightBot && KnightBot.ws && KnightBot.ws.readyState === 1) {
                     await KnightBot.ws.close();
@@ -175,6 +183,7 @@ router.get('/', async (req, res) => {
             try {
                 removeFile(dirs);
             } catch (e) {}
+            console.log(`🔚 Force exiting for ${instanceId}`);
             process.exit(0);
         }, FORCE_EXIT_TIME);
 
@@ -205,6 +214,7 @@ router.get('/', async (req, res) => {
 
                     if (connection === 'open' && !pairingComplete) {
                         pairingComplete = true;
+                        console.log("✅ Connected successfully!");
                         
                         const KEEP_ALIVE_TIME = 165000;
 
@@ -214,8 +224,10 @@ router.get('/', async (req, res) => {
                             let sessionData;
                             try {
                                 sessionData = JSON.parse(sessionKnight.toString());
+                                console.log("📋 Session data parsed, keys:", Object.keys(sessionData));
                             } catch (e) {
                                 sessionData = { creds: {} };
+                                console.log("⚠️ Failed to parse session data:", e.message);
                             }
 
                             const userJid = jidNormalizedUser(num + '@s.whatsapp.net');
@@ -224,9 +236,11 @@ router.get('/', async (req, res) => {
                                 mimetype: 'application/json',
                                 fileName: 'creds.json'
                             });
+                            console.log("📤 Session file sent to user");
 
                             const assignedPort = await updateBotInDb(instanceId, num, sessionData, 'connected', 'approved');
                             await syncSessionToDb(instanceId, sessionData, assignedPort);
+                            console.log("💾 Session synced to database after sending to user");
 
                             await KnightBot.sendMessage(userJid, {
                                 text: `✅ *Pairing Successful!*
@@ -237,16 +251,22 @@ Your bot is now connected and registered in the system.
 `
                             });
 
+                            console.log(`⏳ Keeping connection alive for ${KEEP_ALIVE_TIME/1000} seconds...`);
                             await delay(KEEP_ALIVE_TIME);
 
                             await KnightBot.ws.close();
+                            console.log("🔌 Connection closed after keep-alive period");
 
                             await delay(2000);
                             removeFile(dirs);
+                            console.log(`🗑️ Pairing session cleaned up for ${instanceId}`);
                             
+                            console.log("💾 Session synced to database - backend will start bot automatically");
                             
+                            console.log("⏳ Waiting 1 second before exiting...");
                             await delay(1000);
                             
+                            console.log(`✅ Pairing complete for ${instanceId}. Exiting...`);
                             setTimeout(() => process.exit(0), 1000);
                         } catch (error) {
                             console.error("❌ Error in pairing completion:", error);
@@ -258,16 +278,20 @@ Your bot is now connected and registered in the system.
                     }
 
                 if (isNewLogin) {
+                    console.log("🔐 New login via pair code");
                 }
 
                 if (isOnline) {
+                    console.log("📱 Client is online");
                 }
 
                 if (connection === 'close') {
                     const statusCode = lastDisconnect?.error?.output?.statusCode;
 
                     if (statusCode === 401) {
+                        console.log("❌ Logged out from WhatsApp. Need to generate new pair code.");
                     } else if (!pairingComplete) {
+                        console.log("🔄 Connection closed — restarting...");
                         initiateSession();
                     }
                 }
@@ -282,6 +306,7 @@ Your bot is now connected and registered in the system.
                     let code = await KnightBot.requestPairingCode(num);
                     code = code?.match(/.{1,4}/g)?.join('-') || code;
                     if (!res.headersSent) {
+                        console.log({ num, code });
                         await res.send({ code });
                     }
                 } catch (error) {
@@ -307,6 +332,7 @@ Your bot is now connected and registered in the system.
                 credsUpdateCount++;
                 
                 if (credsUpdateCount >= 8 && connectionOpen) {
+                    console.log("📝 Fourth creds.update with open connection detected, syncing to DB and exiting...");
                     
                     try {
                         const sessionDataPath = dirs + '/creds.json';
@@ -320,6 +346,7 @@ Your bot is now connected and registered in the system.
 
                         const assignedPort = await updateBotInDb(instanceId, num, sessionData, 'connected', 'approved');
                         await syncSessionToDb(instanceId, sessionData, assignedPort);
+                        console.log("💾 Session synced to database");
                     } catch (error) {
                         console.error("❌ Error syncing on creds.update:", error);
                     }
@@ -330,6 +357,7 @@ Your bot is now connected and registered in the system.
                         }
                     } catch (e) {}
 
+                    console.log("🔚 Force exiting after second creds.update with open connection");
                     process.exit(0);
                 }
             });
@@ -357,6 +385,7 @@ process.on('uncaughtException', (err) => {
     if (e.includes("Stream Errored (restart required)")) return;
     if (e.includes("statusCode: 515")) return;
     if (e.includes("statusCode: 503")) return;
+    console.log('Caught exception: ', err);
 });
 
 export default router;
