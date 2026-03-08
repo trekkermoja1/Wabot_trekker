@@ -43,6 +43,11 @@ WhatsApp Bot with Backend and Frontend.
 - (2026-01-28) Fixed owner detection in isOwner.js
 - (2026-01-31) Added 30+ new commands (privacy, chat ops, user query)
 - (2026-01-31) Fixed `.block` command with Baileys updateBlockStatus
+- (2026-03-08) Added startup message with uptime and 2-hour cooldown
+  - Bot sends "TREKKER wabot is online" with uptime info on connection
+  - Message includes helpful info about .help and .menu commands
+  - Only sends if last message was >2 hours ago (prevents spam on reconnects)
+  - Tracks last_startup_message_sent timestamp in database
 
 ## Sudo Commands (Development Mode)
 Currently in DEV_MODE - anyone can execute sudo commands. To disable, set `DEV_MODE = false` in `bot/commands/botmanagement.js`.

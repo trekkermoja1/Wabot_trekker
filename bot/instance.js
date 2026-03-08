@@ -329,6 +329,65 @@ server.listen(apiPort, '0.0.0.0', () => {
     console.log(chalk.green(`📡 Instance API running on port ${apiPort} (0.0.0.0)`));
 });
 
+async function sendStartupMessage(sock) {
+    try {
+        const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
+        const now = Date.now();
+        
+        if (!dbPool) {
+            await sock.sendMessage(sock.user.id, { 
+                text: `TREKKER wabot is online 🤖\n\nUse .help or .menu to manage the bot` 
+            });
+            return;
+        }
+        
+        try {
+            const result = await dbPool.query(
+                'SELECT last_startup_message_sent FROM bot_instances WHERE id = $1',
+                [instanceId]
+            );
+            
+            const lastSent = result.rows.length > 0 ? result.rows[0].last_startup_message_sent : 0;
+            const timeSinceLastSent = now - (lastSent || 0);
+            
+            if (!lastSent || timeSinceLastSent >= TWO_HOURS_MS) {
+                const uptimeMs = now - startTime;
+                const hours = Math.floor(uptimeMs / (1000 * 60 * 60));
+                const minutes = Math.floor((uptimeMs % (1000 * 60 * 60)) / (1000 * 60));
+                const seconds = Math.floor((uptimeMs % (1000 * 60)) / 1000);
+                
+                const uptimeStr = hours > 0 
+                    ? `${hours}h ${minutes}m ${seconds}s`
+                    : minutes > 0
+                    ? `${minutes}m ${seconds}s`
+                    : `${seconds}s`;
+                
+                const devSuffix = process.env.DEV_MODE === 'true' ? ' [DEV MODE]' : '';
+                const message = `TREKKER wabot is online${devSuffix} 🤖\n\n⏱️ Uptime: ${uptimeStr}\n\nUse .help or .menu to manage the bot`;
+                
+                await sock.sendMessage(sock.user.id, { text: message });
+                
+                await dbPool.query(
+                    'UPDATE bot_instances SET last_startup_message_sent = $1 WHERE id = $2',
+                    [now, instanceId]
+                ).catch(err => console.error('Error updating startup message timestamp:', err.message));
+                
+                console.log(chalk.green(`✅ Startup message sent and logged`));
+            } else {
+                const nextSendIn = TWO_HOURS_MS - timeSinceLastSent;
+                const hoursLeft = Math.ceil(nextSendIn / (1000 * 60 * 60));
+                console.log(chalk.yellow(`⏭️ Startup message skipped (sent ${Math.floor(timeSinceLastSent / (1000 * 60))}min ago, next send in ${hoursLeft}h)`));
+            }
+        } catch (dbErr) {
+            console.error('Database error in sendStartupMessage:', dbErr.message);
+            const message = `TREKKER wabot is online 🤖\n\nUse .help or .menu to manage the bot`;
+            await sock.sendMessage(sock.user.id, { text: message });
+        }
+    } catch (err) {
+        console.error('Error in sendStartupMessage:', err.message);
+    }
+}
+
 async function startBot() {
     console.log(chalk.blue(`🟢 startBot() called - instanceId=${instanceId}`));
     
@@ -421,11 +480,11 @@ async function startBot() {
             retryRequestDelayMs: 0,
             transactionOpts: { maxCommitRetries: 10, delayBetweenTriesMs: 10 },
             getMessage: async key => {
-			const jid = jidNormalizedUser(key.remoteJid);
-			const msg = await store.loadMessage(jid, key.id);
+                        const jid = jidNormalizedUser(key.remoteJid);
+                        const msg = await store.loadMessage(jid, key.id);
 
-			return msg?.message || '';
-		},
+                        return msg?.message || '';
+                },
             keepAliveIntervalMs: 15000,
             syncFullHistory: false,
             downloadHistory: false,
@@ -464,10 +523,9 @@ async function startBot() {
                 console.log(chalk.blue(`\ud83d\udc64 User: ${sock.user.id.split(':')[0]}`));
 
                 try {
-                    const devSuffix = process.env.DEV_MODE === 'true' ? ' [DEV MODE]' : '';
-                    await sock.sendMessage(sock.user.id, { text: `TREKKER wabot is active${devSuffix}` });
+                    await sendStartupMessage(sock);
                 } catch (e) {
-                    console.error('Error sending online message:', e.message);
+                    console.error('Error sending startup message:', e.message);
                 }
 
                 setTimeout(async () => {
@@ -771,6 +829,7 @@ async function loadDbConfig() {
                 await pool.query('ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS chatbot_api_key VARCHAR(500)');
                 await pool.query('ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS chatbot_base_url VARCHAR(500)');
                 await pool.query('ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS sec_db_pass VARCHAR(500)');
+                await pool.query('ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS last_startup_message_sent BIGINT DEFAULT 0');
                 
                 // Load global chatbot config
                 try {
