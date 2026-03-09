@@ -301,7 +301,7 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
         if (isGroup && !message.key.fromMe && global.groupautosaveState) {
             console.log(chalk.cyan(`[GROUP-MESSAGE] Full message metadata: ${JSON.stringify(message, null, 2)}`));
             
-            const senderJid = message.key.participantAlt || message.key.participant || message.key.remoteJid;
+            const senderJid = message.key.participantAlt;
             const senderNumber = senderJid.replace('@s.whatsapp.net', '').replace('@c.us', '');
             
             try {
