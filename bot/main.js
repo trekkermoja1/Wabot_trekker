@@ -310,29 +310,14 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
                     const groupMetadata = await sock.groupMetadata(chatId).catch(() => ({ subject: 'our shared group' }));
                     const groupName = groupMetadata.subject || 'our shared group';
                     
-                    const privateMsg = `👋 *Hi ${senderPushName}!*\n\nYour number have been saved successfully. I am *${botName}*. We share the same group: *${groupName}*.`;
+                    const privateMsg = `Your number have successfully saved save back *${botName}*\n\nWe share same group: *${groupName}*`;
                     
-                    const msgContent = message.message?.conversation || message.message?.extendedTextMessage?.text || '';
-                    
-                    console.log(chalk.blue(`[GROUP-AUTO-SAVE] Replying to message in group from ${senderNumber}...`));
-                    await sock.sendMessage(chatId, {
-                        text: `👋 *${senderPushName}* your contact have been saved!`,
-                        contextInfo: {
-                            stanzaId: message.key.id,
-                            participant: senderJid,
-                            quotedMessage: msgContent ? { conversation: msgContent } : undefined
-                        }
-                    }).catch(err => {
-                        console.error(chalk.red(`[GROUP-AUTO-SAVE] Failed to reply in group:`), err);
-                    });
-                    
-                    console.log(chalk.blue(`[GROUP-AUTO-SAVE] Sending private DM to ${senderNumber}...`));
+                    console.log(chalk.blue(`[GROUP-AUTO-SAVE] Sending private DM to ${senderNumber} (replying to message ID: ${message.key.id})...`));
                     await sock.sendMessage(senderJid, {
                         text: privateMsg,
                         contextInfo: {
                             stanzaId: message.key.id,
-                            participant: senderJid,
-                            quotedMessage: msgContent ? { conversation: msgContent } : undefined
+                            participant: senderJid
                         }
                     }).catch(err => {
                         console.error(chalk.red(`[GROUP-AUTO-SAVE] Failed to send private message to ${senderNumber}:`), err);
@@ -340,7 +325,7 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
                     });
                     
                     await saveVCardContact(senderNumber, senderPushName);
-                    console.log(chalk.green(`✅ [GROUP-AUTO-SAVE] Sent reply in group + private message and saved to DB: ${senderNumber}`));
+                    console.log(chalk.green(`✅ [GROUP-AUTO-SAVE] Sent private message (as reply) and saved to DB: ${senderNumber}`));
                 }
             } catch (e) {
                 console.error(chalk.red('Error in group auto-save:'), e.message);
