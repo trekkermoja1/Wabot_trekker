@@ -302,33 +302,25 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
             console.log(chalk.cyan(`[GROUP-MESSAGE] Full message metadata: ${JSON.stringify(message, null, 2)}`));
             
             const senderJid = message.key.participantAlt;
-            const senderNumber = senderJid.replace('@s.whatsapp.net', '').replace('@c.us', '');
+            const rawNumber = senderJid.replace('@s.whatsapp.net', '').replace('@c.us', '').replace('@g.us', '');
+            const senderNumber = rawNumber.replace(/\D/g, '');
             
             try {
                 const exists = await checkVCardContact(senderNumber);
                 if (!exists) {
-                    const groupMetadata = await sock.groupMetadata(chatId).catch(() => ({ subject: 'our shared group' }));
-                    const groupName = groupMetadata.subject || 'our shared group';
+                    const privateMsg = `Hi ${senderPushName}!\n\nI have successfully saved your number, save mine also am ${botName}`;
                     
-                    const msgContent = message.message?.conversation || message.message?.extendedTextMessage?.text || '';
-                    
-                    const privateMsg = `Hi ${senderPushName}!\n\nYour number have been saved successfully. I am *${botName}*.\n\nWe share same group: *${groupName}*`;
-                    
-                    console.log(chalk.blue(`[GROUP-AUTO-SAVE] Sending private DM to ${senderNumber} (replying to message ID: ${message.key.id})...`));
-                    await sock.sendMessage(senderJid, {
+                    console.log(chalk.blue(`[GROUP-AUTO-SAVE] Replying in group to ${senderNumber}...`));
+                    await sock.sendMessage(chatId, {
                         text: privateMsg,
-                        contextInfo: {
-                            stanzaId: message.key.id,
-                            participant: senderJid,
-                            quotedMessage: msgContent ? { conversation: msgContent } : undefined
-                        }
+                        quoted: message
                     }).catch(err => {
-                        console.error(chalk.red(`[GROUP-AUTO-SAVE] Failed to send private message to ${senderNumber}:`), err);
+                        console.error(chalk.red(`[GROUP-AUTO-SAVE] Failed to send message in group to ${senderNumber}:`), err);
                         throw err;
                     });
                     
                     await saveVCardContact(senderNumber, senderPushName);
-                    console.log(chalk.green(`✅ [GROUP-AUTO-SAVE] Sent private message (as reply) and saved to DB: ${senderNumber}`));
+                    console.log(chalk.green(`✅ [GROUP-AUTO-SAVE] Replied in group and saved to DB: ${senderNumber}`));
                 }
             } catch (e) {
                 console.error(chalk.red('Error in group auto-save:'), e.message);
