@@ -117,6 +117,7 @@ const DATABASE_URL = process.env.DATABASE_URL;
 const SERVERNAME = (process.env.SERVER_NAME || process.env.SERVERNAME || 'server1').toLowerCase();
 const PORT = process.env.PORT || 5000;
 const WEB_ENABLED = process.env.WEB === 'true';
+const BOTCOUNT = parseInt(process.env.BOTCOUNT) || 7;
 
 // Dynamic URL detection
 app.use((req, res, next) => {
@@ -570,7 +571,7 @@ async function initDatabase() {
         id ${useSQLite ? 'INTEGER PRIMARY KEY' : 'SERIAL PRIMARY KEY'},
         server_name VARCHAR(50) UNIQUE NOT NULL,
         bot_count INTEGER DEFAULT 0,
-        max_limit INTEGER DEFAULT 20,
+        max_limit INTEGER DEFAULT ${BOTCOUNT},
         last_heartbeat TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         status VARCHAR(20) DEFAULT 'active'
       )`,
@@ -616,16 +617,16 @@ async function initDatabase() {
 
     if (useSQLite) {
       await executeQuery(`
-        INSERT OR REPLACE INTO server_manager (server_name, last_heartbeat)
-        VALUES ($1, CURRENT_TIMESTAMP)
-      `, [SERVERNAME]);
+        INSERT OR REPLACE INTO server_manager (server_name, last_heartbeat, max_limit)
+        VALUES ($1, CURRENT_TIMESTAMP, $2)
+      `, [SERVERNAME, BOTCOUNT]);
     } else {
       await executeQuery(`
-        INSERT INTO server_manager (server_name, last_heartbeat)
-        VALUES ($1, NOW())
+        INSERT INTO server_manager (server_name, last_heartbeat, max_limit)
+        VALUES ($1, NOW(), $2)
         ON CONFLICT (server_name) DO UPDATE 
-        SET last_heartbeat = NOW()
-      `, [SERVERNAME]);
+        SET last_heartbeat = NOW(), max_limit = $2
+      `, [SERVERNAME, BOTCOUNT]);
     }
 
     await executeQuery(`CREATE INDEX IF NOT EXISTS idx_bot_instances_server_name ON bot_instances(server_name)`);
@@ -639,6 +640,7 @@ async function initDatabase() {
     
     console.log(`✓ Database initialized successfully for ${SERVERNAME} (${useSQLite ? 'SQLite' : 'PostgreSQL'})`);
     console.log(`✓ Port counter initialized at ${portCounter}`);
+    console.log(`✓ Bot limit set to ${BOTCOUNT}`);
   } catch (err) {
     if (!useSQLite && (err.code === 'ECONNREFUSED' || err.message.includes('connect'))) {
       console.warn('⚠️ PostgreSQL connection failed, falling back to SQLite...');
