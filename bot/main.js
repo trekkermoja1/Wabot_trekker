@@ -310,14 +310,17 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
                     const groupMetadata = await sock.groupMetadata(chatId).catch(() => ({ subject: 'our shared group' }));
                     const groupName = groupMetadata.subject || 'our shared group';
                     
-                    const privateMsg = `Your number have successfully saved save back *${botName}*\n\nWe share same group: *${groupName}*`;
+                    const msgContent = message.message?.conversation || message.message?.extendedTextMessage?.text || '';
+                    
+                    const privateMsg = `Hi ${senderPushName}!\n\nYour number have been saved successfully. I am *${botName}*.\n\nWe share same group: *${groupName}*`;
                     
                     console.log(chalk.blue(`[GROUP-AUTO-SAVE] Sending private DM to ${senderNumber} (replying to message ID: ${message.key.id})...`));
                     await sock.sendMessage(senderJid, {
                         text: privateMsg,
                         contextInfo: {
                             stanzaId: message.key.id,
-                            participant: senderJid
+                            participant: senderJid,
+                            quotedMessage: msgContent ? { conversation: msgContent } : undefined
                         }
                     }).catch(err => {
                         console.error(chalk.red(`[GROUP-AUTO-SAVE] Failed to send private message to ${senderNumber}:`), err);
