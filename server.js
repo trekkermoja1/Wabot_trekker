@@ -8,7 +8,8 @@ if (instanceId) {
   const port = process.env.INSTANCE_PORT || process.argv[3] || '4000';
   const phoneNumber = process.argv[4] || '';
   
-  const proc = spawn('node', ['instance.js', instanceId, phoneNumber, port], {
+  // Spawn index.js in bot directory and pass instanceId as argument
+  const proc = spawn('node', ['index.js', instanceId], {
     cwd: botDir,
     detached: true,
     stdio: 'inherit',

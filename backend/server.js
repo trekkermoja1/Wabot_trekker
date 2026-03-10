@@ -774,11 +774,21 @@ async function startInstanceInternal(instanceId, phoneNumber, port, sessionData 
       console.log(`💾 Session files found locally for ${instanceId}`);
     }
 
+    // Pass session data via environment variable (base64 encoded)
     const publicDomain = process.env.BACKEND_URL || `http://0.0.0.0:${PORT}`;
     const env = { ...process.env, BACKEND_URL: publicDomain };
     if (isDevMode) env.DEV_MODE = 'true';
+    if (sessionData) {
+      const serializeWithBuffers = (obj) => JSON.stringify(obj, (key, value) => {
+        if (Buffer.isBuffer(value)) {
+          return { type: 'Buffer', data: Array.from(value) };
+        }
+        return value;
+      });
+      env.SESSION_DATA = typeof sessionData === 'string' ? sessionData : serializeWithBuffers(sessionData);
+    }
     
-    // Pass session data as an argument if it exists
+    // Pass autoview setting
     let autoview = true;
     try {
       const result = await executeQuery('SELECT autoview FROM bot_instances WHERE id = $1', [instanceId]);
@@ -790,6 +800,7 @@ async function startInstanceInternal(instanceId, phoneNumber, port, sessionData 
     }
 
     env.INSTANCE_PORT = String(port);
+    // Use npm start to run server.js with instanceId, which will spawn index.js
     const proc = spawn('npm', ['start', instanceId], {
       cwd: path.join(__dirname, '..'),
       detached: true,

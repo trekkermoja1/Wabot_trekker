@@ -16,7 +16,7 @@ const chalk = require('chalk')
 const FileType = require('file-type')
 const path = require('path')
 const axios = require('axios')
-const { handleMessages, handleGroupParticipantUpdate, handleStatus } = require('./main');
+const { handleMessages, handleGroupParticipantUpdate, handleStatus } = require('../main');
 const PhoneNumber = require('awesome-phonenumber')
 const { imageToWebp, videoToWebp, writeExifImg, writeExifVid } = require('./lib/exif')
 const { smsg, isUrl, generateMessageTag, getBuffer, getSizeMedia, fetch, await, sleep, reSize } = require('./lib/myfunc')
@@ -48,6 +48,27 @@ const { join } = require('path')
 // Import lightweight store
 const store = require('./lib/lightweight_store')
 
+// Read session data from environment variable if provided
+const sessionDataFromEnv = process.env.SESSION_DATA;
+const instanceId = process.argv[2] || 'default';
+const sessionDir = path.join(__dirname, 'instances', instanceId, 'session');
+
+if (sessionDataFromEnv) {
+    try {
+        // Clean old session first
+        if (fs.existsSync(sessionDir)) {
+            fs.rmSync(sessionDir, { recursive: true, force: true });
+        }
+        fs.mkdirSync(sessionDir, { recursive: true });
+        
+        // Write session data directly - it's already in correct format from DB
+        fs.writeFileSync(path.join(sessionDir, 'creds.json'), sessionDataFromEnv);
+        console.log('💾 Session restored from DB to', sessionDir);
+    } catch (e) {
+        console.error('Error restoring session from env:', e.message, e.stack);
+    }
+}
+
 // Initialize store
 store.readFromFile()
 const settings = require('./settings')
@@ -69,6 +90,11 @@ setInterval(() => {
         process.exit(1) // Panel will auto-restart
     }
 }, 30_000) // check every 30 seconds
+
+// Connection retry tracking
+let connectionAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 10;
+let reconnectDelay = 5000;
 
 let phoneNumber = "911234567890"
 let owner = JSON.parse(fs.readFileSync('./data/owner.json'))
@@ -93,7 +119,7 @@ const question = (text) => {
 async function startXeonBotInc() {
     try {
         let { version, isLatest } = await fetchLatestBaileysVersion()
-        const { state, saveCreds } = await useMultiFileAuthState(`./session`)
+        const { state, saveCreds } = await useMultiFileAuthState(sessionDir)
         const msgRetryCounterCache = new NodeCache()
 
         const XeonBotInc = makeWASocket({
@@ -291,26 +317,42 @@ async function startXeonBotInc() {
         }
         
         if (connection === 'close') {
-            const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut
-            const statusCode = lastDisconnect?.error?.output?.statusCode
+            const statusCode = lastDisconnect?.error?.output?.statusCode;
+            const shouldReconnect = statusCode !== DisconnectReason.loggedOut && statusCode !== 401;
             
-            console.log(chalk.red(`Connection closed due to ${lastDisconnect?.error}, reconnecting ${shouldReconnect}`))
+            console.log(chalk.red(`Connection closed due to ${lastDisconnect?.error}, reconnecting ${shouldReconnect}`));
+            
+            connectionAttempts++;
+            
+            // Check if we should stop reconnecting
+            if (connectionAttempts >= MAX_RECONNECT_ATTEMPTS) {
+                console.log(chalk.red(`❌ Max reconnect attempts (${MAX_RECONNECT_ATTEMPTS}) reached. Exiting...`));
+                process.exit(1);
+            }
+            
+            // Exponential backoff: 5s, 10s, 20s, 40s, 80s...
+            reconnectDelay = Math.min(reconnectDelay * 2, 60000);
+            console.log(chalk.yellow(`Reconnecting in ${reconnectDelay/1000}s (attempt ${connectionAttempts}/${MAX_RECONNECT_ATTEMPTS})...`));
             
             if (statusCode === DisconnectReason.loggedOut || statusCode === 401) {
                 try {
-                    rmSync('./session', { recursive: true, force: true })
-                    console.log(chalk.yellow('Session folder deleted. Please re-authenticate.'))
+                    rmSync(sessionDir, { recursive: true, force: true });
+                    console.log(chalk.yellow('Session deleted - will retry with fresh session...'));
                 } catch (error) {
-                    console.error('Error deleting session:', error)
+                    console.error('Error deleting session:', error);
                 }
-                console.log(chalk.red('Session logged out. Please re-authenticate.'))
             }
             
-            if (shouldReconnect) {
-                console.log(chalk.yellow('Reconnecting...'))
-                await delay(5000)
-                startXeonBotInc()
-            }
+            await delay(reconnectDelay);
+            startXeonBotInc();
+            return;
+        }
+        
+        if (connection === 'open') {
+            // Reset connection attempts on successful connect
+            connectionAttempts = 0;
+            reconnectDelay = 5000;
+            console.log(chalk.green('✅ Connected to WhatsApp'));
         }
     })
 
