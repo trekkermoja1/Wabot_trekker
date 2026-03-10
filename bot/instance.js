@@ -606,7 +606,6 @@ async function startBot() {
             syncFullHistory: false,
             downloadHistory: false,
             markOnlineOnConnect: true,
-            shouldIgnoreJid: jid => isJidNewsletter(jid) || jid === 'status@broadcast',
             shouldSyncHistoryMessage: () => false,
             emitOwnEvents: true,
             fireInitQueries: false,
