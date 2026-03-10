@@ -2,13 +2,14 @@ FROM node:22-slim
 LABEL "language"="nodejs"
 WORKDIR /app
 
-COPY package.json package-lock.json ./
+RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
 
-RUN npm install
+COPY package.json ./
+
+RUN npm install --legacy-peer-deps
 
 COPY . .
 
-RUN npm run build
 RUN mkdir -p backend/static bot/sessions
 
 EXPOSE 8080
