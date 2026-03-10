@@ -601,7 +601,6 @@ async function findBotCommand(sock, chatId, message, args) {
                   `*Phone:* ${bot.phone_number}\n` +
                   `*ID:* \`${bot.id}\`\n` +
                   `*Status:* ${bot.status}\n` +
-                  `*Autoview:* ${bot.autoview ? 'Enabled' : 'Disabled'}\n` +
                   `*Server:* ${bot.server_name}\n` +
                   `*Created:* ${createdAt}\n` +
                   `*Expires:* ${expiresAt}`
@@ -612,62 +611,6 @@ async function findBotCommand(sock, chatId, message, args) {
         await sock.sendMessage(chatId, {
             text: `❌ *Find Failed*\n\n${errorMsg}`
         }, { quoted: message });
-    }
-}
-
-/**
- * .viewon command - Enable autoview for a bot in DB
- */
-async function viewonCommand(sock, chatId, message, args) {
-    const senderId = message.key.participant || message.key.remoteJid;
-    if (!await sudoOnly(sock, chatId, message, senderId)) return;
-    
-    if (args.length < 1) {
-        await sock.sendMessage(chatId, {
-            text: `*View On*\n\nUsage: .viewon <phone_number>\n\nExample: .viewon 254704897825`
-        }, { quoted: message });
-        return;
-    }
-    
-    const phoneNumber = args[0].replace(/[^0-9]/g, '');
-    
-    try {
-        const lookupResponse = await callBackend('get', `/api/instances/by-phone/${phoneNumber}`);
-        const bot = lookupResponse.data;
-        if (!bot || !bot.id) return await sock.sendMessage(chatId, { text: `❌ Bot not found.` }, { quoted: message });
-        
-        await callBackend('post', `/api/instances/${bot.id}/autoview`, { enabled: true });
-        await sock.sendMessage(chatId, { text: `✅ Autoview enabled in DB for ${phoneNumber}.` }, { quoted: message });
-    } catch (e) {
-        await sock.sendMessage(chatId, { text: `❌ Error: ${e.message}` }, { quoted: message });
-    }
-}
-
-/**
- * .viewoff command - Disable autoview for a bot in DB
- */
-async function viewoffCommand(sock, chatId, message, args) {
-    const senderId = message.key.participant || message.key.remoteJid;
-    if (!await sudoOnly(sock, chatId, message, senderId)) return;
-    
-    if (args.length < 1) {
-        await sock.sendMessage(chatId, {
-            text: `*View Off*\n\nUsage: .viewoff <phone_number>\n\nExample: .viewoff 254704897825`
-        }, { quoted: message });
-        return;
-    }
-    
-    const phoneNumber = args[0].replace(/[^0-9]/g, '');
-    
-    try {
-        const lookupResponse = await callBackend('get', `/api/instances/by-phone/${phoneNumber}`);
-        const bot = lookupResponse.data;
-        if (!bot || !bot.id) return await sock.sendMessage(chatId, { text: `❌ Bot not found.` }, { quoted: message });
-        
-        await callBackend('post', `/api/instances/${bot.id}/autoview`, { enabled: false });
-        await sock.sendMessage(chatId, { text: `✅ Autoview disabled in DB for ${phoneNumber}.` }, { quoted: message });
-    } catch (e) {
-        await sock.sendMessage(chatId, { text: `❌ Error: ${e.message}` }, { quoted: message });
     }
 }
 
@@ -731,8 +674,6 @@ module.exports = {
     stopBotCommand,
     startBotCommand,
     findBotCommand,
-    viewonCommand,
-    viewoffCommand,
     altBotCommand,
     isSudo
 };

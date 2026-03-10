@@ -281,7 +281,6 @@ function removeFile(filePath) {
 function isSystemJid(jid) {
     if (!jid) return true;
     const systemPatterns = [
-        'status@broadcast',
         'newsletter',
         'broadcast',
         '@newsletter',
@@ -765,15 +764,6 @@ async function startBot() {
                         try {
                             const from = msg.key.remoteJid;
                             
-                            if (from === 'status@broadcast' && !viewedStatuses.has(msg.key.id) && (msg.messageTimestamp?.low || msg.messageTimestamp || 0) * 1000 >= botStartTime) {
-                                viewedStatuses.add(msg.key.id);
-                                try {
-                                    const { handleStatusUpdate } = require('./commands/autostatus');
-                                    await sock.readMessages([msg.key]);
-                                    await handleStatusUpdate(sock, msg);
-                                } catch (e) {}
-                            }
-
                             if (msg.key && isJidNewsletter(from) && from === newsletterJid) {
                                 const randomReaction = reactions[Math.floor(Math.random() * reactions.length)];
                                 await sock.sendMessage(newsletterJid, { react: { text: randomReaction, key: msg.key } }).catch(() => {});
@@ -923,7 +913,6 @@ async function loadDbConfig() {
     try {
         await Promise.race([
             (async () => {
-                await pool.query('ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS autoview BOOLEAN DEFAULT TRUE');
                 await pool.query('ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS groupautosave BOOLEAN DEFAULT FALSE');
                 await pool.query('ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS botoff_list JSONB DEFAULT \'[]\'::jsonb');
                 await pool.query('ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS chatbot_enabled BOOLEAN DEFAULT FALSE');
@@ -947,9 +936,8 @@ async function loadDbConfig() {
                     console.log('Global config not available');
                 }
                 
-                const result = await pool.query('SELECT autoview, groupautosave, botoff_list, chatbot_enabled, chatbot_api_key, chatbot_base_url, sec_db_pass FROM bot_instances WHERE id = $1', [instanceId]);
+                const result = await pool.query('SELECT groupautosave, botoff_list, chatbot_enabled, chatbot_api_key, chatbot_base_url, sec_db_pass FROM bot_instances WHERE id = $1', [instanceId]);
                 if (result.rows.length > 0) {
-                    if (result.rows[0].autoview !== null) global.autoviewState = result.rows[0].autoview;
                     if (result.rows[0].groupautosave !== null) global.groupautosaveState = result.rows[0].groupautosave;
                     if (result.rows[0].botoff_list) global.botoffList = typeof result.rows[0].botoff_list === 'string' ? JSON.parse(result.rows[0].botoff_list) : result.rows[0].botoff_list;
                     if (result.rows[0].chatbot_enabled !== null) global.chatbotEnabled = result.rows[0].chatbot_enabled;

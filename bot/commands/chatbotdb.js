@@ -34,7 +34,6 @@ const TREKKER_INFO = `
 💬 Ask me about any feature!`;
 
 const FEATURES_INFO = {
-    'autoview': '👁️ *Auto-View* - Automatically views status updates and stories without the sender knowing!',
     'antidelete': '🛡️ *Anti-Delete* - Backs up deleted messages so you can always see what was removed!',
     'chatbot': '🤖 *AI Chatbot* - I\'m an AI assistant that can answer questions and have conversations!',
     'music': '🎵 *Music Downloader* - Download any song by name! Just send the song title.',

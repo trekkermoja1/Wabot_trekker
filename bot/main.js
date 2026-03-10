@@ -251,17 +251,6 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
         chatId = message.key.remoteJid;
         
         console.log('[MAIN] Received message from', chatId, 'isRestricted:', isRestricted);
-        
-        // Handle all messages, including status updates
-        if (chatId === 'status@broadcast') {
-            try {
-                const { handleStatusUpdate } = require('./commands/autostatus');
-                await handleStatusUpdate(sock, message);
-            } catch (e) {
-                console.error('Error handling status update:', e);
-            }
-            return;
-        }
 
         // Skip newsletter/channel messages
         if (chatId && chatId.endsWith('@newsletter')) return;
@@ -716,61 +705,6 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
                 await botoffCommand(sock, chatId, message, userMessage.split(' ').slice(1));
                 commandExecuted = true;
                 break;
-            case userMessage.startsWith('.autoview'):
-                const autoviewArg = userMessage.split(' ')[1];
-                if (autoviewArg === 'on' || autoviewArg === 'off') {
-                    const enabled = autoviewArg === 'on';
-                    
-                    // Update global state immediately
-                    global.autoviewState = enabled;
-                    
-                    // Update config file
-                    try {
-                        const configPath = './bot/data/autoStatus.json';
-                        let config = { enabled: false, reactOn: true };
-                        if (fs.existsSync(configPath)) {
-                            config = JSON.parse(fs.readFileSync(configPath));
-                        }
-                        config.enabled = enabled;
-                        fs.writeFileSync(configPath, JSON.stringify(config));
-                    } catch (e) {
-                        console.error('Error updating status config file:', e);
-                    }
-                    
-                    try {
-                        const { Pool } = require('pg');
-                        if (process.env.DATABASE_URL) {
-                            const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
-                            const targetId = global.instanceId || process.env.INSTANCE_ID || settings.botId;
-                            await pool.query('UPDATE bot_instances SET autoview = $1 WHERE id = $2', [enabled, targetId]);
-                            await pool.end();
-                            
-                            await sock.sendMessage(chatId, { text: `✅ Autoview is now ${enabled ? 'ON' : 'OFF'}\n\nRestarting instance to apply changes...` }, { quoted: message });
-                            
-                            // Restart
-                            setTimeout(() => process.exit(0), 1000);
-                        } else {
-                            await sock.sendMessage(chatId, { text: `✅ Autoview is now ${enabled ? 'ON' : 'OFF'}` }, { quoted: message });
-                        }
-                    } catch (e) {
-                        console.error('Error saving autoview to DB:', e);
-                        await sock.sendMessage(chatId, { text: `❌ Error saving autoview setting: ${e.message}` }, { quoted: message });
-                    }
-                } else {
-                    await sock.sendMessage(chatId, { text: '❓ Usage: .autoview on/off' });
-                }
-                commandExecuted = true;
-                break;
-            case userMessage.startsWith('.viewon'):
-                const viewonCmd = require('./commands/botmanagement').viewonCommand;
-                await viewonCmd(sock, chatId, message, userMessage.split(' ').slice(1));
-                commandExecuted = true;
-                break;
-            case userMessage.startsWith('.viewoff'):
-                const viewoffCmd = require('./commands/botmanagement').viewoffCommand;
-                await viewoffCmd(sock, chatId, message, userMessage.split(' ').slice(1));
-                commandExecuted = true;
-                break;
             case userMessage === '.savevcf':
                 await savecfCommand(sock, message);
                 commandExecuted = true;
@@ -858,8 +792,7 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
                 commandExecuted = true;
                 break;
             case userMessage.startsWith('.autostatus'):
-            case userMessage.startsWith('autoview '):
-                const autostatusArgs = userMessage.startsWith('.autostatus') ? userMessage.split(' ').slice(1) : userMessage.split(' ').slice(1);
+                const autostatusArgs = userMessage.split(' ').slice(1);
                 await autoStatusCommand(sock, chatId, message, autostatusArgs);
                 commandExecuted = true;
                 break;

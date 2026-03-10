@@ -1,5 +1,3 @@
-const fs = require('fs');
-const path = require('path');
 const isOwnerOrSudo = require('../lib/isOwner');
 
 const channelInfo = {
@@ -13,88 +11,6 @@ const channelInfo = {
         }
     }
 };
-
-// Path to store auto status configuration
-const configPath = path.join(__dirname, '../data/autoStatus.json');
-
-// Initialize config file if it doesn't exist
-if (!fs.existsSync(configPath)) {
-    fs.writeFileSync(configPath, JSON.stringify({ 
-        enabled: true, 
-        reactOn: true 
-    }));
-}
-
-// Function to check if status reaction is enabled
-function isStatusReactionEnabled() {
-    try {
-        if (!fs.existsSync(configPath)) {
-            return true;
-        }
-        const config = JSON.parse(fs.readFileSync(configPath));
-        return config.reactOn === true;
-    } catch (error) {
-        console.error('Error checking reaction config:', error);
-        return true;
-    }
-}
-
-// Function to react to status using proper method
-async function reactToStatus(sock, statusKey) {
-    try {
-        if (!isStatusReactionEnabled()) {
-            return;
-        }
-
-        await sock.relayMessage(
-            'status@broadcast',
-            {
-                reactionMessage: {
-                    key: {
-                        remoteJid: 'status@broadcast',
-                        id: statusKey.id,
-                        participant: statusKey.participant || statusKey.remoteJid,
-                        fromMe: false
-                    },
-                    text: '👀'
-                }
-            },
-            {
-                messageId: statusKey.id,
-                statusJidList: [statusKey.remoteJid, statusKey.participant || statusKey.remoteJid]
-            }
-        );
-    } catch (error) {
-        if (error.message?.includes('rate-overlimit')) {
-            console.log('⚠️ Rate limit hit on reaction, waiting 1sec...');
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            try {
-                await sock.relayMessage(
-                    'status@broadcast',
-                    {
-                        reactionMessage: {
-                            key: {
-                                remoteJid: 'status@broadcast',
-                                id: statusKey.id,
-                                participant: statusKey.participant || statusKey.remoteJid,
-                                fromMe: false
-                            },
-                            text: '👀'
-                        }
-                    },
-                    {
-                        messageId: statusKey.id,
-                        statusJidList: [statusKey.remoteJid, statusKey.participant || statusKey.remoteJid]
-                    }
-                );
-            } catch (e) {
-                console.error('❌ Error reacting to status:', e.message);
-            }
-        } else {
-            console.error('❌ Error reacting to status:', error.message);
-        }
-    }
-}
 
 async function autoStatusCommand(sock, chatId, msg, args) {
     try {
@@ -113,95 +29,22 @@ async function autoStatusCommand(sock, chatId, msg, args) {
             return;
         }
 
-        // Read current config
-        let config = JSON.parse(fs.readFileSync(configPath));
-
-        // If no arguments, show current status
-        if (!args || args.length === 0) {
-            const status = config.enabled ? 'enabled' : 'disabled';
-            await sock.sendMessage(chatId, { 
-                text: `🔄 *Auto Status Settings*\n\n📱 *Auto Status View:* ${status}\n\n*Commands:*\n.autostatus on - Enable auto status view\n.autostatus off - Disable auto status view\n\n*Alternative Commands:*\nautoview on - Enable auto status view\nautoview off - Disable auto status view`,
-                ...channelInfo
-            });
-            return;
-        }
-
-        // Handle on/off commands
-        const command = args[0].toLowerCase();
-        
-        if (command === 'on') {
-            config.enabled = true;
-            fs.writeFileSync(configPath, JSON.stringify(config));
-            await sock.sendMessage(chatId, { 
-                text: '✅ Auto status view has been enabled!\nBot will now automatically view all contact statuses.',
-                ...channelInfo
-            });
-        } else if (command === 'off') {
-            config.enabled = false;
-            fs.writeFileSync(configPath, JSON.stringify(config));
-            await sock.sendMessage(chatId, { 
-                text: '❌ Auto status view has been disabled!\nBot will no longer automatically view statuses.',
-                ...channelInfo
-            });
-        } else {
-            await sock.sendMessage(chatId, { 
-                text: '❌ Invalid command! Use:\n.autostatus on/off - Enable/disable auto status view',
-                ...channelInfo
-            });
-        }
+        await sock.sendMessage(chatId, { 
+            text: '❌ Auto status viewing has been disabled.',
+            ...channelInfo
+        });
 
     } catch (error) {
         console.error('Error in autostatus command:', error);
-        await sock.sendMessage(chatId, { 
-            text: '❌ Error occurred while managing auto status!\n' + error.message,
-            ...channelInfo
-        });
     }
 }
 
-// Function to check if auto status is enabled
-function isAutoStatusEnabled() {
-    try {
-        // Priority: global.db config first, then file config
-        if (global.autoviewState !== undefined) {
-            return global.autoviewState;
-        }
-        // If no global setting, default to true
-        if (!fs.existsSync(configPath)) {
-            return true;
-        }
-        const config = JSON.parse(fs.readFileSync(configPath));
-        return config.enabled;
-    } catch (error) {
-        console.error('Error checking auto status config:', error);
-        return true; // Default to enabled
-    }
-}
-
-// Function to handle status updates
 async function handleStatusUpdate(sock, status) {
-    try {
-        if (!isAutoStatusEnabled()) {
-            return;
-        }
+    return;
+}
 
-        if (status.key && status.key.remoteJid === 'status@broadcast' && status.type === 'notify') {
-            try {
-                await sock.readMessages([status.key]);
-                await reactToStatus(sock, status.key);
-            } catch (err) {
-                if (err.message?.includes('rate-overlimit')) {
-                    console.log('⚠️ Rate limit hit, discarding status');
-                    return;
-                }
-                throw err;
-            }
-            return;
-        }
-
-    } catch (error) {
-        console.error('❌ Error in auto status view:', error.message);
-    }
+async function reactToStatus(sock, statusKey) {
+    return;
 }
 
 module.exports = {
