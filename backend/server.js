@@ -1209,13 +1209,30 @@ async function checkRamAndRestartBots() {
 
 // setInterval(checkRamAndRestartBots, 10000);
 
+const ADMIN_TOKEN = Buffer.from(`${ADMIN_USERNAME}:${ADMIN_PASSWORD}`).toString('base64');
+
 app.post('/api/login', (req, res) => {
   const { username, password } = req.body;
   if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
-    return res.json({ success: true, message: 'Login successful' });
+    return res.json({ success: true, token: ADMIN_TOKEN, message: 'Login successful' });
   }
   res.status(401).json({ detail: 'Invalid credentials' });
 });
+
+// Middleware to check admin token
+const authenticateAdmin = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ detail: 'Unauthorized' });
+  }
+  const token = authHeader.substring(7);
+  if (token !== ADMIN_TOKEN) {
+    return res.status(401).json({ detail: 'Invalid token' });
+  }
+  next();
+};
+
+// Protected route example - use authenticateAdmin middleware for protected routes
 
 // Get bot by phone number
 app.get('/api/instances/by-phone/:phoneNumber', async (req, res) => {

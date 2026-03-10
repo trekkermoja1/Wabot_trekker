@@ -36,6 +36,14 @@ function App() {
     sec_db_pass: '' 
   });
 
+  // Check for existing token on load
+  useEffect(() => {
+    const token = localStorage.getItem('admin_token');
+    if (token) {
+      setIsLoggedIn(true);
+    }
+  }, []);
+
   useEffect(() => {
     if (isLoggedIn) {
       fetchServerInfo();
@@ -53,7 +61,7 @@ function App() {
 
   const fetchServerInfo = async () => {
     try {
-      const response = await fetch(`${API_URL}/api/server-info`);
+      const response = await authFetch(`${API_URL}/api/server-info`);
       const data = await response.json();
       setServerInfo(data);
     } catch (error) {
@@ -63,7 +71,7 @@ function App() {
 
   const fetchRamInfo = async () => {
     try {
-      const response = await fetch(`${API_URL}/api/ram-info`);
+      const response = await authFetch(`${API_URL}/api/ram-info`);
       const data = await response.json();
       setRamInfo(data);
     } catch (error) {
@@ -83,7 +91,7 @@ function App() {
 
   const fetchServerBots = async () => {
     try {
-      const response = await fetch(`${API_URL}/api/instances/server-bots`);
+      const response = await authFetch(`${API_URL}/api/instances/server-bots`);
       const data = await response.json();
       setServerBots(data.instances || []);
     } catch (error) {
@@ -98,7 +106,7 @@ function App() {
       return;
     }
     try {
-      const response = await fetch(`${API_URL}/api/instances/search?query=${encodeURIComponent(query)}`);
+      const response = await authFetch(`${API_URL}/api/instances/search?query=${encodeURIComponent(query)}`);
       const data = await response.json();
       setSearchResults(data.instances || []);
     } catch (error) {
@@ -117,6 +125,10 @@ function App() {
       });
       
       if (response.ok) {
+        const data = await response.json();
+        if (data.token) {
+          localStorage.setItem('admin_token', data.token);
+        }
         setIsLoggedIn(true);
       } else {
         alert('Invalid credentials');
@@ -128,11 +140,29 @@ function App() {
     }
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem('admin_token');
+    setIsLoggedIn(false);
+    setUsername('');
+    setPassword('');
+  };
+
+  const getAuthHeader = () => {
+    const token = localStorage.getItem('admin_token');
+    return token ? { 'Authorization': `Bearer ${token}` } : {};
+  };
+
+  // Wrapper for authenticated fetch calls
+  const authFetch = async (url, options = {}) => {
+    const headers = { ...getAuthHeader(), ...options.headers };
+    return fetch(url, { ...options, headers });
+  };
+
   const handleCreateBot = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
-      const response = await fetch(`${API_URL}/api/instances`, {
+      const response = await authFetch(`${API_URL}/api/instances`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newBotData)
@@ -159,7 +189,7 @@ function App() {
   const handleStartBot = async (botId) => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_URL}/api/instances/${botId}/start`, { method: 'POST' });
+      const response = await authFetch(`${API_URL}/api/instances/${botId}/start`, { method: 'POST' });
       if (response.ok) {
         alert('Bot start command sent');
         fetchServerBots();
@@ -178,7 +208,7 @@ function App() {
     if (!window.confirm('Stop this bot?')) return;
     setLoading(true);
     try {
-      const response = await fetch(`${API_URL}/api/instances/${botId}/stop`, { method: 'POST' });
+      const response = await authFetch(`${API_URL}/api/instances/${botId}/stop`, { method: 'POST' });
       if (response.ok) {
         alert('Bot stopped successfully');
         fetchServerBots();
@@ -197,7 +227,7 @@ function App() {
     if (!window.confirm('Restart this bot?')) return;
     setLoading(true);
     try {
-      const response = await fetch(`${API_URL}/api/instances/${botId}/restart`, { method: 'POST' });
+      const response = await authFetch(`${API_URL}/api/instances/${botId}/restart`, { method: 'POST' });
       if (response.ok) {
         alert('Bot restart command sent');
         fetchServerBots();
@@ -216,7 +246,7 @@ function App() {
     if (!window.confirm('Delete this bot permanently?')) return;
     setLoading(true);
     try {
-      const response = await fetch(`${API_URL}/api/instances/${botId}`, { method: 'DELETE' });
+      const response = await authFetch(`${API_URL}/api/instances/${botId}`, { method: 'DELETE' });
       if (response.ok) {
         alert('Bot deleted successfully');
         fetchAllBots();
@@ -237,7 +267,7 @@ function App() {
     if (!window.confirm('Delete this bot from database? This will remove it from all servers.')) return;
     setLoading(true);
     try {
-      const response = await fetch(`${API_URL}/api/instances/${botId}/db`, { method: 'DELETE' });
+      const response = await authFetch(`${API_URL}/api/instances/${botId}/db`, { method: 'DELETE' });
       if (response.ok) {
         alert('Bot deleted from database');
         fetchAllBots();
@@ -258,7 +288,7 @@ function App() {
     if (!selectedBot) return;
     setLoading(true);
     try {
-      const response = await fetch(`${API_URL}/api/instances/${botId}/approve`, {
+      const response = await authFetch(`${API_URL}/api/instances/${botId}/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ duration_months: selectedDuration })
@@ -284,7 +314,7 @@ function App() {
 
   const handleToggleAutoview = async (botId, currentStatus) => {
     try {
-      const response = await fetch(`${API_URL}/api/instances/${botId}/autoview`, {
+      const response = await authFetch(`${API_URL}/api/instances/${botId}/autoview`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled: !currentStatus })
@@ -324,7 +354,7 @@ function App() {
 
   const handleUpdateBotName = async (botId, newName) => {
     try {
-      const response = await fetch(`${API_URL}/api/instances/${botId}/name`, {
+      const response = await authFetch(`${API_URL}/api/instances/${botId}/name`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newName })
@@ -346,7 +376,7 @@ function App() {
   const handleToggleEnable = async (botId, currentStatus) => {
     const enabled = currentStatus !== 'disabled';
     try {
-      const response = await fetch(`${API_URL}/api/instances/${botId}/enable`, {
+      const response = await authFetch(`${API_URL}/api/instances/${botId}/enable`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled: !enabled })
@@ -369,7 +399,7 @@ function App() {
     setShowPairingModal(true);
     
     try {
-      await fetch(`${API_URL}/api/instances/${botId}/regenerate-code`, { method: 'POST' });
+      await authFetch(`${API_URL}/api/instances/${botId}/regenerate-code`, { method: 'POST' });
     } catch (e) {
       console.error('Error triggering regeneration:', e);
     }
@@ -379,7 +409,7 @@ function App() {
 
     const poll = async () => {
       try {
-        const response = await fetch(`${API_URL}/api/instances/${botId}/pairing-code`);
+        const response = await authFetch(`${API_URL}/api/instances/${botId}/pairing-code`);
         const data = await response.json();
         const code = data.pairingCode || data.pairing_code;
         
@@ -427,7 +457,7 @@ function App() {
   const fetchChatbotConfig = async (botId) => {
     try {
       // Fetch global config
-      const globalResponse = await fetch(`${API_URL}/api/chatbot/global-config`);
+      const globalResponse = await authFetch(`${API_URL}/api/chatbot/global-config`);
       const globalData = await globalResponse.json();
       
       setChatbotConfig({
@@ -448,7 +478,7 @@ function App() {
   const handleSaveChatbotConfig = async (botId) => {
     try {
       // Save global config for all bots
-      const response = await fetch(`${API_URL}/api/chatbot/global-config`, {
+      const response = await authFetch(`${API_URL}/api/chatbot/global-config`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(chatbotConfig)
@@ -843,10 +873,10 @@ function App() {
                 ➕ Create Bot
               </button>
               <button
-                onClick={() => setIsLoggedIn(false)}
+                onClick={handleLogout}
                 className="bg-white/10 hover:bg-white/20 backdrop-blur px-4 py-2 rounded-lg font-medium transition"
               >
-                Logout
+                🚪 Logout
               </button>
             </div>
           </div>

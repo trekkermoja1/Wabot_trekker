@@ -45,10 +45,19 @@ async function pingCommand(sock, chatId, message) {
         const uptimeInSeconds = Math.floor((Date.now() - botStartTime) / 1000);
         const uptimeFormatted = formatTime(uptimeInSeconds);
 
+        const createdDate = new Date(botStartTime).toLocaleDateString('en-US', {
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+
         const botInfo = `
 ┏━━〔 🤖 𝐓𝐑𝐄𝐊𝐊𝐄𝐑 𝐖𝐀𝐁𝐎𝐓 〕━━┓
 ┃ 🚀 Ping     : ${ping} ms
 ┃ ⏱️ Uptime   : ${uptimeFormatted}
+┃ 📅 Created  : ${createdDate}
 ┃ 🔖 Version  : v${settings.version}
 ┗━━━━━━━━━━━━━━━━━━━┛`.trim();
 

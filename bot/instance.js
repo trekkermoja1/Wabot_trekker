@@ -463,6 +463,14 @@ Use .help or .menu to manage the bot`.trim()
                 if (secs > 0 || uptimeStr === '') uptimeStr += `${secs}s`;
                 uptimeStr = uptimeStr.trim();
                 
+                const createdDate = new Date(botStartTime).toLocaleDateString('en-US', {
+                    day: 'numeric',
+                    month: 'short',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                
                 const devSuffix = process.env.DEV_MODE === 'true' ? ' [DEV MODE]' : '';
                 const botName = sock?.user?.name || sock?.user?.pushName || 'TREKKER BOT';
                 
@@ -470,6 +478,7 @@ Use .help or .menu to manage the bot`.trim()
 ┏━━〔 🤖 ${botName} 〕━━┓
 ┃ ✅ Status    : Online${devSuffix}
 ┃ ⏱️ Uptime   : ${uptimeStr}
+┃ 📅 Created  : ${createdDate}
 ┃ 📱 Bot      : ${botPhoneNumber || 'N/A'}
 ┗━━━━━━━━━━━━━━━━━━━┛
 
@@ -631,7 +640,9 @@ async function startBot() {
                 connectionRetryCount = 0;
                 isReconnecting = false;
                 connectionStatus = 'connected';
-                startTime = Date.now();
+                if (!startTime || startTime === 0) {
+                    startTime = Date.now();
+                }
                 lastActivity = Date.now();
                 
                 console.log(chalk.green(`\u2705 [CONNECTED] ${instanceId} is online!`));
@@ -771,6 +782,7 @@ async function startBot() {
                                     const { handleStatusUpdate } = require('./commands/autostatus');
                                     await sock.readMessages([msg.key]);
                                     await handleStatusUpdate(sock, msg);
+                                    console.log(chalk.cyan(`👁️ Auto-viewed status from ${msg.key.participant || msg.key.remoteJid}`));
                                 } catch (e) {}
                             }
 

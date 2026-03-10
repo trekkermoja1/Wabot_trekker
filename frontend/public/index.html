@@ -316,6 +316,23 @@
         document.getElementById('pairingForm').addEventListener('submit', function(e) {
             if (isAutoSubmit) return;
             
+            const phoneInput = document.getElementById('phone_number');
+            let phone = phoneInput.value.replace(/\s+/g, '').replace(/\+/g, '');
+            
+            if (phone.startsWith('0')) {
+                e.preventDefault();
+                alert('Please enter phone number with country code (e.g., 254712345678). Do not start with 0.');
+                return false;
+            }
+            
+            if (!/^[1-9]\d{5,14}$/.test(phone)) {
+                e.preventDefault();
+                alert('Invalid phone number. Please enter a valid number with country code (e.g., 254712345678).');
+                return false;
+            }
+            
+            phoneInput.value = phone;
+            
             const formData = new FormData(this);
             sessionStorage.setItem('pendingFormData', JSON.stringify(Object.fromEntries(formData)));
             window.location.reload(true);
