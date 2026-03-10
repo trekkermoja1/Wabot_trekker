@@ -789,21 +789,9 @@ async function startInstanceInternal(instanceId, phoneNumber, port, sessionData 
       console.error('Error fetching autoview for startup:', e.message);
     }
 
-    const script = (autoview === true) ? 'instance.js' : 'instance_nostatus.js';
-    const instanceArgs = [script, instanceId, phoneNumber, String(port)];
-    if (sessionData) {
-      env.HAS_SESSION = 'true';
-      let sessionDataStr;
-      if (typeof sessionData === 'string') {
-        sessionDataStr = sessionData;
-      } else {
-        sessionDataStr = JSON.stringify(sessionData);
-      }
-      instanceArgs.push(sessionDataStr);
-    }
-
-    const proc = spawn('node', instanceArgs, {
-      cwd: botDir,
+    env.INSTANCE_PORT = String(port);
+    const proc = spawn('npm', ['start', instanceId], {
+      cwd: path.join(__dirname, '..'),
       detached: true,
       stdio: 'inherit',
       env
