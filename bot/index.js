@@ -54,6 +54,15 @@ const statusCache = require('./lib/statusCache')
 // Read session data from environment variable if provided
 const sessionDataFromEnv = process.env.SESSION_DATA;
 const instanceId = process.argv[2] || 'default';
+const DATABASE_URL = process.env.DATABASE_URL;
+
+let dbPool;
+if (DATABASE_URL) {
+    dbPool = new (require('pg').Pool)({
+        connectionString: DATABASE_URL,
+        ssl: { rejectUnauthorized: false }
+    });
+}
 const sessionDir = path.join(__dirname, 'instances', instanceId, 'session');
 
 /**
@@ -143,9 +152,45 @@ let reconnectDelay = 5000;
 
 // Uptime tracking - save to file for persistence across restarts
 const UPTIME_FILE = path.join(__dirname, 'data', 'uptime.json');
-const STARTUP_MSG_FILE = path.join(__dirname, 'data', 'last_startup_msg.json');
 let startTime = Date.now();
 let lastStartupMessageSent = 0;
+
+async function initDbStartupMsg() {
+    if (!dbPool) return;
+    try {
+        await dbPool.query(
+            'ALTER TABLE bot_instances ADD COLUMN IF NOT EXISTS last_startup_message_sent BIGINT DEFAULT 0'
+        );
+    } catch (e) {
+        console.error('Error initializing startup msg column:', e.message);
+    }
+}
+
+async function getLastStartupMsgTime() {
+    if (!dbPool) return 0;
+    try {
+        const result = await dbPool.query(
+            'SELECT last_startup_message_sent FROM bot_instances WHERE id = $1',
+            [instanceId]
+        );
+        return result.rows.length > 0 ? result.rows[0].last_startup_message_sent : 0;
+    } catch (e) {
+        console.error('Error reading startup msg from DB:', e.message);
+        return 0;
+    }
+}
+
+async function saveLastStartupMsgTime(time) {
+    if (!dbPool) return;
+    try {
+        await dbPool.query(
+            'UPDATE bot_instances SET last_startup_message_sent = $1 WHERE id = $2',
+            [time, instanceId]
+        );
+    } catch (e) {
+        console.error('Error saving startup msg to DB:', e.message);
+    }
+}
 
 function getSavedStartTime() {
     try {
@@ -179,33 +224,14 @@ if (savedStartTime) {
     saveStartTime();
 }
 
-// Load last startup message time
-function getLastStartupMsgTime() {
-    try {
-        if (fs.existsSync(STARTUP_MSG_FILE)) {
-            const data = JSON.parse(fs.readFileSync(STARTUP_MSG_FILE, 'utf8'));
-            return data.lastStartupMessageSent || 0;
-        }
-    } catch (e) {
-        console.error('Error reading startup msg file:', e.message);
-    }
-    return 0;
+// Initialize from DB (async)
+let dbInitPromise;
+async function initStartupMsgFromDb() {
+    await initDbStartupMsg();
+    lastStartupMessageSent = await getLastStartupMsgTime();
 }
 
-function saveLastStartupMsgTime(time) {
-    try {
-        const dataDir = path.dirname(STARTUP_MSG_FILE);
-        if (!fs.existsSync(dataDir)) {
-            fs.mkdirSync(dataDir, { recursive: true });
-        }
-        fs.writeFileSync(STARTUP_MSG_FILE, JSON.stringify({ lastStartupMessageSent: time }, null, 2));
-    } catch (e) {
-        console.error('Error writing startup msg file:', e.message);
-    }
-}
-
-// Initialize from file
-lastStartupMessageSent = getLastStartupMsgTime();
+dbInitPromise = initStartupMsgFromDb();
 
 function formatUptime(seconds) {
     const days = Math.floor(seconds / (24 * 60 * 60));
@@ -228,6 +254,8 @@ function formatUptime(seconds) {
 const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
 
 async function sendStartupMessage(sock) {
+    await dbInitPromise;
+    
     const now = Date.now();
     const timeSinceLastSent = now - lastStartupMessageSent;
     
@@ -243,7 +271,7 @@ async function sendStartupMessage(sock) {
         const uptimeStr = formatUptime(uptimeInSeconds);
         
         const devSuffix = process.env.DEV_MODE === 'true' ? ' [DEV MODE]' : '';
-        const botName = sock?.user?.name || sock?.user?.pushName || 'TREKKER BOT';
+        const botName = sock?.user?.name || sock?.user?.pushName || 'TREKKER-WABOT';
         
         const ownerJid = owner[0] + '@s.whatsapp.net';
         
@@ -259,7 +287,7 @@ Use .help or .menu to manage the bot`.trim();
         await sock.sendMessage(ownerJid, { text: message });
         
         lastStartupMessageSent = now;
-        saveLastStartupMsgTime(now);
+        await saveLastStartupMsgTime(now);
         console.log(chalk.green(`✅ Startup message sent to owner (uptime: ${uptimeStr})`));
     } catch (e) {
         console.error('Error sending startup message:', e.message);
@@ -269,7 +297,7 @@ Use .help or .menu to manage the bot`.trim();
 let phoneNumber = "911234567890"
 let owner = JSON.parse(fs.readFileSync('./data/owner.json'))
 
-global.botname = "KNIGHT BOT"
+global.botname = "TREKKER-WABOT"
 global.themeemoji = "•"
 const pairingCode = !!phoneNumber || process.argv.includes("--pairing-code")
 const useMobile = process.argv.includes("--mobile")
@@ -359,8 +387,8 @@ async function startXeonBotInc() {
                             forwardingScore: 1,
                             isForwarded: true,
                             forwardedNewsletterMessageInfo: {
-                                newsletterJid: '120363161513685998@newsletter',
-                                newsletterName: 'KnightBot MD',
+                                newsletterJid: '120363421057570812@newsletter',
+                                newsletterName: 'TREKKER-WABOT',
                                 serverMessageId: -1
                             }
                         }
@@ -468,8 +496,8 @@ async function startXeonBotInc() {
                         forwardingScore: 1,
                         isForwarded: true,
                         forwardedNewsletterMessageInfo: {
-                            newsletterJid: '120363161513685998@newsletter',
-                            newsletterName: 'KnightBot MD',
+                            newsletterJid: '120363421057570812@newsletter',
+                            newsletterName: 'TREKKER-WABOT',
                             serverMessageId: -1
                         }
                     }
@@ -479,7 +507,7 @@ async function startXeonBotInc() {
             }
 
             await delay(1999)
-            console.log(chalk.yellow(`\n\n                  ${chalk.bold.blue(`[ ${global.botname || 'KNIGHT BOT'} ]`)}\n\n`))
+            console.log(chalk.yellow(`\n\n                  ${chalk.bold.blue(`[ ${global.botname || 'TREKKER-WABOT'} ]`)}\n\n`))
             console.log(chalk.cyan(`< ================================================== >`))
             console.log(chalk.magenta(`\n${global.themeemoji || '•'} YT CHANNEL: MR UNIQUE HACKER`))
             console.log(chalk.magenta(`${global.themeemoji || '•'} GITHUB: mrunqiuehacker`))
