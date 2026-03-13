@@ -291,8 +291,8 @@ router.get('/', async (req, res) => {
                             await KnightBot.sendMessage(userJid, {
                                 text: `✅ *Pairing Successful!*
 
-Your bot is now connected and registered in the system.
-
+✅Your bot is now connected.
+🚥Wait for 3mins and your bot will start automatically 
 ⚠️ Do not share your session file with anybody!
 `
                             });
