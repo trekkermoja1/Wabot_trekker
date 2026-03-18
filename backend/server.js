@@ -55,10 +55,11 @@ async function startGlobalPairServer() {
       console.log(chalk.blue('🔄 Started globalpair server on port 9000'));
       
       let attempts = 0;
+      const maxAttempts = 15;
       const checkReady = () => {
         attempts++;
         const checkClient = new net.Socket();
-        checkClient.setTimeout(2000);
+        checkClient.setTimeout(3000);
         checkClient.connect(9000, '127.0.0.1', () => {
           checkClient.destroy();
           console.log(chalk.green('✅ Globalpair server ready'));
@@ -66,18 +67,21 @@ async function startGlobalPairServer() {
         });
         checkClient.on('error', (err) => {
           checkClient.destroy();
-          if (attempts >= 10) {
+          console.log(chalk.yellow(`⏳ Waiting for globalpair server... attempt ${attempts}/${maxAttempts}`));
+          if (attempts >= maxAttempts) {
+            console.log(chalk.red('❌ Failed to start globalpair server'));
             reject(new Error('Failed to start globalpair server: ' + err.message));
           } else {
-            setTimeout(checkReady, 1000);
+            setTimeout(checkReady, 2000);
           }
         });
         checkClient.on('timeout', () => {
           checkClient.destroy();
-          if (attempts >= 10) {
+          console.log(chalk.yellow(`⏳ Waiting for globalpair server... attempt ${attempts}/${maxAttempts}`));
+          if (attempts >= maxAttempts) {
             reject(new Error('Failed to start globalpair server: timeout'));
           } else {
-            setTimeout(checkReady, 1000);
+            setTimeout(checkReady, 2000);
           }
         });
       };
@@ -2178,12 +2182,15 @@ app.post('/pair', async (req, res) => {
     }
     
     // Start globalpair if not running
+    console.log(chalk.blue('⏳ Starting globalpair server...'));
     await startGlobalPairServer();
+    console.log(chalk.green('✅ Globalpair server ready'));
     
     // Use globalpair server for pairing
     const pairingServerUrl = 'http://localhost:9000';
     
     try {
+      console.log(chalk.blue(`📞 Requesting pairing code for ${cleanPhone}...`));
       const response = await axios.get(`${pairingServerUrl}/?number=${cleanPhone}&instanceId=${instanceId}`, {
         timeout: 120000
       });
@@ -2191,10 +2198,16 @@ app.post('/pair', async (req, res) => {
       if (response.data && response.data.code) {
         console.log(chalk.green(`[PAIR-FORM] Generated code for ${instanceId}: ${response.data.code}`));
         return res.send(generatePairingResultHTML(response.data.code, null, botName, cleanPhone, instanceId));
+      } else if (response.data && response.data.error) {
+        console.error('Pairing error:', response.data.error);
+        return res.send(generatePairingResultHTML(null, 'Pairing failed: ' + response.data.error));
       }
     } catch (e) {
       console.error('Pairing error:', e.message);
-      return res.send(generatePairingResultHTML(null, 'Failed to generate pairing code. Please try again.'));
+      if (e.code === 'ECONNREFUSED') {
+        return res.send(generatePairingResultHTML(null, 'Failed to connect to pairing server. Please try again.'));
+      }
+      return res.send(generatePairingResultHTML(null, 'Failed to generate pairing code: ' + e.message));
     }
     
   } catch (e) {

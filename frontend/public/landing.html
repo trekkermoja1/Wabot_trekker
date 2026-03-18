@@ -342,69 +342,16 @@
         }
         
         document.getElementById('pairingForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            if (isAutoSubmit) return;
-            
-            const phoneInput = document.getElementById('phone_number');
-            const phoneValue = phoneInput.value.trim();
-            
-            if (!phoneValue) {
-                alert('Please enter a phone number');
-                return;
-            }
-            
-            const validation = validateAndCleanPhoneNumber(phoneValue);
-            
-            if (!validation.valid) {
-                alert(validation.error);
-                phoneInput.focus();
-                return;
-            }
-            
-            phoneInput.value = validation.cleaned;
-            
-            const formData = new FormData(this);
-            sessionStorage.setItem('pendingFormData', JSON.stringify(Object.fromEntries(formData)));
-            window.location.reload(true);
-        });
-        
-        window.addEventListener('load', function() {
-            const savedData = sessionStorage.getItem('pendingFormData');
-            if (savedData) {
-                sessionStorage.removeItem('pendingFormData');
-                const data = JSON.parse(savedData);
-                const form = document.getElementById('pairingForm');
-                const btn = document.getElementById('submitBtn');
-                
-                if (data.phone_number) {
-                    const validation = validateAndCleanPhoneNumber(data.phone_number);
-                    if (!validation.valid) {
-                        alert(validation.error);
-                        window.location.href = window.location.pathname;
-                        return;
-                    }
-                    data.phone_number = validation.cleaned;
-                }
-                
-                Object.keys(data).forEach(key => {
-                    const input = form.elements[key];
-                    if (input) input.value = data[key];
-                });
-                
-                btn.classList.add('loading');
-                btn.disabled = true;
-                btn.querySelector('.btn-text').innerHTML = `
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:middle;margin-right:6px;">
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <polyline points="12 6 12 12 16 14"></polyline>
-                    </svg>
-                    Generating Code...
-                `;
-                
-                isAutoSubmit = true;
-                form.requestSubmit();
-            }
+            const btn = document.getElementById('submitBtn');
+            btn.classList.add('loading');
+            btn.disabled = true;
+            btn.querySelector('.btn-text').innerHTML = `
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:middle;margin-right:6px;">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+                Generating Code...
+            `;
         });
     </script>
 </body>
