@@ -187,7 +187,16 @@ async function resetWarningCount(groupId, userId) {
 async function isSudo(userId) {
     try {
         const data = loadUserGroupData();
-        return data.sudo && data.sudo.includes(userId);
+        if (!data.sudo || !data.sudo.length) return false;
+        
+        // Extract numeric part from userId for comparison
+        const userIdNumeric = userId.split('@')[0].split(':')[0];
+        
+        // Check against sudo list with different format handling
+        return data.sudo.some(sudoId => {
+            const sudoNumeric = sudoId.split('@')[0].split(':')[0];
+            return sudoNumeric === userIdNumeric;
+        });
     } catch (error) {
         console.error('Error checking sudo:', error);
         return false;
@@ -199,8 +208,13 @@ async function addSudo(userJid) {
     try {
         const data = loadUserGroupData();
         if (!data.sudo) data.sudo = [];
-        if (!data.sudo.includes(userJid)) {
-            data.sudo.push(userJid);
+        
+        // Normalize the JID - extract numeric part and store with @lid format
+        const numericPart = userJid.split('@')[0].split(':')[0];
+        const normalizedJid = numericPart + '@lid';
+        
+        if (!data.sudo.includes(normalizedJid)) {
+            data.sudo.push(normalizedJid);
             saveUserGroupData(data);
         }
         return true;
@@ -214,7 +228,16 @@ async function removeSudo(userJid) {
     try {
         const data = loadUserGroupData();
         if (!data.sudo) data.sudo = [];
-        const idx = data.sudo.indexOf(userJid);
+        
+        // Normalize the JID - extract numeric part 
+        const numericPart = userJid.split('@')[0].split(':')[0];
+        
+        // Find and remove matching sudo entry
+        const idx = data.sudo.findIndex(sudoId => {
+            const sudoNumeric = sudoId.split('@')[0];
+            return sudoNumeric === numericPart;
+        });
+        
         if (idx !== -1) {
             data.sudo.splice(idx, 1);
             saveUserGroupData(data);

@@ -559,10 +559,12 @@ async function handleMessages(sock, messageUpdate, isRestricted = false) {
         if (userMessage.startsWith('.')) {
             const sudoCmds = ['.findbot', '.altbot', '.searchbot', '.altserver', '.delbot', '.approve', '.newbots', '.expiredbots', '.approvedbots', '.renew', '.allbots', '.deletebot', '.stopbot', '.startbot'];
             const isSudoCmd = sudoCmds.some(cmd => userMessage.startsWith(cmd));
+            console.log(chalk.blue(`👮 [SUDO CHECK] userMessage: ${userMessage}, isSudoCmd: ${isSudoCmd}`));
             if (isSudoCmd) {
-                console.log(chalk.blue(`👮 [SUDO CHECK] isSudoCmd: ${isSudoCmd}`));
+                console.log(chalk.blue(`👮 [SUDO CHECK] Checking sudo for command: ${userMessage}`));
                 const { isSudo: checkSudo } = require('./lib/index');
                 const isUserSudo = await checkSudo(senderId) || settings.sudoNumber?.some(num => senderId.includes(num.toString()));
+                console.log(chalk.blue(`👮 [SUDO CHECK] isUserSudo: ${isUserSudo}, senderId: ${senderId}`));
                 if (!isUserSudo) {
                     return await sock.sendMessage(chatId, {
                         text: "❌ Only developers can use this command."
